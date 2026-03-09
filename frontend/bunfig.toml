@@ -1,0 +1,25 @@
+# Bun configuration for Sleep Scoring frontend
+# See: https://bun.sh/docs/runtime/bunfig
+
+[install]
+# Use exact versions in lockfile
+exact = true
+
+[test]
+# Preload the test setup file
+preload = ["./src/test/setup.ts"]
+
+# Test file patterns
+root = "./src"
+
+# Coverage settings
+coverage = true
+coverageDir = "./coverage"
+
+[run]
+# Read paths from tsconfig.app.json for module resolution
+tsconfig-override = "tsconfig.app.json"
+
+[test.run]
+# Also use tsconfig for tests
+tsconfig-override = "tsconfig.app.json"

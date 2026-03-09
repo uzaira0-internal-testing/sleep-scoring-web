@@ -1,0 +1,321 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sleep-scoring-web"
+version = "0.5.0"
+description = "Web application for actigraphy sleep scoring"
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+authors = [{name = "Uzair Alam"}]
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    #"Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    #"Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+# Core dependencies - required for algorithm functionality only
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.0.0",
+    "pygt3x>=0.3.0",
+    "psutil>=5.9.0",
+    "scikit-learn>=1.7.2",
+    "pyreadr>=0.5.4",
+    "psygnal>=0.15.0",
+]
+
+[project.optional-dependencies]
+# GUI dependencies - required for the PyQt6 graphical interface
+gui = [
+    "PyQt6>=6.4.0",
+    "pyqtgraph>=0.13.0",
+    "openpyxl>=3.1.0",
+    "xlsxwriter>=3.1.0",
+]
+
+# local = [
+#     "gt3x-rs>=0.1.0",
+# ]
+# Web dependencies - required for the FastAPI web application
+web = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "global-pass-honor-username-auth>=0.1.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.29.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-multipart>=0.0.9",
+    "aiofiles>=23.0.0",
+    "watchdog>=4.0.0",
+    "polars>=0.20.0",
+    # Monorepo shared packages
+    "deploy-toolkit>=0.1.0",
+    "db-toolkit>=0.1.0",
+    "fastapi-errors>=0.1.0",
+    "fastapi-pagination>=0.1.0",
+    "fastapi-logging>=0.1.0",
+    "fastapi-ratelimit>=0.1.0",
+    "fastapi-files>=0.1.0",
+    "fastapi-tasks>=0.1.0",
+    "agcounts>=0.2.0",
+    "tuspyserver>=4.2.3",
+]
+# Development dependencies - testing and code quality tools
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-qt>=4.2.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "aiosqlite>=0.19.0",
+    "ruff>=0.1.0",
+    "basedpyright>=1.18.0",
+    "pre-commit>=3.0.0",
+]
+# Build dependencies - for creating distributable packages
+build = [
+    "pyinstaller>=6.0.0",
+]
+# Complete installation - includes all dependencies (excluding advanced which requires gt3x-rs)
+all = [
+    "sleep-scoring-web[gui,dev,build]",
+]
+
+[project.scripts]
+sleep-scoring-web = "sleep_scoring_app.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sleep_scoring_app*", "sleep_scoring_web*"]
+
+
+
+
+[tool.ruff]
+line-length = 150  # Updated to match VS Code setting
+target-version = "py312"
+unsafe-fixes = true
+
+[tool.ruff.lint]
+extend-unsafe-fixes = [
+    "PTH118", "I001", "F401",  # Original ones
+    "D200", "D400", "D415", "D205", "D203", "D413",  # Docstring formatting
+    "UP007", "UP006", "UP035",  # Type annotation updates
+    "C901", "PLR0913", "PLR0912", "PLR0915",  # Complexity (less critical)
+    "D104", "D107", "D401",  # Missing docstrings and imperative mood
+    "ANN001", "ANN201", "ANN202", "ANN204",  # Type annotations
+    "PD011",  # Use .to_numpy() instead of .values
+    "FBT001", "FBT002",  # Boolean trap (can be ignored in many cases)
+    "PLR2004",  # Magic values (can extract to constants)
+    "S101",  # Use of assert (common in tests)
+]
+select = ["ALL"]  # Use ALL rules as specified in VS Code settings
+ignore = [
+    # Ignore rules from VS Code settings
+    "D211",     # No blank lines before class docstring
+    "N803",     # Argument name should be lowercase
+    "N806",     # Variable in function should be lowercase
+    "N802",     # Function name should be lowercase (Qt methods)
+    "N815",     # Variable in class scope should not be mixedCase
+    "D212",     # Multi-line docstring summary should start at the first line
+    "DTZ005",   # The use of datetime.now() without tz argument is not allowed
+    "DTZ006",   # The use of datetime.fromtimestamp() without tz argument is not allowed
+    "E501",     # Line too long (handled by line-length setting)
+    # Formatter conflicts
+    "COM812",   # Trailing comma missing
+    "D203",     # 1 blank line required before class docstring
+    # Test-specific ignores
+    "S101",     # Use of assert (normal in tests)
+    "PLR2004",  # Magic values (common in tests)
+    "ANN001",   # Missing type annotation for function argument (test fixtures)
+    "FBT001",   # Boolean-typed positional argument (acceptable for config)
+    "FBT002",   # Boolean default positional argument (acceptable for config)
+    "PLR0913",  # Too many arguments (acceptable for complex functions)
+    "D104",     # Missing docstring in public package (__init__.py files)
+    "D107",     # Missing docstring in __init__ (simple init methods)
+    # Additional unfixable or impractical to fix
+    "S608",     # Hardcoded SQL - false positives (we use validated allowlists)
+    "SLF001",   # Private member access (test code accessing internals)
+    "C901",     # Complex structure (architectural design choices)
+    "PLR0912",  # Too many branches (architectural design choices)
+    "PLR0915",  # Too many statements (architectural design choices)
+    "PLR0911",  # Too many return statements (architectural design choices)
+    "ANN401",   # Any type (legitimate use cases for dynamic typing)
+    "FBT003",   # Boolean positional value in call (Qt API style)
+    "S603",     # Subprocess without shell (false positive - we use lists)
+    "S311",     # Suspicious non-cryptographic random (not security-critical)
+    "ERA001",   # Commented out code (legitimate documentation/examples)
+    # Additional style/preference issues that are impractical to fix
+    "TRY300",   # Try-consider-else (style preference, doesn't affect functionality)
+    "D205",     # Missing blank line after summary (extensive docstring reformatting)
+    "D401",     # Non-imperative mood in docstring (style preference)
+    "D102",     # Missing docstring in public method (extensive documentation work)
+    "PTH123",   # Use pathlib instead of open() (extensive refactoring)
+    "PTH118",   # Use pathlib for os.path.join (extensive refactoring)
+    "ANN202",   # Missing return type for private function (extensive annotation work)
+    "DTZ001",   # Call datetime without tzinfo (extensive timezone work)
+    "DTZ007",   # Call datetime.strptime without zone (extensive timezone work)
+    "PERF401",  # Manual list comprehension (minor performance gains)
+    "TRY401",   # Verbose log message (remaining edge cases)
+    "ARG002",   # Unused method argument (interface requirements)
+    "TRY301",   # Raise within try (legitimate error handling patterns)
+    # Remaining minor issues
+    "BLE001",   # Blind except (remaining edge cases in scripts/utilities)
+    "E402",     # Module import not at top (legitimate late imports)
+    "SIM102",   # Collapsible if (readability preference)
+    "SIM108",   # If-else block instead of ternary (readability preference)
+    "PTH103",   # os.makedirs vs Path.mkdir (minor modernization)
+    "PTH110",   # os.path.exists vs Path.exists (minor modernization)
+    "PTH122",   # os.path.splitext vs Path.suffix (minor modernization)
+    "S108",     # Hardcoded temp file (test code)
+    "S110",     # Try-except-pass (legitimate cases)
+    "A001",     # Builtin variable shadowing (legitimate variable names)
+    "A004",     # Builtin import shadowing (ImportError for custom exceptions)
+    "A005",     # Module shadows stdlib (dataclasses.py, types.py - intentional names)
+    "B007",     # Unused loop variable (placeholder loops)
+    "D105",     # Missing docstring in magic method (dunder methods)
+    "ANN002",   # Missing type annotation for *args (generic parameters)
+    "ANN003",   # Missing type annotation for **kwargs (generic parameters)
+    "ANN206",   # Missing return type for classmethod (test utilities)
+    "ARG001",   # Unused function argument (interface compliance)
+    "DTZ901",   # datetime.min/max without timezone (not user-facing)
+    "FIX002",   # Line contains TODO (legitimate development notes)
+    "TD002",    # Missing TODO author (development notes)
+    "TD003",    # Missing TODO link (development notes)
+    # Final cleanup - utility scripts and non-core files
+    "S607",     # Start process with partial executable path (scripts)
+    "D100",     # Missing docstring in public module (utility modules)
+    "D103",     # Missing docstring in public function (utility functions)
+    "ANN201",   # Missing return type undocumented function (utility functions)
+    "PTH120",   # os.path.dirname vs Path.parent (minor modernization)
+    "E722",     # Bare except (legacy utility code)
+    "SIM115",   # Open file with context manager (legacy utility code)
+    "PLC0415",  # Import outside top-level (legitimate late imports for circular deps)
+    "G004",     # Logging f-string (performance micro-optimization, not critical)
+    "G201",     # Use .exception() instead of .error(exc_info=True) (style preference)
+    "PLW0603",  # Global statement (legitimate use in main.py for app lifecycle)
+    "D417",     # Missing argument description (extensive docstring work)
+    "ARG003",   # Unused class method argument (interface requirements)
+    "S112",     # try-except-continue without logging (legitimate silent handling)
+    "SIM103",   # Return condition directly (readability preference)
+    "TRY004",   # Prefer TypeError for invalid type (ValueError is fine for config)
+    # Test-specific rules - ignore in all files for simplicity
+    "F841",     # Local variable assigned but never used (test setup)
+    "F401",     # Imported but unused (test imports for fixtures)
+    "NPY002",   # Legacy numpy random (test code)
+    "ARG005",   # Unused lambda argument (mock callbacks)
+    "B023",     # Function definition does not bind loop variable (test patterns)
+    "PIE790",   # Unnecessary pass statement (placeholder tests)
+    "PYI024",   # Use typing.NamedTuple (test utilities)
+    "SIM105",   # Use contextlib.suppress (test patterns)
+    "TRY002",   # Create your own exception (test code)
+    "S324",     # Insecure hash function (test checksums, not security)
+    "PD901",    # Avoid using the generic variable name `df` for DataFrames
+    "PD011",    # Use .to_numpy() instead of .values
+    "PGH003",   # Use specific rule codes when ignoring type issues
+    "PT017",    # Pytest related issues
+    "PT011",    # Pytest related issues
+    "SIM117",   # Use a single with statement with multiple contexts
+    "E741",     # Ambiguous variable name
+    "PT018",    # Assertion should be broken down into multiple parts
+    "DTZ004",   # datetime.datetime.utcfromtimestamp() used
+    "PD015",    # Use .merge method instead of pd.merge function
+    "D204",     # 1 blank line required after class docstring
+    "PT019",    # Fixture `_` without value is injected as parameter, use `@pytest.mark.usefixtures` instead
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "F401", "F841", "F821", "NPY002", "ARG005", "B023", "PIE790",
+    "PYI024", "SIM105", "TRY002", "TRY003", "S324", "D", "ANN",
+    "EXE001", "TC003", "PT006", "PT017", "EM101", "EM102",
+]
+"sleep_scoring_app/cli/__init__.py" = ["D213"]
+"sleep_scoring_app/web/__init__.py" = ["D213"]
+
+[tool.basedpyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"  # Start with standard, not strict - incremental strictness
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownParameterType = false
+reportUnknownLambdaType = false
+reportMissingParameterType = false  # Many legacy functions lack annotations
+reportMissingTypeArgument = false  # dict, list without type args
+reportUnnecessaryIsInstance = false  # Runtime checks for defensive coding
+reportUnnecessaryComparison = false  # None checks for defensive coding
+reportArgumentType = "warning"  # Type mismatches - warn but don't fail
+reportReturnType = "warning"  # Return type mismatches - warn but don't fail
+reportCallIssue = "warning"  # Call issues - warn but don't fail
+reportOperatorIssue = "warning"  # Operator issues - warn but don't fail
+reportOptionalMemberAccess = "warning"  # Optional member access - warn but don't fail
+reportOptionalOperand = "warning"  # Optional operand - warn but don't fail
+reportOptionalIterable = "warning"  # Optional iterable - warn but don't fail
+reportOptionalSubscript = "warning"  # Optional subscript - warn but don't fail
+reportGeneralTypeIssues = "warning"  # General type issues - warn but don't fail
+reportPossiblyUnboundVariable = "warning"  # Possibly unbound - warn but don't fail
+reportUnusedImport = "warning"
+reportUnusedVariable = "warning"
+# Suppressed: Qt/PyQt6 dynamic attributes and intentional protected member access
+reportAttributeAccessIssue = false  # Qt widgets have dynamic attrs not in stubs
+reportPrivateUsage = false  # Intentional _method access across layers
+reportUnsupportedDunderAll = false  # __all__ with re-exports
+include = ["sleep_scoring_app"]
+exclude = ["tests", "**/__pycache__", "main.py"]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+global-pass-honor-username-auth = { workspace = true }
+deploy-toolkit = { workspace = true }
+db-toolkit = { workspace = true }
+fastapi-errors = { workspace = true }
+fastapi-pagination = { workspace = true }
+fastapi-logging = { workspace = true }
+fastapi-ratelimit = { workspace = true }
+fastapi-files = { workspace = true }
+fastapi-tasks = { workspace = true }
+
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "demo_data: Tests that use demo data files",
+    "gui: GUI tests requiring Qt",
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "e2e: End-to-end tests",
+]
+
+[tool.coverage.run]
+source = ["sleep_scoring_app"]
+omit = ["tests/*", "*/migrations/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

@@ -1,0 +1,11 @@
+participant_id,startdate,in_bed_time,sleep_onset_time,sleep_offset_time,napped,napstart_1_time,napend_1_time,nonwear_occurred
+DEMO-001,1/1/2000,10:30 PM,11:15 PM,6:45 AM,No,,,No
+DEMO-001,1/2/2000,11:00 PM,11:30 PM,7:00 AM,Yes,2:00 PM,2:45 PM,No
+DEMO-001,1/3/2000,10:00 PM,10:45 PM,6:30 AM,No,,,No
+DEMO-001,1/4/2000,10:15 PM,10:50 PM,7:15 AM,Yes,1:30 PM,2:15 PM,No
+DEMO-001,1/5/2000,11:30 PM,12:00 AM,7:30 AM,No,,,No
+DEMO-001,1/6/2000,10:45 PM,11:20 PM,6:50 AM,No,,,No
+DEMO-001,1/7/2000,10:00 PM,10:30 PM,7:00 AM,Yes,3:00 PM,3:30 PM,No
+DEMO-001,1/8/2000,11:15 PM,11:45 PM,7:20 AM,No,,,No
+DEMO-001,1/9/2000,10:30 PM,11:00 PM,6:45 AM,No,,,No
+DEMO-001,1/10/2000,10:00 PM,10:40 PM,7:10 AM,No,,,No

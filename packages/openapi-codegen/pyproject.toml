@@ -1,0 +1,10 @@
+[project]
+name = "openapi-codegen"
+version = "0.1.0"
+description = "TypeScript/Bun package - not a Python package"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+# This is a TypeScript package, not Python
+package = false

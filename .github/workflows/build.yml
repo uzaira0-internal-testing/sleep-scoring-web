@@ -1,0 +1,362 @@
+name: Build Sleep Scoring App
+
+on:
+  # Manual trigger with optional version input
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number (optional, e.g., 1.0.0)"
+        required: false
+        type: string
+      version_bump:
+        description: "Version bump type (if no version specified)"
+        required: false
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+  # Trigger on release published
+  release:
+    types: [published]
+
+  # Trigger on version tags
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  determine-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.versioning.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Determine version
+        id: versioning
+        run: |
+          # Get current version from pyproject.toml
+          CURRENT_VERSION=$(grep -o 'version = "[^"]*"' pyproject.toml | head -1 | cut -d'"' -f2 || echo '1.0.0')
+          echo "Current version: $CURRENT_VERSION"
+
+          if [[ '${{ github.ref }}' == refs/tags/v* ]]; then
+            # If this is a tag, use the tag name as version
+            VERSION=${GITHUB_REF#refs/tags/v}
+          elif [[ '${{ github.event_name }}' == 'workflow_dispatch' && -n '${{ inputs.version }}' ]]; then
+            # Use manually specified version
+            VERSION='${{ inputs.version }}'
+          elif [[ '${{ github.event_name }}' == 'workflow_dispatch' ]]; then
+            # For manual workflow with bump type
+            BUMP_TYPE='${{ inputs.version_bump }}'
+
+            # Parse version components
+            if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+              MAJOR="${BASH_REMATCH[1]}"
+              MINOR="${BASH_REMATCH[2]}"
+              PATCH="${BASH_REMATCH[3]}"
+
+              if [ "$BUMP_TYPE" == 'major' ]; then
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+              elif [ "$BUMP_TYPE" == 'minor' ]; then
+                MINOR=$((MINOR + 1))
+                PATCH=0
+              else
+                PATCH=$((PATCH + 1))
+              fi
+
+              VERSION="$MAJOR.$MINOR.$PATCH"
+            else
+              VERSION=$(date +'%Y.%m.%d.%H%M')
+            fi
+          elif [[ -n '${{ github.event.release.tag_name }}' ]]; then
+            VERSION='${{ github.event.release.tag_name }}'
+            VERSION=${VERSION#v}
+          else
+            # Fallback to date-based version
+            VERSION=$(date +'%Y.%m.%d.%H%M')
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Determined version: $VERSION"
+
+  build:
+    name: Build on ${{ matrix.os }}
+    needs: [determine-version]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: sleep-scoring-web-windows
+            artifact_path: dist/sleep-scoring-web/
+          - os: macos-latest
+            artifact_name: sleep-scoring-web-macos
+            artifact_path: dist/Sleep Scoring Web.app
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/AppData/Local/pip/Cache
+          key: ${{ runner.os }}-pip-build-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-build-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[gui,build]
+
+      - name: Verify PyInstaller installation
+        run: |
+          python -m PyInstaller --version
+
+      - name: Build with PyInstaller (using spec file)
+        run: |
+          python -m PyInstaller sleep-scoring-web.spec
+
+      - name: Verify build output (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          dir dist\sleep-scoring-web
+          if not exist "dist\sleep-scoring-web\sleep-scoring-web.exe" exit 1
+        shell: cmd
+
+      - name: Test executable startup (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          $exePath = 'dist\sleep-scoring-web\sleep-scoring-web.exe'
+
+          if (-not (Test-Path $exePath)) {
+            Write-Error ('Executable not found at: ' + $exePath)
+            exit 1
+          }
+
+          Write-Host 'Testing executable startup...'
+
+          try {
+            $start = Get-Date
+
+            $processInfo = New-Object System.Diagnostics.ProcessStartInfo
+            $processInfo.FileName = $exePath
+            $processInfo.RedirectStandardOutput = $true
+            $processInfo.RedirectStandardError = $true
+            $processInfo.UseShellExecute = $false
+            $processInfo.CreateNoWindow = $false
+
+            $process = New-Object System.Diagnostics.Process
+            $process.StartInfo = $processInfo
+            $process.Start() | Out-Null
+
+            Write-Host ('Process started with PID: ' + $process.Id)
+
+            $maxWaitTime = 15
+            $startTime = Get-Date
+            $processStarted = $false
+
+            while ((Get-Date) -lt $startTime.AddSeconds($maxWaitTime)) {
+              if ($process.HasExited) {
+                Write-Host ('Process exited prematurely with code: ' + $process.ExitCode)
+                exit 1
+              }
+
+              $processStarted = $true
+              $end = Get-Date
+              $duration = ($end - $start).TotalSeconds
+              Write-Host ('Application started in ' + $duration + ' seconds')
+              break
+            }
+
+            if (-not $processStarted) {
+              Write-Host 'ERROR: Timeout waiting for application to start'
+              if (-not $process.HasExited) {
+                $process.Kill()
+              }
+              exit 1
+            }
+
+            Start-Sleep -Seconds 2
+
+            if (-not $process.HasExited) {
+              Write-Host 'Terminating process'
+              $process.Kill()
+            }
+
+            if ($duration -gt 10) {
+              Write-Host ('WARNING: Startup time exceeds 10 seconds (' + $duration + ' seconds)')
+            }
+
+            Write-Host 'Executable startup test passed!'
+            exit 0
+          }
+          catch {
+            Write-Host ('ERROR: ' + $_)
+            Get-Process | Where-Object { $_.ProcessName -eq 'sleep-scoring-web' } | ForEach-Object {
+              Write-Host ('Killing leftover process with ID: ' + $_.Id)
+              Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            }
+            exit 1
+          }
+        shell: pwsh
+        timeout-minutes: 2
+
+      - name: Verify build output (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo 'Contents of dist directory:'
+          ls -la dist/
+
+          if [ -d 'dist/Sleep Scoring Web.app' ]; then
+            echo 'App bundle created successfully'
+            echo 'Directory structure of the app bundle:'
+            find 'dist/Sleep Scoring Web.app' -type f 2>/dev/null | head -20 || true
+
+            if [ -d 'dist/Sleep Scoring Web.app/Contents/MacOS' ]; then
+              echo 'Contents of MacOS directory:'
+              ls -la 'dist/Sleep Scoring Web.app/Contents/MacOS'
+
+              MAIN_EXEC=$(find 'dist/Sleep Scoring Web.app/Contents/MacOS' -type f -perm +111 2>/dev/null | head -1 || true)
+              if [ -n "$MAIN_EXEC" ]; then
+                echo "Executable found: $MAIN_EXEC"
+                chmod +x "$MAIN_EXEC" || true
+              else
+                echo 'WARNING: No executable found via perm check, looking for any file'
+                MAIN_EXEC=$(ls 'dist/Sleep Scoring Web.app/Contents/MacOS/' | head -1)
+                if [ -n "$MAIN_EXEC" ]; then
+                  echo "Found: $MAIN_EXEC"
+                else
+                  echo 'ERROR: No executable found in MacOS directory'
+                  exit 1
+                fi
+              fi
+            else
+              echo 'ERROR: MacOS directory not found in app bundle'
+              exit 1
+            fi
+          else
+            echo 'ERROR: App bundle creation failed'
+            exit 1
+          fi
+        shell: bash
+
+      - name: Create archive (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          $version = '${{ needs.determine-version.outputs.version }}'
+          Compress-Archive -Path 'dist/sleep-scoring-web/*' -DestinationPath "sleep-scoring-web-windows-$version.zip"
+        shell: pwsh
+
+      - name: Create DMG archive (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          VERSION='${{ needs.determine-version.outputs.version }}'
+          DMG_NAME="sleep-scoring-web-macos-${VERSION}.dmg"
+          ZIP_NAME="sleep-scoring-web-macos-${VERSION}.zip"
+
+          echo 'Creating DMG...'
+          hdiutil create -volname 'Sleep Scoring Web' \
+                         -srcfolder 'dist/Sleep Scoring Web.app' \
+                         -ov -format UDRW \
+                         -fs HFS+ \
+                         "temp_${DMG_NAME}" || { echo 'Failed to create temporary DMG'; exit 1; }
+
+          hdiutil convert "temp_${DMG_NAME}" \
+                          -format UDZO \
+                          -o "${DMG_NAME}" || { echo 'Failed to convert DMG'; exit 1; }
+
+          rm -f "temp_${DMG_NAME}"
+
+          cd dist
+          zip -r "../${ZIP_NAME}" 'Sleep Scoring Web.app'
+          cd ..
+
+          echo 'Created archives:'
+          ls -la "${DMG_NAME}" "${ZIP_NAME}"
+        shell: bash
+
+      - name: Upload artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sleep-scoring-web-windows-${{ needs.determine-version.outputs.version }}
+          path: sleep-scoring-web-windows-${{ needs.determine-version.outputs.version }}.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload ZIP artifact (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sleep-scoring-web-macos-${{ needs.determine-version.outputs.version }}-zip
+          path: sleep-scoring-web-macos-${{ needs.determine-version.outputs.version }}.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload DMG artifact (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sleep-scoring-web-macos-${{ needs.determine-version.outputs.version }}-dmg
+          path: sleep-scoring-web-macos-${{ needs.determine-version.outputs.version }}.dmg
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload release assets (Windows)
+        if: (github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')) && matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sleep-scoring-web-windows-${{ needs.determine-version.outputs.version }}.zip
+          generate_release_notes: true
+
+      - name: Upload release assets (macOS)
+        if: (github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')) && matrix.os == 'macos-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sleep-scoring-web-macos-${{ needs.determine-version.outputs.version }}.dmg
+            sleep-scoring-web-macos-${{ needs.determine-version.outputs.version }}.zip
+          generate_release_notes: true
+
+  build-summary:
+    name: Build Summary
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check build status
+        run: |
+          echo 'Build result: ${{ needs.build.result }}'
+
+          if [ '${{ needs.build.result }}' == 'success' ]; then
+            echo 'Build completed successfully!'
+          else
+            echo 'Build failed!'
+            exit 1
+          fi

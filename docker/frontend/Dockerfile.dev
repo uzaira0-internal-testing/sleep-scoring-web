@@ -1,0 +1,25 @@
+# Frontend Development Dockerfile - Bun Native
+# Runs Bun dev server with live reload (no Vite)
+
+FROM oven/bun:1-alpine
+
+WORKDIR /app
+
+# Copy package files first (for better layer caching)
+COPY frontend/package.json frontend/bun.lock* ./
+
+# Install dependencies with Bun
+RUN bun install
+
+# Note: Source code is mounted as a volume in docker-compose.dev.yml
+# This enables hot reloading - changes to source files are immediately reflected
+
+# Expose dev server port
+EXPOSE 5173
+
+# Environment variables for development
+ENV NODE_ENV=development
+ENV BACKEND_URL=http://backend:8000
+
+# Start Bun native dev server
+CMD ["bun", "run", "dev"]

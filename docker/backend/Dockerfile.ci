@@ -1,0 +1,106 @@
+# =============================================================================
+# Sleep Scoring Web - Backend Dockerfile (CI/CD)
+# =============================================================================
+#
+# Installs packages directly from private GitHub repo.
+# Build context: repo root
+#
+# Required build args:
+#   GITHUB_TOKEN - GitHub token with repo access
+#   GITHUB_REPOSITORY - e.g., "your-org/monorepo"
+#
+# =============================================================================
+
+FROM python:3.12-slim AS builder
+
+# Build arguments
+ARG GITHUB_TOKEN
+ARG GITHUB_REPOSITORY
+
+# Validate required args
+RUN test -n "$GITHUB_TOKEN" || (echo "GITHUB_TOKEN is required" && exit 1)
+RUN test -n "$GITHUB_REPOSITORY" || (echo "GITHUB_REPOSITORY is required" && exit 1)
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast package installation
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /build
+
+# Create virtual environment
+RUN uv venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Configure git to use token for private repo access
+RUN git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+# Install monorepo packages from git
+# These are installed directly from the private repo
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+    "global-pass-honor-username-auth @ git+https://github.com/${GITHUB_REPOSITORY}.git@main#subdirectory=packages/global-pass-honor-username-auth" \
+    "deploy-toolkit @ git+https://github.com/${GITHUB_REPOSITORY}.git@main#subdirectory=packages/deploy-toolkit" \
+    "db-toolkit @ git+https://github.com/${GITHUB_REPOSITORY}.git@main#subdirectory=packages/db-toolkit" \
+    "fastapi-errors @ git+https://github.com/${GITHUB_REPOSITORY}.git@main#subdirectory=packages/fastapi-errors" \
+    "fastapi-pagination @ git+https://github.com/${GITHUB_REPOSITORY}.git@main#subdirectory=packages/fastapi-pagination" \
+    "fastapi-logging @ git+https://github.com/${GITHUB_REPOSITORY}.git@main#subdirectory=packages/fastapi-logging" \
+    "fastapi-files @ git+https://github.com/${GITHUB_REPOSITORY}.git@main#subdirectory=packages/fastapi-files"
+
+# Install remaining dependencies
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+    "fastapi>=0.115.0" \
+    "uvicorn[standard]>=0.32.0" \
+    "pydantic>=2.0.0" \
+    "pydantic-settings>=2.0.0" \
+    "sqlalchemy[asyncio]>=2.0.0" \
+    "asyncpg>=0.29.0" \
+    "aiofiles>=24.0.0" \
+    "python-multipart>=0.0.9" \
+    "watchdog>=4.0.0" \
+    "polars>=1.0.0" \
+    "numpy>=2.0.0" \
+    "pandas>=2.0.0" \
+    "scikit-learn>=1.5.0"
+
+# =============================================================================
+# Production stage
+# =============================================================================
+FROM python:3.12-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
+COPY sleep_scoring_web ./sleep_scoring_web
+COPY sleep_scoring_app/__init__.py ./sleep_scoring_app/__init__.py
+COPY sleep_scoring_app/core ./sleep_scoring_app/core
+# Replace the desktop algorithms __init__.py (which imports io/preprocessing not available in Docker)
+# with a minimal version that only exports what the web app needs
+RUN echo '"""Sleep scoring algorithms (web-minimal)."""' > ./sleep_scoring_app/core/algorithms/__init__.py
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["python", "-m", "uvicorn", "sleep_scoring_web.main:app", "--host", "0.0.0.0", "--port", "8000"]

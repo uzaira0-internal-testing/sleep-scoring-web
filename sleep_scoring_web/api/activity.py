@@ -1,0 +1,237 @@
+"""
+Activity data API endpoints.
+
+Provides endpoints for retrieving activity data in columnar format.
+
+Note: We intentionally avoid `from __future__ import annotations` here
+because FastAPI's dependency injection needs actual types, not string
+annotations. Using Annotated types requires runtime resolution.
+"""
+
+import calendar
+from datetime import date, datetime, timedelta
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import and_, select
+
+from sleep_scoring_web.api.access import require_file_access
+from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
+from sleep_scoring_web.db.models import File as FileModel
+from sleep_scoring_web.db.models import Marker, RawActivityData
+from sleep_scoring_web.schemas import ActivityDataColumnar, ActivityDataResponse
+from sleep_scoring_web.schemas.models import SensorNonwearPeriod
+
+router = APIRouter()
+
+
+def naive_to_unix(dt: datetime) -> float:
+    """
+    Convert naive datetime to Unix timestamp WITHOUT timezone interpretation.
+
+    Uses calendar.timegm which treats the datetime as UTC without conversion.
+    This ensures that "12:00" in the database displays as "12:00" to the user,
+    regardless of server or client timezone.
+    """
+    return float(calendar.timegm(dt.timetuple()))
+
+
+@router.get("/{file_id}/{analysis_date}")
+async def get_activity_data(
+    file_id: int,
+    analysis_date: date,
+    db: DbSession,
+    _: VerifiedPassword,
+    username: Username,
+    view_hours: Annotated[int, Query(ge=12, le=48, description="Hours of data to return (12-48)")] = 24,
+) -> ActivityDataResponse:
+    """
+    Get activity data for a specific file and date.
+
+    Returns data in columnar format for efficient transfer.
+    The view window starts from analysis_date at 12:00 (noon) and extends for view_hours.
+    """
+    await require_file_access(db, username, file_id)
+
+    # Verify file exists
+    result = await db.execute(select(FileModel).where(FileModel.id == file_id))
+    file = result.scalar_one_or_none()
+
+    if not file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+
+    # Calculate time window based on view mode (matches desktop app logic):
+    # - 24hr view: noon-to-noon (12:00 PM current day to 12:00 PM next day)
+    # - 48hr view: midnight-to-midnight (00:00 current day to 00:00 two days later)
+    if view_hours == 48:
+        # 48hr view: midnight to midnight+48h
+        start_time = datetime.combine(analysis_date, datetime.min.time())
+        end_time = start_time + timedelta(hours=48)
+    else:
+        # 24hr view: noon to noon
+        start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
+        end_time = start_time + timedelta(hours=24)
+
+    # Query activity data within time window
+    result = await db.execute(
+        select(RawActivityData)
+        .where(
+            and_(
+                RawActivityData.file_id == file_id,
+                RawActivityData.timestamp >= start_time,
+                RawActivityData.timestamp < end_time,
+            )
+        )
+        .order_by(RawActivityData.timestamp)
+    )
+    activity_rows = result.scalars().all()
+
+    # Convert to columnar format
+    timestamps: list[float] = []
+    axis_x: list[int] = []
+    axis_y: list[int] = []
+    axis_z: list[int] = []
+    vector_magnitude: list[int] = []
+
+    for row in activity_rows:
+        timestamps.append(naive_to_unix(row.timestamp))
+        axis_x.append(row.axis_x or 0)
+        axis_y.append(row.axis_y or 0)
+        axis_z.append(row.axis_z or 0)
+        vector_magnitude.append(row.vector_magnitude or 0)
+
+    columnar_data = ActivityDataColumnar(
+        timestamps=timestamps,
+        axis_x=axis_x,
+        axis_y=axis_y,
+        axis_z=axis_z,
+        vector_magnitude=vector_magnitude,
+    )
+
+    # Get available dates for navigation
+    from sqlalchemy import distinct, func
+
+    dates_result = await db.execute(
+        select(distinct(func.date(RawActivityData.timestamp)))
+        .where(RawActivityData.file_id == file_id)
+        .order_by(func.date(RawActivityData.timestamp))
+    )
+    available_dates = [str(d) for d in dates_result.scalars().all()]
+
+    # Find current date index
+    current_date_str = str(analysis_date)
+    current_date_index = available_dates.index(current_date_str) if current_date_str in available_dates else 0
+
+    return ActivityDataResponse(
+        data=columnar_data,
+        available_dates=available_dates,
+        current_date_index=current_date_index,
+        file_id=file_id,
+        analysis_date=str(analysis_date),
+        view_start=naive_to_unix(start_time),
+        view_end=naive_to_unix(end_time),
+    )
+
+
+@router.get("/{file_id}/{analysis_date}/score")
+async def get_activity_data_with_scoring(
+    file_id: int,
+    analysis_date: date,
+    db: DbSession,
+    _: VerifiedPassword,
+    username: Username,
+    view_hours: Annotated[int, Query(ge=12, le=48)] = 24,
+    algorithm: Annotated[str, Query(description="Sleep scoring algorithm to use")] = "sadeh_1994_actilife",
+) -> ActivityDataResponse:
+    """
+    Get activity data with sleep scoring algorithm results.
+
+    Returns data with:
+    - Sleep scoring results (1=sleep, 0=wake)
+    - Choi nonwear detection results (1=nonwear, 0=wear)
+
+    Available algorithms:
+    - sadeh_1994_actilife (default): Sadeh 1994 with ActiLife scaling
+    - sadeh_1994_original: Sadeh 1994 original paper version
+    - cole_kripke_1992_actilife: Cole-Kripke 1992 with ActiLife scaling
+    - cole_kripke_1992_original: Cole-Kripke 1992 original paper version
+    """
+    from sleep_scoring_web.services.algorithms import ALGORITHM_TYPES, ChoiAlgorithm, create_algorithm
+
+    # Validate algorithm type
+    if algorithm not in ALGORITHM_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown algorithm: {algorithm}. Available: {ALGORITHM_TYPES}",
+        )
+
+    # Get base activity data (auth already checked by dependency)
+    response = await get_activity_data(file_id, analysis_date, db, "", username, view_hours)
+
+    # Run sleep scoring algorithm on the data
+    if response.data.axis_y:
+        scorer = create_algorithm(algorithm)
+        results = scorer.score(response.data.axis_y)
+        response.algorithm_results = results
+
+        # Run Choi nonwear detection using user's preferred column (or default
+        # vector_magnitude) — same column as the table endpoints for consistency.
+        from sleep_scoring_web.services.choi_helpers import extract_choi_input_from_columnar, get_choi_column
+
+        choi = ChoiAlgorithm()
+        choi_column = await get_choi_column(db, username)
+        choi_input = extract_choi_input_from_columnar(response.data, choi_column)
+        response.nonwear_results = choi.detect_mask(choi_input)
+
+    # Query uploaded sensor nonwear periods (marker_type="sensor") — separate from manual markers.
+    # Use timestamp overlap with the view window instead of analysis_date so sensor
+    # nonwear always displays regardless of which date the marker was stored under.
+    sensor_nw_result = await db.execute(
+        select(Marker).where(
+            and_(
+                Marker.file_id == file_id,
+                Marker.marker_category == "nonwear",
+                Marker.marker_type == "sensor",
+                Marker.start_timestamp <= response.view_end,
+                Marker.end_timestamp >= response.view_start,
+            )
+        )
+    )
+    sensor_nw_markers = sensor_nw_result.scalars().all()
+    response.sensor_nonwear_periods = [
+        SensorNonwearPeriod(
+            start_timestamp=m.start_timestamp,
+            end_timestamp=m.end_timestamp,
+        )
+        for m in sensor_nw_markers
+    ]
+
+    return response
+
+
+@router.get("/{file_id}/{analysis_date}/sadeh")
+async def get_activity_data_with_sadeh(
+    file_id: int,
+    analysis_date: date,
+    db: DbSession,
+    _: VerifiedPassword,
+    username: Username,
+    view_hours: Annotated[int, Query(ge=12, le=48)] = 24,
+) -> ActivityDataResponse:
+    """
+    Get activity data with Sadeh algorithm results.
+
+    DEPRECATED: Use /{file_id}/{analysis_date}/score?algorithm=sadeh_1994_actilife instead.
+    """
+    return await get_activity_data_with_scoring(
+        file_id=file_id,
+        analysis_date=analysis_date,
+        db=db,
+        _="",  # Auth already verified at route level
+        username=username,
+        view_hours=view_hours,
+        algorithm="sadeh_1994_actilife",
+    )

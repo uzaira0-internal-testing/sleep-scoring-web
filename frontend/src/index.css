@@ -1,0 +1,259 @@
+@import "tailwindcss";
+
+/* ─── Design Tokens ─── */
+@theme {
+  /* Light theme: warm pearl + deep indigo accents */
+  --color-background: oklch(0.985 0.003 90);
+  --color-foreground: oklch(0.17 0.03 280);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.17 0.03 280);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.17 0.03 280);
+
+  /* Primary: deep indigo */
+  --color-primary: oklch(0.42 0.16 275);
+  --color-primary-foreground: oklch(0.98 0.005 280);
+
+  /* Secondary: cool lavender-gray */
+  --color-secondary: oklch(0.95 0.01 275);
+  --color-secondary-foreground: oklch(0.30 0.06 275);
+
+  /* Muted: subtle lavender */
+  --color-muted: oklch(0.96 0.008 275);
+  --color-muted-foreground: oklch(0.50 0.03 275);
+
+  /* Accent: soft indigo tint */
+  --color-accent: oklch(0.94 0.02 275);
+  --color-accent-foreground: oklch(0.30 0.06 275);
+
+  /* Destructive: warm red */
+  --color-destructive: oklch(0.55 0.22 25);
+  --color-destructive-foreground: oklch(0.98 0 0);
+
+  /* Borders & inputs */
+  --color-border: oklch(0.90 0.01 275);
+  --color-input: oklch(0.90 0.01 275);
+  --color-ring: oklch(0.55 0.14 275);
+
+  /* ─── Domain Colors ─── */
+  /* Sleep: rich violet */
+  --color-sleep: oklch(0.55 0.2 290);
+  --color-sleep-light: oklch(0.70 0.15 290);
+  --color-sleep-muted: oklch(0.92 0.04 290);
+
+  /* Nonwear: warm amber */
+  --color-nonwear: oklch(0.65 0.18 65);
+  --color-nonwear-light: oklch(0.78 0.14 65);
+  --color-nonwear-muted: oklch(0.93 0.04 65);
+
+  /* Success */
+  --color-success: oklch(0.58 0.14 155);
+  --color-success-muted: oklch(0.93 0.03 155);
+
+  /* Warning */
+  --color-warning: oklch(0.70 0.16 70);
+  --color-warning-muted: oklch(0.94 0.04 70);
+
+  /* Chart palette */
+  --color-chart-1: oklch(0.55 0.2 290);
+  --color-chart-2: oklch(0.60 0.16 175);
+  --color-chart-3: oklch(0.65 0.18 65);
+  --color-chart-4: oklch(0.55 0.22 25);
+  --color-chart-5: oklch(0.50 0.15 330);
+
+  /* Sleep marker plot colors */
+  --color-sleep-onset: oklch(0.55 0.2 290);
+  --color-sleep-offset: oklch(0.60 0.18 30);
+  --color-nonwear: oklch(0.65 0.15 60);
+
+  /* Sidebar */
+  --color-sidebar: oklch(0.98 0.005 275);
+  --color-sidebar-foreground: oklch(0.30 0.04 275);
+  --color-sidebar-accent: oklch(0.94 0.02 275);
+
+  /* Radius */
+  --radius: 0.625rem;
+
+  /* Typography */
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+}
+
+/* ─── Dark Theme: Deep Midnight ─── */
+.dark {
+  --color-background: oklch(0.14 0.02 275);
+  --color-foreground: oklch(0.92 0.01 275);
+  --color-card: oklch(0.18 0.025 275);
+  --color-card-foreground: oklch(0.92 0.01 275);
+  --color-popover: oklch(0.18 0.025 275);
+  --color-popover-foreground: oklch(0.92 0.01 275);
+
+  /* Primary: luminous indigo */
+  --color-primary: oklch(0.72 0.14 275);
+  --color-primary-foreground: oklch(0.14 0.02 275);
+
+  /* Secondary */
+  --color-secondary: oklch(0.22 0.03 275);
+  --color-secondary-foreground: oklch(0.85 0.03 275);
+
+  /* Muted */
+  --color-muted: oklch(0.22 0.025 275);
+  --color-muted-foreground: oklch(0.62 0.03 275);
+
+  /* Accent */
+  --color-accent: oklch(0.24 0.035 275);
+  --color-accent-foreground: oklch(0.88 0.03 275);
+
+  /* Destructive */
+  --color-destructive: oklch(0.50 0.20 25);
+  --color-destructive-foreground: oklch(0.95 0 0);
+
+  /* Borders */
+  --color-border: oklch(0.26 0.03 275);
+  --color-input: oklch(0.26 0.03 275);
+  --color-ring: oklch(0.60 0.14 275);
+
+  /* Domain: sleep */
+  --color-sleep: oklch(0.70 0.17 290);
+  --color-sleep-light: oklch(0.78 0.13 290);
+  --color-sleep-muted: oklch(0.25 0.06 290);
+
+  /* Domain: nonwear */
+  --color-nonwear: oklch(0.75 0.15 65);
+  --color-nonwear-light: oklch(0.82 0.12 65);
+  --color-nonwear-muted: oklch(0.25 0.05 65);
+
+  /* Success / Warning */
+  --color-success: oklch(0.65 0.14 155);
+  --color-success-muted: oklch(0.22 0.04 155);
+  --color-warning: oklch(0.75 0.14 70);
+  --color-warning-muted: oklch(0.22 0.04 70);
+
+  /* Chart (dark mode) */
+  --color-chart-1: oklch(0.70 0.17 290);
+  --color-chart-2: oklch(0.65 0.14 175);
+  --color-chart-3: oklch(0.75 0.15 65);
+  --color-chart-4: oklch(0.65 0.20 25);
+  --color-chart-5: oklch(0.60 0.15 330);
+
+  /* Sidebar */
+  --color-sidebar: oklch(0.16 0.025 275);
+  --color-sidebar-foreground: oklch(0.78 0.03 275);
+  --color-sidebar-accent: oklch(0.22 0.035 275);
+}
+
+/* ─── uPlot Overrides ─── */
+.uplot .u-legend {
+  display: none !important;
+}
+
+.uplot .u-wrap {
+  position: relative !important;
+}
+
+.uplot .u-under,
+.uplot .u-over,
+.uplot .u-axis {
+  position: absolute !important;
+}
+
+/* ─── Base Layer ─── */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    letter-spacing: -0.01em;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-ring outline-offset-2;
+  }
+
+  /* ─── Scrollbar Styling ─── */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+  }
+
+  /* ─── Selection ─── */
+  ::selection {
+    background: oklch(0.55 0.2 290 / 0.25);
+  }
+
+  .dark ::selection {
+    background: oklch(0.70 0.17 290 / 0.30);
+  }
+}
+
+/* ─── Utility Classes ─── */
+@layer utilities {
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Tabular numbers for data display */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+
+  /* Panel glass effect */
+  .glass {
+    backdrop-filter: blur(12px) saturate(1.2);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  }
+
+  /* Subtle noise texture for backgrounds */
+  .noise {
+    position: relative;
+  }
+
+  .noise::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glow effects for domain accents */
+  .glow-sleep {
+    box-shadow: 0 0 20px oklch(0.55 0.2 290 / 0.15);
+  }
+
+  .dark .glow-sleep {
+    box-shadow: 0 0 20px oklch(0.70 0.17 290 / 0.20);
+  }
+
+  .glow-nonwear {
+    box-shadow: 0 0 20px oklch(0.65 0.18 65 / 0.15);
+  }
+
+  .dark .glow-nonwear {
+    box-shadow: 0 0 20px oklch(0.75 0.15 65 / 0.20);
+  }
+}

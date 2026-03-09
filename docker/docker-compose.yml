@@ -1,0 +1,153 @@
+# =============================================================================
+# Sleep Scoring Web - Docker Compose
+# =============================================================================
+#
+# Production stack with Traefik integration for self-hosted deployment.
+#
+# Prerequisites:
+#   1. Create traefik-apps network: docker network create traefik-apps
+#   2. Copy .env.example to .env and configure secrets
+#
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose up -d --build      # Rebuild and start
+#   docker compose down               # Stop all services
+#   docker compose logs -f backend    # Follow backend logs
+#
+# Access (via Traefik):
+#   - http://server/sleep-scoring         → Frontend
+#   - http://server/sleep-scoring/api     → Backend API
+#
+# =============================================================================
+
+name: sleep-scoring-web
+
+services:
+  # ===========================================================================
+  # Database
+  # ===========================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sleep-scoring-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sleep}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-sleep_scoring}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sleep} -d ${POSTGRES_DB:-sleep_scoring}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ===========================================================================
+  # Backend API
+  # ===========================================================================
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+      args:
+        PACKAGES_VERSION: ${PACKAGES_VERSION:-0.1.0}
+        GITHUB_REPO: ${GITHUB_REPO:-uzaira0-internal-testing/monorepo}
+    container_name: sleep-scoring-backend
+    environment:
+      PYTHONUNBUFFERED: "1"
+      USE_SQLITE: "false"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-sleep}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-sleep_scoring}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
+      SITE_PASSWORD: ${SITE_PASSWORD:?SITE_PASSWORD must be set}
+      UPLOAD_API_KEY: ${UPLOAD_API_KEY:?UPLOAD_API_KEY must be set}
+      ADMIN_USERNAMES: ${ADMIN_USERNAMES:-admin}
+      DEBUG: ${DEBUG:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      RATE_LIMIT_DEFAULT: ${RATE_LIMIT_DEFAULT:-100/minute}
+    volumes:
+      - app-data:/app/data
+      - app-uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - internal
+      - traefik-apps
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-apps"
+      - "traefik.http.routers.sleep-scoring-api.rule=PathPrefix(`/sleep-scoring/api`)"
+      - "traefik.http.routers.sleep-scoring-api.entrypoints=web"
+      - "traefik.http.services.sleep-scoring-api.loadbalancer.server.port=8000"
+      - "traefik.http.middlewares.sleep-scoring-api-strip.stripprefix.prefixes=/sleep-scoring"
+      - "traefik.http.routers.sleep-scoring-api.middlewares=sleep-scoring-api-strip"
+      - "traefik.http.routers.sleep-scoring-api.priority=10"
+
+  # ===========================================================================
+  # Frontend
+  # ===========================================================================
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend/Dockerfile
+    container_name: sleep-scoring-frontend
+    environment:
+      BASE_PATH: /sleep-scoring
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - traefik-apps
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-apps"
+      - "traefik.http.routers.sleep-scoring-fe.rule=PathPrefix(`/sleep-scoring`)"
+      - "traefik.http.routers.sleep-scoring-fe.entrypoints=web"
+      - "traefik.http.services.sleep-scoring-fe.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.sleep-scoring-fe-strip.stripprefix.prefixes=/sleep-scoring"
+      - "traefik.http.routers.sleep-scoring-fe.middlewares=sleep-scoring-fe-strip"
+      - "traefik.http.routers.sleep-scoring-fe.priority=1"
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  internal:
+    name: sleep-scoring-internal
+  traefik-apps:
+    external: true
+
+# =============================================================================
+# Volumes
+# =============================================================================
+
+volumes:
+  postgres_data:
+    name: sleep-scoring-postgres-data
+  app-data:
+    name: sleep-scoring-app-data
+  app-uploads:
+    name: sleep-scoring-app-uploads

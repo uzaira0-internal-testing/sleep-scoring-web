@@ -1,0 +1,176 @@
+# =============================================================================
+# Sleep Scoring Web - Local Development Docker Compose
+# =============================================================================
+#
+# Usage:
+#   cd docker
+#   docker compose -f docker-compose.local.yml up -d --build
+#
+# =============================================================================
+
+name: sleep-scoring-web-local
+
+services:
+  # ===========================================================================
+  # Database
+  # ===========================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sleep-scoring-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sleep}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-sleep_scoring}
+    command:
+      - "sh"
+      - "-c"
+      - |
+        chown postgres:postgres /wal_archive /wal_archive_host
+        exec docker-entrypoint.sh postgres \
+          -c wal_level=replica \
+          -c archive_mode=on \
+          -c "archive_command=cp %p /wal_archive/%f && cp %p /wal_archive_host/%f" \
+          -c archive_timeout=60
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - wal_archive:/wal_archive
+      - /home/uzair/backups/sleep-scoring/wal:/wal_archive_host
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sleep}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sleep-scoring-network
+
+  # ===========================================================================
+  # Backend API (Local Build)
+  # ===========================================================================
+
+  backend:
+    image: ${BACKEND_IMAGE:-sleep-scoring-web-local-backend}
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile.local
+    container_name: sleep-scoring-backend
+    environment:
+      # Database
+      USE_SQLITE: "false"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-sleep}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-sleep_scoring}
+
+      # Authentication
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-32-char-key}
+      SITE_PASSWORD: ${SITE_PASSWORD:-}
+      ADMIN_USERNAMES: ${ADMIN_USERNAMES:-Uzair}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+
+      # Application
+      PYTHONUNBUFFERED: 1
+      DEBUG: ${DEBUG:-false}
+      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:8501"]}'
+    volumes:
+      # Mount data directory for CSV files to scan on startup
+      - ../data:/app/data
+      # Named volume for file uploads (avoids host UID mismatch)
+      - uploads_data:/app/uploads
+      - tus_uploads_data:/app/uploads/tus
+    ports:
+      - "${BACKEND_PORT:-8500}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-apps"
+      - "traefik.http.routers.sleepscoring-api.rule=PathPrefix(`/sleep-scoring/api`)"
+      - "traefik.http.routers.sleepscoring-api.entrypoints=web"
+      - "traefik.http.routers.sleepscoring-api.priority=10"
+      - "traefik.http.routers.sleepscoring-api.middlewares=sleepscoring-api-strip"
+      - "traefik.http.routers.sleepscoring-api.service=sleepscoring-api-svc"
+      - "traefik.http.middlewares.sleepscoring-api-strip.stripprefix.prefixes=/sleep-scoring"
+      - "traefik.http.services.sleepscoring-api-svc.loadbalancer.server.port=8000"
+    networks:
+      - sleep-scoring-network
+      - traefik-apps
+
+  # ===========================================================================
+  # Frontend
+  # ===========================================================================
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-sleep-scoring-web-local-frontend}
+    build:
+      context: ..
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        # API base URL - now uses /api without versioning
+        VITE_API_BASE_URL: /api
+    container_name: sleep-scoring-frontend
+    environment:
+      BASE_PATH: /sleep-scoring
+    ports:
+      - "${FRONTEND_PORT:-8501}:80"
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-apps"
+      - "traefik.http.routers.sleepscoring-fe.rule=PathPrefix(`/sleep-scoring`)"
+      - "traefik.http.routers.sleepscoring-fe.entrypoints=web"
+      - "traefik.http.routers.sleepscoring-fe.priority=1"
+      - "traefik.http.routers.sleepscoring-fe.middlewares=sleepscoring-fe-strip"
+      - "traefik.http.routers.sleepscoring-fe.service=sleepscoring-fe-svc"
+      - "traefik.http.middlewares.sleepscoring-fe-strip.stripprefix.prefixes=/sleep-scoring"
+      - "traefik.http.services.sleepscoring-fe-svc.loadbalancer.server.port=80"
+    networks:
+      - sleep-scoring-network
+      - traefik-apps
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  sleep-scoring-network:
+    driver: bridge
+    name: sleep-scoring-network
+  traefik-apps:
+    external: true
+
+# =============================================================================
+# Volumes
+# =============================================================================
+
+volumes:
+  postgres_data:
+    name: sleep-scoring-web_postgres_data
+    external: true
+  uploads_data:
+    name: sleep-scoring-web_uploads_data
+  tus_uploads_data:
+    name: sleep-scoring-web_tus_uploads_data
+  wal_archive:
+    name: sleep-scoring-web_wal_archive

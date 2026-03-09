@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Format Benchmark</title>
+    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/msgpack-lite@0.1.26/dist/msgpack.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #4fc3f7;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        label {
+            font-size: 14px;
+            color: #aaa;
+        }
+        select, button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid #444;
+            background: #2a2a4e;
+            color: #eee;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        button {
+            background: #4fc3f7;
+            color: #1a1a2e;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #29b6f6;
+        }
+        button:disabled {
+            background: #555;
+            color: #888;
+            cursor: not-allowed;
+        }
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .result-card {
+            background: #2a2a4e;
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid #3a3a5e;
+        }
+        .result-card h3 {
+            color: #4fc3f7;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #3a3a5e;
+            font-size: 13px;
+        }
+        .metric:last-child {
+            border-bottom: none;
+        }
+        .metric-label {
+            color: #888;
+        }
+        .metric-value {
+            color: #fff;
+            font-weight: 500;
+        }
+        .metric-value.good {
+            color: #4caf50;
+        }
+        .metric-value.bad {
+            color: #f44336;
+        }
+        .chart-container {
+            background: #2a2a4e;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .chart-header h2 {
+            color: #4fc3f7;
+            font-size: 18px;
+        }
+        .chart-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .chart-controls select {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        .chart-controls button {
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+        #chart-wrapper {
+            position: relative;
+            width: 100%;
+            height: 400px;
+        }
+        .status {
+            text-align: center;
+            padding: 10px;
+            color: #888;
+            font-size: 14px;
+        }
+        .status.loading {
+            color: #4fc3f7;
+        }
+        .status.error {
+            color: #f44336;
+        }
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .comparison-table th,
+        .comparison-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #3a3a5e;
+        }
+        .comparison-table th {
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+        .comparison-table tr:hover {
+            background: #3a3a5e;
+        }
+        .winner {
+            background: rgba(76, 175, 80, 0.2) !important;
+        }
+        .stats-bar {
+            background: #2a2a4e;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #4fc3f7;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #888;
+        }
+
+        /* Draggable marker styles */
+        .marker-line {
+            position: absolute;
+            width: 12px;
+            cursor: ew-resize;
+            z-index: 10;
+            pointer-events: auto;
+        }
+        .marker-line::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            transform: translateX(-50%);
+        }
+        .marker-line.sleep-start::before,
+        .marker-line.sleep-end::before {
+            background: #673ab7;
+        }
+        .marker-line.nonwear-start::before,
+        .marker-line.nonwear-end::before {
+            background: #ff9800;
+        }
+        .marker-line:hover::before,
+        .marker-line.dragging::before {
+            width: 4px;
+        }
+        .marker-region {
+            position: absolute;
+            pointer-events: none;
+            z-index: 5;
+        }
+        .marker-region.sleep {
+            background: rgba(103, 58, 183, 0.25);
+        }
+        .marker-region.nonwear {
+            background: rgba(255, 152, 0, 0.25);
+        }
+    </style>
+</head>
+<body>
+    <h1>Data Format Benchmark</h1>
+
+    <div class="stats-bar" id="stats-bar">
+        <div class="stat-item">
+            <div class="stat-value" id="stat-files">-</div>
+            <div class="stat-label">Files in DB</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="stat-rows">-</div>
+            <div class="stat-label">Total Rows</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="data-source">Source:</label>
+            <select id="data-source">
+                <option value="real">Real Database</option>
+                <option value="synthetic">Synthetic</option>
+            </select>
+        </div>
+        <div class="control-group" id="file-selector-group">
+            <label for="file-selector">File:</label>
+            <select id="file-selector">
+                <option value="">Select a file...</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="iterations">Iterations:</label>
+            <select id="iterations">
+                <option value="1">1</option>
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+            </select>
+        </div>
+        <button id="run-benchmark">Run Single</button>
+        <button id="run-all">Run All Formats</button>
+    </div>
+
+    <div id="status" class="status">Select a file and click Run Benchmark</div>
+
+    <div class="results-grid" id="results-grid"></div>
+
+    <div class="chart-container">
+        <div class="chart-header">
+            <h2>Activity Data Preview</h2>
+            <div class="chart-controls">
+                <select id="axis-selector">
+                    <option value="activity">Vector Magnitude</option>
+                    <option value="axis_y">Axis Y (Sadeh)</option>
+                    <option value="axis_x">Axis X</option>
+                    <option value="axis_z">Axis Z</option>
+                </select>
+                <select id="view-range">
+                    <option value="1440">24 hours</option>
+                    <option value="2880">48 hours</option>
+                    <option value="0" selected>All data</option>
+                </select>
+                <button id="toggle-markers">Hide Markers</button>
+                <button id="add-sleep-marker">+ Sleep</button>
+                <button id="add-nonwear-marker">+ Nonwear</button>
+                <button id="reset-zoom">Reset Zoom</button>
+            </div>
+        </div>
+        <div id="chart-wrapper"></div>
+    </div>
+
+    <div class="chart-container">
+        <h2>Detailed Comparison</h2>
+        <table class="comparison-table" id="comparison-table">
+            <thead>
+                <tr>
+                    <th>Format</th>
+                    <th>Transfer Size</th>
+                    <th>Network Time</th>
+                    <th>Parse Time</th>
+                    <th>Render Time</th>
+                    <th>Total Time</th>
+                </tr>
+            </thead>
+            <tbody id="comparison-tbody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        const formats = [
+            { id: 'json-rows', name: 'JSON (Row-based)', endpoint: '/api/data/json-rows' },
+            { id: 'json-columnar', name: 'JSON (Columnar)', endpoint: '/api/data/json-columnar' },
+            { id: 'csv', name: 'CSV', endpoint: '/api/data/csv' },
+            { id: 'msgpack', name: 'MessagePack', endpoint: '/api/data/msgpack' },
+        ];
+
+        const benchmarkResults = {};
+
+        // Chart state
+        let chart = null;
+        let chartData = null;
+        let currentAxis = 'activity';
+        let markersVisible = true;
+        let markers = [];
+        let markerIdCounter = 0;
+        let originalXScale = null;  // For reset zoom
+
+        // Marker creation state
+        let pendingMarker = null;  // {type, startIdx} - waiting for second click
+
+        // ============================================================================
+        // DATA LOADING
+        // ============================================================================
+
+        async function loadStats() {
+            try {
+                const response = await fetch(API_BASE + '/api/stats');
+                const stats = await response.json();
+                document.getElementById('stat-files').textContent = stats.total_files || 0;
+                document.getElementById('stat-rows').textContent = (stats.total_rows || 0).toLocaleString();
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+
+        async function loadFiles() {
+            try {
+                const response = await fetch(API_BASE + '/api/files');
+                const data = await response.json();
+                const select = document.getElementById('file-selector');
+
+                while (select.options.length > 1) {
+                    select.remove(1);
+                }
+
+                if (data.files) {
+                    data.files.forEach(function(file) {
+                        const option = document.createElement('option');
+                        option.value = file.filename;
+                        option.textContent = file.filename + ' (' + file.row_count.toLocaleString() + ' rows)';
+                        select.appendChild(option);
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load files:', e);
+            }
+        }
+
+        // ============================================================================
+        // UTILITY FUNCTIONS
+        // ============================================================================
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        function formatMs(ms) {
+            if (ms < 1) return ms.toFixed(2) + ' ms';
+            if (ms < 1000) return ms.toFixed(1) + ' ms';
+            return (ms / 1000).toFixed(2) + ' s';
+        }
+
+        function parseCSV(text) {
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',');
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',');
+                const row = {};
+                headers.forEach(function(h, idx) {
+                    const val = values[idx];
+                    row[h] = isNaN(val) ? val : Number(val);
+                });
+                data.push(row);
+            }
+            return data;
+        }
+
+        function columnarToRows(columnar) {
+            const keys = Object.keys(columnar);
+            if (keys.length === 0) return [];
+            const length = columnar[keys[0]].length;
+            const rows = [];
+            for (let i = 0; i < length; i++) {
+                const row = {};
+                keys.forEach(function(k) { row[k] = columnar[k][i]; });
+                rows.push(row);
+            }
+            return rows;
+        }
+
+        function createElement(tag, className, textContent) {
+            const el = document.createElement(tag);
+            if (className) el.className = className;
+            if (textContent !== undefined) el.textContent = textContent;
+            return el;
+        }
+
+        function createMetricRow(label, value, valueClass) {
+            const div = createElement('div', 'metric');
+            div.appendChild(createElement('span', 'metric-label', label));
+            const valueSpan = createElement('span', 'metric-value' + (valueClass ? ' ' + valueClass : ''), value);
+            div.appendChild(valueSpan);
+            return div;
+        }
+
+        // ============================================================================
+        // MOUSEWHEEL ZOOM + PAN PLUGIN
+        // ============================================================================
+
+        function wheelZoomPlugin(opts) {
+            const factor = opts.factor || 0.75;
+
+            return {
+                hooks: {
+                    ready: function(u) {
+                        const wrapper = u.root;
+
+                        // Wheel zoom - attach to wrapper to catch events over markers too
+                        wrapper.addEventListener('wheel', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+
+                            // Get mouse position relative to plot
+                            const rect = u.over.getBoundingClientRect();
+                            const left = e.clientX - rect.left;
+
+                            if (left < 0 || left > rect.width) return;
+
+                            const xVal = u.posToVal(left, 'x');
+                            const oxRange = u.scales.x.max - u.scales.x.min;
+
+                            const nxRange = e.deltaY > 0 ? oxRange / factor : oxRange * factor;
+                            const minRange = 60;
+                            const maxRange = originalXScale ? (originalXScale.max - originalXScale.min) : oxRange * 10;
+
+                            if (nxRange < minRange || nxRange > maxRange) return;
+
+                            const leftPct = left / (u.bbox.width / devicePixelRatio);
+                            const nxMin = xVal - leftPct * nxRange;
+                            const nxMax = nxMin + nxRange;
+
+                            u.batch(function() {
+                                u.setScale('x', { min: nxMin, max: nxMax });
+                            });
+                        }, { passive: false });
+
+                        // Pan with middle mouse or shift+drag
+                        let isPanning = false;
+                        let panStartX = 0;
+                        let panStartMin = 0;
+                        let panStartMax = 0;
+
+                        u.over.addEventListener('mousedown', function(e) {
+                            // Middle mouse button or shift+left click for pan
+                            if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+                                e.preventDefault();
+                                isPanning = true;
+                                panStartX = e.clientX;
+                                panStartMin = u.scales.x.min;
+                                panStartMax = u.scales.x.max;
+                                u.over.style.cursor = 'grabbing';
+                            }
+                        });
+
+                        document.addEventListener('mousemove', function(e) {
+                            if (!isPanning) return;
+
+                            const dx = e.clientX - panStartX;
+                            const pxPerVal = (u.bbox.width / devicePixelRatio) / (panStartMax - panStartMin);
+                            const dVal = -dx / pxPerVal;
+
+                            let nxMin = panStartMin + dVal;
+                            let nxMax = panStartMax + dVal;
+
+                            // Clamp to original bounds
+                            if (originalXScale) {
+                                if (nxMin < originalXScale.min) {
+                                    nxMax += (originalXScale.min - nxMin);
+                                    nxMin = originalXScale.min;
+                                }
+                                if (nxMax > originalXScale.max) {
+                                    nxMin -= (nxMax - originalXScale.max);
+                                    nxMax = originalXScale.max;
+                                }
+                            }
+
+                            u.batch(function() {
+                                u.setScale('x', { min: nxMin, max: nxMax });
+                            });
+                        });
+
+                        document.addEventListener('mouseup', function(e) {
+                            if (isPanning) {
+                                isPanning = false;
+                                u.over.style.cursor = 'crosshair';
+                            }
+                        });
+                    }
+                }
+            };
+        }
+
+        // ============================================================================
+        // uPlot CHART
+        // ============================================================================
+
+        function createChart(data, axisKey, viewLimit) {
+            const wrapper = document.getElementById('chart-wrapper');
+            wrapper.innerHTML = '';
+
+            // Remove old marker elements
+            document.querySelectorAll('.marker-line, .marker-region').forEach(el => el.remove());
+
+            if (!data || data.length === 0) {
+                wrapper.textContent = 'No data to display';
+                return 0;
+            }
+
+            // Apply view limit
+            let displayData = data;
+            if (viewLimit > 0 && data.length > viewLimit) {
+                displayData = data.slice(0, viewLimit);
+            }
+
+            const renderStart = performance.now();
+
+            // Build uPlot data format: [timestamps, values]
+            const timestamps = new Float64Array(displayData.length);
+            const values = new Float64Array(displayData.length);
+
+            for (let i = 0; i < displayData.length; i++) {
+                const ts = displayData[i].timestamp;
+                if (typeof ts === 'string') {
+                    // Data is already in local time - parse as local time
+                    // new Date(year, month, day, hour, min, sec) creates local time
+                    const cleanTs = ts.replace('T', ' ').replace('Z', '');
+                    const parts = cleanTs.split(/[- :]/);
+                    if (parts.length >= 3) {
+                        const d = new Date(
+                            parseInt(parts[0]),
+                            parseInt(parts[1]) - 1,
+                            parseInt(parts[2]),
+                            parseInt(parts[3]) || 0,
+                            parseInt(parts[4]) || 0,
+                            parseInt(parts[5]) || 0
+                        );
+                        timestamps[i] = d.getTime() / 1000;
+                    } else {
+                        timestamps[i] = i * 60;
+                    }
+                } else {
+                    timestamps[i] = i * 60;
+                }
+                values[i] = displayData[i][axisKey] || 0;
+            }
+
+            const uplotData = [timestamps, values];
+
+            // Store original scale for reset
+            originalXScale = {
+                min: timestamps[0],
+                max: timestamps[timestamps.length - 1]
+            };
+
+            const axisLabels = {
+                'activity': 'Vector Magnitude',
+                'axis_y': 'Axis Y',
+                'axis_x': 'Axis X',
+                'axis_z': 'Axis Z',
+            };
+
+            const opts = {
+                width: wrapper.clientWidth,
+                height: 380,
+                plugins: [
+                    wheelZoomPlugin({ factor: 0.75 }),
+                ],
+                scales: {
+                    x: { time: true },
+                    y: { auto: true },
+                },
+                axes: [
+                    {
+                        stroke: '#888',
+                        grid: { stroke: '#333', width: 1 },
+                        ticks: { stroke: '#444' },
+                    },
+                    {
+                        stroke: '#888',
+                        grid: { stroke: '#333', width: 1 },
+                        ticks: { stroke: '#444' },
+                        label: axisLabels[axisKey] || 'Activity',
+                        labelSize: 14,
+                    },
+                ],
+                series: [
+                    {},
+                    {
+                        label: axisLabels[axisKey] || 'Activity',
+                        stroke: '#4fc3f7',
+                        width: 1,
+                        fill: 'rgba(79, 195, 247, 0.1)',
+                    },
+                ],
+                cursor: {
+                    drag: { x: false, y: false },  // Disable click-drag zoom
+                },
+                hooks: {
+                    ready: [function(u) {
+                        if (markersVisible) {
+                            renderMarkers(u);
+                        }
+                        // Click handler for marker placement
+                        u.over.addEventListener('click', function(e) {
+                            handleChartClick(e, u);
+                        });
+                    }],
+                    setScale: [function(u, key) {
+                        if (key === 'x' && markersVisible) {
+                            renderMarkers(u);
+                        }
+                    }],
+                },
+            };
+
+            chart = new uPlot(opts, uplotData, wrapper);
+
+            const renderEnd = performance.now();
+            return renderEnd - renderStart;
+        }
+
+        function resetZoom() {
+            if (chart && originalXScale) {
+                chart.setScale('x', originalXScale);
+            }
+        }
+
+        // ============================================================================
+        // DRAGGABLE MARKERS
+        // ============================================================================
+
+        function renderMarkers(u) {
+            // Remove existing marker elements
+            document.querySelectorAll('.marker-line, .marker-region').forEach(el => el.remove());
+
+            if (!u || !markersVisible) return;
+
+            const over = u.over;
+            if (!over) return;
+
+            // Get plot dimensions from bbox (in CSS pixels)
+            const plotLeft = u.bbox.left / devicePixelRatio;
+            const plotTop = u.bbox.top / devicePixelRatio;
+            const plotWidth = u.bbox.width / devicePixelRatio;
+            const plotHeight = u.bbox.height / devicePixelRatio;
+
+            markers.forEach(marker => {
+                if (marker.startIdx >= u.data[0].length || marker.endIdx >= u.data[0].length) return;
+
+                const startTs = u.data[0][marker.startIdx];
+                const endTs = u.data[0][marker.endIdx];
+
+                // Convert to pixel positions relative to plot area (CSS pixels for DOM)
+                const startPx = u.valToPos(startTs, 'x');
+                const endPx = u.valToPos(endTs, 'x');
+
+                // Skip if completely outside visible range
+                if (endPx < 0 || startPx > plotWidth) return;
+
+                // Clamp to visible area
+                const visibleStartPx = Math.max(0, startPx);
+                const visibleEndPx = Math.min(plotWidth, endPx);
+
+                // Create shaded region
+                const region = document.createElement('div');
+                region.className = 'marker-region ' + marker.type;
+                region.dataset.markerId = marker.id;
+                region.style.left = (plotLeft + visibleStartPx) + 'px';
+                region.style.top = plotTop + 'px';
+                region.style.width = (visibleEndPx - visibleStartPx) + 'px';
+                region.style.height = plotHeight + 'px';
+                over.parentNode.appendChild(region);
+
+                // Create start line (if visible)
+                if (startPx >= -10 && startPx <= plotWidth + 10) {
+                    createMarkerLine(u, marker, 'start', startPx, plotLeft, plotTop, plotHeight);
+                }
+
+                // Create end line (if visible)
+                if (endPx >= -10 && endPx <= plotWidth + 10) {
+                    createMarkerLine(u, marker, 'end', endPx, plotLeft, plotTop, plotHeight);
+                }
+            });
+        }
+
+        function createMarkerLine(u, marker, edge, px, plotLeft, plotTop, plotHeight) {
+            const line = document.createElement('div');
+            line.className = 'marker-line ' + marker.type + '-' + edge;
+            line.style.left = (plotLeft + px - 6) + 'px';  // Center the 12px wide element
+            line.style.top = plotTop + 'px';
+            line.style.height = plotHeight + 'px';
+            line.dataset.markerId = marker.id;
+            line.dataset.edge = edge;
+
+            // Drag state
+            let isDragging = false;
+            let dragStartX = 0;
+            let lineStartPx = px;
+
+            const onMouseDown = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                isDragging = true;
+                dragStartX = e.clientX;
+                lineStartPx = px;
+                line.classList.add('dragging');
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            };
+
+            const onMouseMove = (e) => {
+                if (!isDragging) return;
+                const deltaX = e.clientX - dragStartX;
+                let newPx = lineStartPx + deltaX;
+
+                // Clamp to plot bounds
+                const plotWidth = u.bbox.width / devicePixelRatio;
+                newPx = Math.max(0, Math.min(plotWidth, newPx));
+
+                line.style.left = (plotLeft + newPx - 6) + 'px';
+
+                // Update region in real-time
+                updateMarkerRegion(u, marker, edge, newPx, plotLeft, plotTop, plotHeight);
+            };
+
+            const onMouseUp = (e) => {
+                if (!isDragging) return;
+                isDragging = false;
+                line.classList.remove('dragging');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+
+                // Convert pixel back to timestamp
+                const rect = line.getBoundingClientRect();
+                const finalPx = (rect.left + 6) - u.root.getBoundingClientRect().left - plotLeft;
+                const timestamp = u.posToVal(finalPx, 'x');
+
+                // Find closest data index
+                const closestIdx = findClosestIndex(u.data[0], timestamp);
+
+                // Find the max allowed position (won't overlap)
+                const allowedIdx = findMaxAllowedPosition(marker, edge, closestIdx);
+
+                // Apply the change
+                if (edge === 'start') {
+                    marker.startIdx = allowedIdx;
+                } else {
+                    marker.endIdx = allowedIdx;
+                }
+
+                // Re-render all markers
+                renderMarkers(u);
+            };
+
+            line.addEventListener('mousedown', onMouseDown);
+
+            // Forward wheel events to chart for zoom
+            line.addEventListener('wheel', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                // Dispatch to chart wrapper
+                u.root.dispatchEvent(new WheelEvent('wheel', {
+                    deltaY: e.deltaY,
+                    clientX: e.clientX,
+                    clientY: e.clientY,
+                    bubbles: true,
+                }));
+            }, { passive: false });
+
+            u.over.parentNode.appendChild(line);
+        }
+
+        function updateMarkerRegion(u, marker, edge, newPx, plotLeft, plotTop, plotHeight) {
+            // Find region by marker ID
+            const region = document.querySelector(`.marker-region[data-marker-id="${marker.id}"]`);
+            if (!region) return;
+
+            const plotWidth = u.bbox.width / devicePixelRatio;
+
+            const startTs = u.data[0][marker.startIdx];
+            const endTs = u.data[0][marker.endIdx];
+            let startPx = u.valToPos(startTs, 'x');
+            let endPx = u.valToPos(endTs, 'x');
+
+            if (edge === 'start') {
+                startPx = newPx;
+            } else {
+                endPx = newPx;
+            }
+
+            // Handle crossing
+            if (startPx > endPx) {
+                [startPx, endPx] = [endPx, startPx];
+            }
+
+            const visibleStartPx = Math.max(0, startPx);
+            const visibleEndPx = Math.min(plotWidth, endPx);
+
+            region.style.left = (plotLeft + visibleStartPx) + 'px';
+            region.style.width = Math.max(0, visibleEndPx - visibleStartPx) + 'px';
+        }
+
+        function findClosestIndex(timestamps, target) {
+            let left = 0;
+            let right = timestamps.length - 1;
+
+            while (left < right) {
+                const mid = Math.floor((left + right) / 2);
+                if (timestamps[mid] < target) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
+            }
+
+            if (left > 0 && Math.abs(timestamps[left - 1] - target) < Math.abs(timestamps[left] - target)) {
+                return left - 1;
+            }
+            return left;
+        }
+
+        function generateDemoMarkers(dataLength) {
+            markers = [];
+            markerIdCounter = 0;
+
+            if (dataLength < 100) return;
+
+            // Create just a couple test markers based on data indices
+            const tenPercent = Math.floor(dataLength * 0.1);
+            const twentyPercent = Math.floor(dataLength * 0.2);
+            const fiftyPercent = Math.floor(dataLength * 0.5);
+            const sixtyPercent = Math.floor(dataLength * 0.6);
+
+            markers.push({
+                id: markerIdCounter++,
+                type: 'sleep',
+                startIdx: tenPercent,
+                endIdx: twentyPercent,
+            });
+
+            markers.push({
+                id: markerIdCounter++,
+                type: 'nonwear',
+                startIdx: fiftyPercent,
+                endIdx: sixtyPercent,
+            });
+        }
+
+        function startMarkerCreation(type) {
+            if (!chart || !chart.data || chart.data[0].length === 0) {
+                console.log('No chart data available');
+                return;
+            }
+
+            // Cancel any existing pending marker
+            pendingMarker = { type: type, startIdx: null };
+            chart.over.style.cursor = 'crosshair';
+
+            // Update button state
+            document.getElementById('add-sleep-marker').textContent = type === 'sleep' ? 'Click start...' : '+ Sleep';
+            document.getElementById('add-nonwear-marker').textContent = type === 'nonwear' ? 'Click start...' : '+ Nonwear';
+        }
+
+        function handleChartClick(e, u) {
+            if (!pendingMarker) return;
+
+            const rect = u.over.getBoundingClientRect();
+            const left = e.clientX - rect.left;
+
+            if (left < 0 || left > rect.width) return;
+
+            const timestamp = u.posToVal(left, 'x');
+            const clickedIdx = findClosestIndex(u.data[0], timestamp);
+
+            if (pendingMarker.startIdx === null) {
+                // First click - set start
+                pendingMarker.startIdx = clickedIdx;
+                document.getElementById('add-sleep-marker').textContent = pendingMarker.type === 'sleep' ? 'Click end...' : '+ Sleep';
+                document.getElementById('add-nonwear-marker').textContent = pendingMarker.type === 'nonwear' ? 'Click end...' : '+ Nonwear';
+            } else {
+                // Second click - complete marker
+                let startIdx = pendingMarker.startIdx;
+                let endIdx = clickedIdx;
+
+                // Ensure start < end
+                if (startIdx > endIdx) {
+                    [startIdx, endIdx] = [endIdx, startIdx];
+                }
+
+                // Check for overlap with existing markers
+                const overlaps = checkMarkerOverlap(startIdx, endIdx, null);
+                if (overlaps) {
+                    alert('Marker would overlap with existing marker!');
+                    cancelMarkerCreation();
+                    return;
+                }
+
+                markers.push({
+                    id: markerIdCounter++,
+                    type: pendingMarker.type,
+                    startIdx: startIdx,
+                    endIdx: endIdx,
+                });
+
+                renderMarkers(u);
+                cancelMarkerCreation();
+            }
+        }
+
+        function cancelMarkerCreation() {
+            pendingMarker = null;
+            if (chart) {
+                chart.over.style.cursor = 'crosshair';
+            }
+            document.getElementById('add-sleep-marker').textContent = '+ Sleep';
+            document.getElementById('add-nonwear-marker').textContent = '+ Nonwear';
+        }
+
+        function checkMarkerOverlap(startIdx, endIdx, excludeMarkerId) {
+            for (const marker of markers) {
+                if (excludeMarkerId !== null && marker.id === excludeMarkerId) continue;
+
+                // Check if ranges overlap
+                if (startIdx <= marker.endIdx && endIdx >= marker.startIdx) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function findMaxAllowedPosition(marker, edge, targetIdx) {
+            // Find the farthest position we can move to without overlapping
+            const dataLen = chart.data[0].length;
+
+            if (edge === 'start') {
+                // Moving start edge - find max we can go left or right
+                let bestIdx = targetIdx;
+
+                // Can't go past the end of this marker
+                bestIdx = Math.min(bestIdx, marker.endIdx - 1);
+                bestIdx = Math.max(bestIdx, 0);
+
+                // Check against other markers
+                for (const other of markers) {
+                    if (other.id === marker.id) continue;
+
+                    // If target would overlap with other marker
+                    if (bestIdx <= other.endIdx && marker.endIdx >= other.startIdx) {
+                        // We're overlapping - clamp to just after other marker's end
+                        if (bestIdx >= other.startIdx && bestIdx <= other.endIdx) {
+                            bestIdx = other.endIdx + 1;
+                        }
+                    }
+                }
+
+                return Math.min(bestIdx, marker.endIdx - 1);
+            } else {
+                // Moving end edge - find max we can go left or right
+                let bestIdx = targetIdx;
+
+                // Can't go past the start of this marker
+                bestIdx = Math.max(bestIdx, marker.startIdx + 1);
+                bestIdx = Math.min(bestIdx, dataLen - 1);
+
+                // Check against other markers
+                for (const other of markers) {
+                    if (other.id === marker.id) continue;
+
+                    // If target would overlap with other marker
+                    if (marker.startIdx <= other.endIdx && bestIdx >= other.startIdx) {
+                        // We're overlapping - clamp to just before other marker's start
+                        if (bestIdx >= other.startIdx && bestIdx <= other.endIdx) {
+                            bestIdx = other.startIdx - 1;
+                        }
+                    }
+                }
+
+                return Math.max(bestIdx, marker.startIdx + 1);
+            }
+        }
+
+        // ============================================================================
+        // BENCHMARKING
+        // ============================================================================
+
+        async function benchmarkFormatOnce(format, source, filename) {
+            let url = API_BASE + format.endpoint + '?source=' + source;
+            if (filename) {
+                url += '&filename=' + encodeURIComponent(filename);
+            }
+
+            const result = {
+                success: false,
+                error: null,
+                transferSize: 0,
+                networkTime: 0,
+                parseTime: 0,
+                rowCount: 0,
+                data: null,
+            };
+
+            try {
+                const fetchStart = performance.now();
+                const response = await fetch(url);
+                const fetchEnd = performance.now();
+                result.networkTime = fetchEnd - fetchStart;
+
+                result.rowCount = parseInt(response.headers.get('X-Row-Count') || 0);
+
+                const parseStart = performance.now();
+                let data;
+
+                if (format.id === 'csv') {
+                    const text = await response.text();
+                    result.transferSize = new Blob([text]).size;
+                    data = parseCSV(text);
+                } else if (format.id === 'msgpack') {
+                    const buffer = await response.arrayBuffer();
+                    result.transferSize = buffer.byteLength;
+                    const decoded = msgpack.decode(new Uint8Array(buffer));
+                    data = decoded.data;
+                } else if (format.id === 'json-columnar') {
+                    const text = await response.text();
+                    result.transferSize = new Blob([text]).size;
+                    const json = JSON.parse(text);
+                    data = columnarToRows(json.data);
+                } else {
+                    const text = await response.text();
+                    result.transferSize = new Blob([text]).size;
+                    const json = JSON.parse(text);
+                    data = json.data;
+                }
+
+                const parseEnd = performance.now();
+                result.parseTime = parseEnd - parseStart;
+                result.data = data;
+                result.success = true;
+
+            } catch (err) {
+                result.error = err.message;
+            }
+
+            return result;
+        }
+
+        async function benchmarkFormat(format, source, filename, iterations, onProgress) {
+            const runs = [];
+            let lastData = null;
+            let transferSize = 0;
+            let rowCountResult = 0;
+
+            for (let i = 0; i < iterations; i++) {
+                if (onProgress) onProgress(i + 1, iterations);
+                const run = await benchmarkFormatOnce(format, source, filename);
+                if (!run.success) {
+                    return {
+                        format: format.name,
+                        formatId: format.id,
+                        success: false,
+                        error: run.error,
+                        iterations: i,
+                        source: source,
+                    };
+                }
+                runs.push(run);
+                lastData = run.data;
+                transferSize = run.transferSize;
+                rowCountResult = run.rowCount;
+            }
+
+            const avgNetwork = runs.reduce((s, r) => s + r.networkTime, 0) / runs.length;
+            const avgParse = runs.reduce((s, r) => s + r.parseTime, 0) / runs.length;
+            const stdNetwork = Math.sqrt(runs.reduce((s, r) => s + Math.pow(r.networkTime - avgNetwork, 2), 0) / runs.length);
+            const stdParse = Math.sqrt(runs.reduce((s, r) => s + Math.pow(r.parseTime - avgParse, 2), 0) / runs.length);
+
+            return {
+                format: format.name,
+                formatId: format.id,
+                success: true,
+                transferSize: transferSize,
+                networkTime: avgNetwork,
+                networkTimeStd: stdNetwork,
+                parseTime: avgParse,
+                parseTimeStd: stdParse,
+                renderTime: 0,
+                totalTime: avgNetwork + avgParse,
+                rowCount: rowCountResult,
+                data: lastData,
+                source: source,
+                iterations: iterations,
+            };
+        }
+
+        // ============================================================================
+        // UI UPDATES
+        // ============================================================================
+
+        function updateResultsGrid() {
+            const grid = document.getElementById('results-grid');
+            while (grid.firstChild) grid.removeChild(grid.firstChild);
+
+            Object.values(benchmarkResults).forEach(function(result) {
+                const card = createElement('div', 'result-card');
+                card.appendChild(createElement('h3', null, result.format));
+
+                const statusClass = result.success ? 'good' : 'bad';
+                const status = result.success ? 'Success' : (result.error || 'Failed');
+                card.appendChild(createMetricRow('Status', status, statusClass));
+
+                if (result.success) {
+                    card.appendChild(createMetricRow('Source', result.source));
+                    card.appendChild(createMetricRow('Iterations', result.iterations.toString()));
+                    card.appendChild(createMetricRow('Transfer Size', formatBytes(result.transferSize)));
+                    card.appendChild(createMetricRow('Network (avg)', formatMs(result.networkTime)));
+                    if (result.networkTimeStd) {
+                        card.appendChild(createMetricRow('Network (std)', formatMs(result.networkTimeStd)));
+                    }
+                    card.appendChild(createMetricRow('Parse (avg)', formatMs(result.parseTime)));
+                    if (result.parseTimeStd) {
+                        card.appendChild(createMetricRow('Parse (std)', formatMs(result.parseTimeStd)));
+                    }
+                    card.appendChild(createMetricRow('Render Time', formatMs(result.renderTime)));
+                    card.appendChild(createMetricRow('Total (avg)', formatMs(result.totalTime + result.renderTime)));
+                    card.appendChild(createMetricRow('Rows', result.rowCount.toLocaleString()));
+                }
+
+                grid.appendChild(card);
+            });
+        }
+
+        function updateComparisonTable() {
+            const tbody = document.getElementById('comparison-tbody');
+            while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+            const results = Object.values(benchmarkResults).filter(r => r.success);
+            if (results.length === 0) return;
+
+            const minTotal = Math.min(...results.map(r => r.totalTime + r.renderTime));
+
+            results.forEach(function(result) {
+                const total = result.totalTime + result.renderTime;
+                const isWinner = total === minTotal;
+
+                const row = document.createElement('tr');
+                if (isWinner) row.className = 'winner';
+
+                [
+                    result.format,
+                    formatBytes(result.transferSize),
+                    formatMs(result.networkTime),
+                    formatMs(result.parseTime),
+                    formatMs(result.renderTime),
+                ].forEach(function(text) {
+                    const td = document.createElement('td');
+                    td.textContent = text;
+                    row.appendChild(td);
+                });
+
+                const totalTd = document.createElement('td');
+                const strong = document.createElement('strong');
+                strong.textContent = formatMs(total);
+                totalTd.appendChild(strong);
+                row.appendChild(totalTd);
+
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateFileSelectorVisibility() {
+            const source = document.getElementById('data-source').value;
+            document.getElementById('file-selector-group').style.display = source === 'real' ? 'flex' : 'none';
+        }
+
+        // ============================================================================
+        // RUN BENCHMARKS
+        // ============================================================================
+
+        async function runSingleBenchmark(format) {
+            const iterations = parseInt(document.getElementById('iterations').value);
+            const source = document.getElementById('data-source').value;
+            const filename = source === 'real' ? document.getElementById('file-selector').value : null;
+            const status = document.getElementById('status');
+            const viewLimit = parseInt(document.getElementById('view-range').value);
+
+            if (source === 'real' && !filename) {
+                status.textContent = 'Please select a file';
+                status.className = 'status error';
+                return;
+            }
+
+            function onProgress(current, total) {
+                status.textContent = 'Benchmarking ' + format.name + ' - iteration ' + current + '/' + total;
+            }
+
+            status.textContent = 'Benchmarking ' + format.name + '...';
+            status.className = 'status loading';
+
+            const result = await benchmarkFormat(format, source, filename, iterations, onProgress);
+
+            if (result.success && result.data) {
+                chartData = result.data;
+                generateDemoMarkers(chartData.length);
+                result.renderTime = createChart(result.data, currentAxis, viewLimit);
+            }
+
+            benchmarkResults[format.id] = result;
+            updateResultsGrid();
+            updateComparisonTable();
+
+            if (result.success) {
+                status.textContent = format.name + ': ' + formatMs(result.totalTime + result.renderTime) + ' avg (' + result.rowCount.toLocaleString() + ' rows)';
+                status.className = 'status';
+            } else {
+                status.textContent = format.name + ': ' + result.error;
+                status.className = 'status error';
+            }
+        }
+
+        async function runAllBenchmarks() {
+            const iterations = parseInt(document.getElementById('iterations').value);
+            const source = document.getElementById('data-source').value;
+            const filename = source === 'real' ? document.getElementById('file-selector').value : null;
+            const status = document.getElementById('status');
+            const runButton = document.getElementById('run-all');
+            const viewLimit = parseInt(document.getElementById('view-range').value);
+
+            if (source === 'real' && !filename) {
+                status.textContent = 'Please select a file';
+                status.className = 'status error';
+                return;
+            }
+
+            runButton.disabled = true;
+
+            for (let i = 0; i < formats.length; i++) {
+                const format = formats[i];
+
+                status.textContent = 'Benchmarking ' + format.name + '...';
+                status.className = 'status loading';
+
+                const result = await benchmarkFormat(format, source, filename, iterations, function(c, t) {
+                    status.textContent = 'Benchmarking ' + format.name + ' - iteration ' + c + '/' + t;
+                });
+
+                if (result.success && result.data) {
+                    chartData = result.data;
+                    generateDemoMarkers(chartData.length);
+                    result.renderTime = createChart(result.data, currentAxis, viewLimit);
+                }
+
+                benchmarkResults[format.id] = result;
+                updateResultsGrid();
+                updateComparisonTable();
+
+                await new Promise(r => setTimeout(r, 100));
+            }
+
+            runButton.disabled = false;
+
+            const successCount = Object.values(benchmarkResults).filter(r => r.success).length;
+            status.textContent = 'Completed ' + successCount + '/' + formats.length + ' formats';
+            status.className = 'status';
+        }
+
+        // ============================================================================
+        // INITIALIZATION
+        // ============================================================================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+            loadFiles();
+            updateFileSelectorVisibility();
+
+            document.getElementById('data-source').addEventListener('change', updateFileSelectorVisibility);
+
+            document.getElementById('run-benchmark').addEventListener('click', function() {
+                runSingleBenchmark(formats[0]);
+            });
+
+            document.getElementById('run-all').addEventListener('click', runAllBenchmarks);
+
+            // Axis selector - switch without refetching
+            document.getElementById('axis-selector').addEventListener('change', function() {
+                currentAxis = this.value;
+                if (chartData) {
+                    const viewLimit = parseInt(document.getElementById('view-range').value);
+                    createChart(chartData, currentAxis, viewLimit);
+                }
+            });
+
+            // View range selector
+            document.getElementById('view-range').addEventListener('change', function() {
+                if (chartData) {
+                    const viewLimit = parseInt(this.value);
+                    createChart(chartData, currentAxis, viewLimit);
+                }
+            });
+
+            // Toggle markers
+            document.getElementById('toggle-markers').addEventListener('click', function() {
+                markersVisible = !markersVisible;
+                this.textContent = markersVisible ? 'Hide Markers' : 'Show Markers';
+                if (chart) {
+                    if (markersVisible) {
+                        renderMarkers(chart);
+                    } else {
+                        document.querySelectorAll('.marker-line, .marker-region').forEach(el => el.remove());
+                    }
+                }
+            });
+
+            // Add marker buttons - click to start placement mode
+            document.getElementById('add-sleep-marker').addEventListener('click', function() {
+                if (pendingMarker && pendingMarker.type === 'sleep') {
+                    cancelMarkerCreation();
+                } else {
+                    startMarkerCreation('sleep');
+                }
+            });
+
+            document.getElementById('add-nonwear-marker').addEventListener('click', function() {
+                if (pendingMarker && pendingMarker.type === 'nonwear') {
+                    cancelMarkerCreation();
+                } else {
+                    startMarkerCreation('nonwear');
+                }
+            });
+
+            // ESC to cancel marker creation
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && pendingMarker) {
+                    cancelMarkerCreation();
+                }
+            });
+
+            // Reset zoom
+            document.getElementById('reset-zoom').addEventListener('click', resetZoom);
+
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                if (chart && chartData) {
+                    const wrapper = document.getElementById('chart-wrapper');
+                    chart.setSize({ width: wrapper.clientWidth, height: 380 });
+                    if (markersVisible) {
+                        renderMarkers(chart);
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

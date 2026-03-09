@@ -1,0 +1,5 @@
+include README.md
+include LICENSE
+include requirements.txt
+recursive-include sleep_scoring_app *.py
+recursive-include demo_data *.csv

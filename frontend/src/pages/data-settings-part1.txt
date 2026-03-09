@@ -1,0 +1,42 @@
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { BarChart3, Clock, Database, FileText, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useSleepScoringStore } from "@/store";
+
+export function DataSettingsPage() {
+  const {
+    preferredDisplayColumn,
+    setPreferredDisplayColumn,
+    viewModeHours,
+    setViewModeHours,
+  } = useSleepScoringStore();
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Data Settings</h1>
+        <p className="text-muted-foreground">
+          Configure data display and processing options
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Display Preferences
+          </CardTitle>
+          <CardDescription>
+            Configure how activity data is displayed in the chart
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-3">
+            <Label className="text-base font-medium">Activity Data Column</Label>
+            <p className="text-sm text-muted-foreground mb-3">
+              Select which data column to display in the activity chart
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => setPreferredDisplayColumn("vector_magnitude")}

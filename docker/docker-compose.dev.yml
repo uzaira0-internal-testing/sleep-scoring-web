@@ -1,0 +1,147 @@
+# =============================================================================
+# Sleep Scoring Web Application - Development Docker Compose
+# =============================================================================
+#
+# This configuration provides HOT RELOADING for development:
+# - Backend: uvicorn --reload watches for Python file changes
+# - Frontend: Bun native dev server with live reload
+#
+# Port Assignments:
+#   5434  - PostgreSQL
+#   8500  - Backend API (FastAPI with auto-reload)
+#   5180  - Frontend (Bun dev server with live reload)
+#
+# Usage:
+#   cd docker
+#   docker compose -f docker-compose.dev.yml up
+#   # Frontend changes trigger automatic reload in browser
+#   # Backend changes trigger automatic server restart
+#
+# =============================================================================
+
+name: sleep-scoring-dev
+
+services:
+  # ===========================================================================
+  # Database
+  # ===========================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sleep-scoring-postgres-dev
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sleepscoring}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sleepscoring_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-sleep_scoring}
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sleepscoring}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sleep-scoring-dev-network
+
+  # ===========================================================================
+  # Backend API (with hot reload)
+  # ===========================================================================
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    container_name: sleep-scoring-backend-dev
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sleepscoring}:${POSTGRES_PASSWORD:-sleepscoring_dev_password}@postgres:5432/${POSTGRES_DB:-sleep_scoring}
+
+      # Use SQLite for simpler dev (no PostgreSQL dependency)
+      USE_SQLITE: "true"
+
+      # Authentication
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+
+      # Application
+      PYTHONUNBUFFERED: 1
+      DEBUG: "true"
+      CORS_ORIGINS: '["http://localhost:5173", "http://localhost:5180", "http://localhost:8501", "http://127.0.0.1:5173"]'
+    volumes:
+      # Mount source code for hot reloading
+      - ../sleep_scoring_web:/app/sleep_scoring_web:ro
+      - ../sleep_scoring_app/core:/app/sleep_scoring_app/core:ro
+      # Persistent data directories
+      - ../data:/app/data
+      - ../uploads:/app/uploads
+    ports:
+      - "${BACKEND_PORT:-8500}:8000"
+    # Override CMD to use --reload for hot reloading
+    command: >
+      sh -c "
+        uvicorn sleep_scoring_web.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/sleep_scoring_web
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sleep-scoring-dev-network
+
+  # ===========================================================================
+  # Frontend (with Bun live reload)
+  # ===========================================================================
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend/Dockerfile.dev
+    container_name: sleep-scoring-frontend-dev
+    ports:
+      - "5180:5173"  # Use 5180 to avoid conflicts
+    volumes:
+      # Mount source code for hot reloading
+      - ../frontend/src:/app/src
+      - ../frontend/server:/app/server
+      - ../frontend/public:/app/public
+      - ../frontend/e2e:/app/e2e
+      - ../frontend/playwright.config.ts:/app/playwright.config.ts
+      - ../frontend/tsconfig.json:/app/tsconfig.json
+      - ../frontend/tsconfig.app.json:/app/tsconfig.app.json
+      - ../frontend/tsconfig.node.json:/app/tsconfig.node.json
+      - ../frontend/components.json:/app/components.json
+      - ../frontend/package.json:/app/package.json
+      - ../frontend/bunfig.toml:/app/bunfig.toml
+      # Don't mount node_modules - use container's version
+      - /app/node_modules
+    environment:
+      # Backend URL for API proxy (points to backend container)
+      BACKEND_URL: http://backend:8000
+      # Playwright base URL (for E2E tests)
+      PLAYWRIGHT_BASE_URL: http://localhost:5173
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - sleep-scoring-dev-network
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  sleep-scoring-dev-network:
+    driver: bridge
+    name: sleep-scoring-dev-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+
+volumes:
+  postgres_dev_data:
+    name: sleep-scoring-postgres-dev-data

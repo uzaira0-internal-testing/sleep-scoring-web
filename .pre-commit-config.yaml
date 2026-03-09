@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.7
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: basedpyright
+        name: basedpyright (warnings only)
+        entry: bash -c 'basedpyright || true'
+        language: system
+        types: [python]
+        pass_filenames: false
+        verbose: true
+
+      - id: pytest
+        name: pytest (unit + integration)
+        entry: bash -c 'pytest tests/unit tests/integration -x --tb=short -q'
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-commit]
+        verbose: true

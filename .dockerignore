@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+dist/
+build/
+frontend/dist/
+*.egg-info/
+
+# Development files
+.git/
+.github/
+.pytest_cache/
+.ruff_cache/
+.benchmarks/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment and secrets
+.env
+docker/.env
+*.db
+
+# Large files
+*.db
+sleep_scoring.db
+sleep_scoring_web.db
+
+# Test files
+tests/
+demo_data/
+screenshots/
+
+# Documentation
+docs/
+prompts/
+analyses/
+*.md
+!README.md
+
+# Misc
+*.spec
+*.txt
+nul

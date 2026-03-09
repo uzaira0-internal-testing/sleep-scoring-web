@@ -1,0 +1,83 @@
+# Sleep Scoring Web - Backend Dockerfile (Local Development)
+# Build context: repo root
+
+FROM python:3.12-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast package installation
+RUN pip install --no-cache-dir uv
+
+WORKDIR /build
+
+# Copy workspace root files
+COPY pyproject.toml ./
+COPY uv.lock ./
+
+# Copy shared packages that sleep-scoring-web depends on
+COPY packages/global-pass-honor-username-auth ./packages/global-pass-honor-username-auth
+COPY packages/deploy-toolkit ./packages/deploy-toolkit
+COPY packages/db-toolkit ./packages/db-toolkit
+COPY packages/fastapi-errors ./packages/fastapi-errors
+COPY packages/fastapi-pagination ./packages/fastapi-pagination
+COPY packages/fastapi-logging ./packages/fastapi-logging
+COPY packages/fastapi-ratelimit ./packages/fastapi-ratelimit
+COPY packages/fastapi-files ./packages/fastapi-files
+COPY packages/fastapi-tasks ./packages/fastapi-tasks
+# TypeScript packages need placeholder pyproject.toml for workspace
+COPY packages/frontend-toolkit/pyproject.toml ./packages/frontend-toolkit/
+COPY packages/openapi-codegen/pyproject.toml ./packages/openapi-codegen/
+
+# Install dependencies using workspace resolution
+# Use uv sync with --no-editable to install workspace packages into the venv
+# (editable mode creates .pth files pointing to /build which won't exist in prod)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --extra web --no-dev --no-editable
+# Move .venv to /opt/venv for production stage
+RUN mv .venv /opt/venv
+
+# =============================================================================
+# Production stage
+# =============================================================================
+FROM python:3.12-slim
+
+# Install runtime dependencies (curl for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
+COPY sleep_scoring_web ./sleep_scoring_web
+COPY sleep_scoring_app/__init__.py ./sleep_scoring_app/__init__.py
+COPY sleep_scoring_app/core ./sleep_scoring_app/core
+# Replace the desktop algorithms __init__.py (which imports io/preprocessing not available in Docker)
+# with a minimal version that only exports what the web app needs
+RUN echo '"""Sleep scoring algorithms (web-minimal)."""' > ./sleep_scoring_app/core/algorithms/__init__.py
+
+# Create directories for data and uploads
+RUN mkdir -p /app/data /app/uploads
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Default command (use python -m to avoid hardcoded shebang paths)
+CMD ["python", "-m", "uvicorn", "sleep_scoring_web.main:app", "--host", "0.0.0.0", "--port", "8000"]

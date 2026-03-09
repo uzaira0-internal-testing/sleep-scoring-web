@@ -1,0 +1,14 @@
+# Act configuration for local GitHub Actions testing
+# https://github.com/nektos/act
+
+# Use medium-sized Ubuntu image (good balance of speed vs compatibility)
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Use Windows image for Windows jobs (requires Docker Desktop with Windows containers)
+# -P windows-latest=ghcr.io/actions/runner-images:win22-full-latest
+
+# Default event to simulate
+--default-branch=main
+
+# Reuse containers between runs for faster iteration
+--reuse
