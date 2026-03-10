@@ -1,5 +1,6 @@
 import { getApiBase } from "@/api/client";
 import * as localDb from "@/db";
+import { getDb } from "@/lib/workspace-db";
 import { computeMarkerHash } from "@/lib/content-hash";
 import { toSeconds, toMilliseconds } from "@/utils/timestamps";
 import type { MarkerType } from "@/api/types";
@@ -143,22 +144,44 @@ async function pullMarkers(
         // Skip if content is the same
         if (localMarker?.contentHash === remoteHash) continue;
 
-        // Update local from server (only if not pending)
-        await localDb.saveMarkers(
-          file.id!,
-          date,
-          username,
-          sleepMarkers,
-          nonwearMarkers,
-          data.is_no_sleep ?? false,
-          data.notes ?? "",
-        );
-        // Mark as synced since we just pulled from server
-        const updated = await localDb.getMarkers(file.id!, date, username);
-        if (updated?.id) {
-          await localDb.markSynced(updated.id);
-        }
-        pulled++;
+        // Atomic check+save: re-verify not pending inside transaction
+        const db = getDb();
+        const saved = await db.transaction("rw", db.markers, async () => {
+          const current = await db.markers
+            .where("[fileId+date+username]")
+            .equals([file.id!, date, username])
+            .first();
+          // Re-check inside transaction — if became pending since our check, skip
+          if (current?.syncStatus === "pending") return false;
+
+          const contentHash = await computeMarkerHash({
+            sleepMarkers,
+            nonwearMarkers,
+            isNoSleep: data.is_no_sleep ?? false,
+            notes: data.notes ?? "",
+          });
+
+          const record = {
+            fileId: file.id!,
+            date,
+            username,
+            sleepMarkers,
+            nonwearMarkers,
+            isNoSleep: data.is_no_sleep ?? false,
+            notes: data.notes ?? "",
+            contentHash,
+            syncStatus: "synced" as const,
+            lastModifiedAt: new Date().toISOString(),
+          };
+
+          if (current?.id) {
+            await db.markers.update(current.id, record);
+          } else {
+            await db.markers.add(record as localDb.MarkerRecord);
+          }
+          return true;
+        });
+        if (saved) pulled++;
       } catch (err) {
         errors.push(`Pull error for ${date}: ${err}`);
       }
