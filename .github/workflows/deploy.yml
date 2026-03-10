@@ -1,0 +1,123 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: 'Skip build and use existing images'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    if: github.event.inputs.skip_build != 'true'
+    outputs:
+      image_tag: ${{ steps.version.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version tag
+        id: version
+        run: echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/backend/Dockerfile.local
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/sleep-scoring-backend:${{ steps.version.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/sleep-scoring-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/sleep-scoring-frontend:${{ steps.version.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/sleep-scoring-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy Sleep Scoring
+    needs: [build]
+    if: always() && (needs.build.result == 'success' || github.event.inputs.skip_build == 'true')
+    runs-on: self-hosted
+
+    environment:
+      name: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: tag
+        shell: bash
+        env:
+          SKIP_BUILD: ${{ github.event.inputs.skip_build }}
+        run: |
+          if [ "$SKIP_BUILD" == "true" ]; then
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+
+      - name: Deploy
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          APP_DIR: ${{ vars.SLEEP_SCORING_APP_DIR || '/opt/sleep-scoring-web' }}
+        run: "${APP_DIR}/scripts/deploy.sh"
+
+      - name: Health check
+        env:
+          HEALTH_URL: ${{ vars.SLEEP_SCORING_URL || 'http://localhost:8500' }}/health
+        run: |
+          sleep 30
+          for i in $(seq 1 10); do
+            if curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i/10 failed, retrying..."
+            sleep 10
+          done
+          echo "Health check failed"
+          exit 1

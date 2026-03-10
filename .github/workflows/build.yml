@@ -1,39 +1,29 @@
-name: Build Sleep Scoring App
+name: Build Tauri
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version number (optional, e.g., 1.0.0)"
-        required: false
-        type: string
-
-  release:
-    types: [published]
-
   push:
-    tags:
-      - "v*"
+    tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build on ${{ matrix.platform }}
-    runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: macos-latest
-            target: aarch64-apple-darwin
-          - platform: macos-13
-            target: x86_64-apple-darwin
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
           - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
+            args: ''
+          - platform: windows-latest
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - uses: actions/checkout@v4
@@ -42,80 +32,44 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev \
-            libgtk-3-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Setup Rust
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: './src-tauri -> target'
+
+      - name: Install wasm-pack
+        shell: bash
+        run: which wasm-pack || cargo install wasm-pack
+
+      - name: Build WASM
+        shell: bash
+        run: |
+          wasm-pack build --target web \
+            --out-dir "$PWD/frontend/src/wasm/pkg" \
+            packages/sleep-scoring-wasm/crates/algorithms
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Build frontend
-        working-directory: frontend
-        run: npx vite build
-
-      - name: Determine version
-        id: version
-        shell: bash
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          elif [[ -n "$INPUT_VERSION" ]]; then
-            VERSION="$INPUT_VERSION"
-          elif [[ -n "$RELEASE_TAG" ]]; then
-            VERSION="${RELEASE_TAG#v}"
-          else
-            VERSION=$(grep '"version"' src-tauri/tauri.conf.json | head -1 | sed 's/.*: *"\(.*\)".*/\1/')
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building version: $VERSION"
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v${{ steps.version.outputs.version }}
-          releaseName: "Sleep Scoring v${{ steps.version.outputs.version }}"
-          releaseBody: ""
+          tagName: v__VERSION__
+          releaseName: 'Sleep Scoring v__VERSION__'
+          releaseBody: 'See the assets to download and install.'
           releaseDraft: true
           prerelease: false
-          args: --target ${{ matrix.target }}
-
-  build-summary:
-    name: Build Summary
-    needs: [build]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Check build status
-        run: |
-          echo "Build result: ${{ needs.build.result }}"
-          if [ '${{ needs.build.result }}' == 'success' ]; then
-            echo 'All platform builds completed successfully!'
-          else
-            echo 'One or more builds failed!'
-            exit 1
-          fi
+          args: ${{ matrix.args }}
