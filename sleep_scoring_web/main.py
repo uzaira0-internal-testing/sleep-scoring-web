@@ -180,6 +180,7 @@ async def root() -> dict[str, str]:
 
 # Include routers
 from sleep_scoring_web.api import activity, analysis, consensus, diary, export, files, markers
+from sleep_scoring_web.api import markers_autoscore, markers_import, markers_tables
 from sleep_scoring_web.api import settings as settings_router
 from sleep_scoring_web.api.tus import router as tus_status_router
 from sleep_scoring_web.api.tus import tus_router
@@ -229,6 +230,9 @@ async def verify_password(data: PasswordVerifyRequest) -> PasswordVerifyResponse
 app.include_router(files.router, prefix=f"{settings.api_prefix}/files", tags=["files"])
 app.include_router(activity.router, prefix=f"{settings.api_prefix}/activity", tags=["activity"])
 app.include_router(markers.router, prefix=f"{settings.api_prefix}/markers", tags=["markers"])
+app.include_router(markers_import.router, prefix=f"{settings.api_prefix}/markers", tags=["markers"])
+app.include_router(markers_tables.router, prefix=f"{settings.api_prefix}/markers", tags=["markers"])
+app.include_router(markers_autoscore.router, prefix=f"{settings.api_prefix}/markers", tags=["markers"])
 app.include_router(export.router, prefix=f"{settings.api_prefix}/export", tags=["export"])
 app.include_router(analysis.router, prefix=f"{settings.api_prefix}", tags=["analysis"])
 app.include_router(diary.router, prefix=f"{settings.api_prefix}", tags=["diary"])
