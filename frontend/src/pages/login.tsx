@@ -82,6 +82,45 @@ export function LoginPage() {
 
     function decide(hydratedWorkspaces: WorkspaceEntry[]): void {
       if (cancelled) return;
+
+      // Browser mode (not Tauri): the backend is co-hosted at the same origin.
+      // Skip workspace picker entirely — go straight to credentials.
+      if (!isTauri()) {
+        authApi.getAuthStatus(undefined)
+          .then((status) => {
+            if (cancelled) return;
+            setLoginMode("server");
+            setAuthRequired(status.password_required);
+            // wantsServer=false: no URL field needed (server is co-hosted)
+            setWantsServer(false);
+            setNewServerUrl("");
+
+            // Reuse existing co-hosted workspace (serverUrl === "") or create one
+            const cohosted = hydratedWorkspaces.find((w) => w.serverUrl === "");
+            if (cohosted) {
+              setSelectedWorkspace(cohosted);
+              setIsCreatingNew(false);
+            } else {
+              setIsCreatingNew(true);
+              setNewDisplayName("Server");
+            }
+            setPhase("login-form");
+          })
+          .catch(() => {
+            if (cancelled) return;
+            // No co-hosted backend — unexpected for browser deployments.
+            // Log a warning so it's not a completely silent fallback.
+            console.warn("Co-hosted backend probe failed — falling back to workspace/mode picker");
+            if (hydratedWorkspaces.length > 0) {
+              setPhase("workspace-picker");
+            } else {
+              setPhase("mode-picker");
+            }
+          });
+        return;
+      }
+
+      // Tauri mode: show workspace picker if workspaces exist, otherwise probe
       if (hydratedWorkspaces.length > 0) {
         setPhase("workspace-picker");
         return;
@@ -412,13 +451,13 @@ export function LoginPage() {
   }
 
   // --- Login Form ---
-  const title = isCreatingNew
-    ? (wantsServer ? "Connect to Server" : "Local Analysis")
-    : (loginMode === "server" ? "Sign in" : "Get Started");
+  const title = loginMode === "server"
+    ? (isCreatingNew && wantsServer ? "Connect to Server" : "Sign In")
+    : (isCreatingNew ? "Local Analysis" : "Get Started");
 
-  const description = isCreatingNew
-    ? (wantsServer ? "Enter your server details" : "Score files offline on your computer")
-    : `Signing in to ${selectedWorkspace?.displayName ?? "workspace"}`;
+  const description = loginMode === "server"
+    ? (isCreatingNew && wantsServer ? "Enter your server details" : "Enter your credentials to continue")
+    : (isCreatingNew ? "Score files offline on your computer" : `Signing in to ${selectedWorkspace?.displayName ?? "workspace"}`);
 
   const showPassword = loginMode === "server" && authRequired;
   const passwordLabel = "Site Password";
@@ -426,6 +465,11 @@ export function LoginPage() {
 
   // Show server URL field when user chose "Connect to Server" from mode picker
   const showServerUrl = isCreatingNew && wantsServer;
+
+  // In browser mode with co-hosted backend, hide workspace-specific UI
+  const isBrowserCohosted = !isTauri() && loginMode === "server" && !wantsServer;
+  const showWorkspaceName = isCreatingNew && !isBrowserCohosted;
+  const showBackButton = !isBrowserCohosted;
 
   const ModeIcon = loginMode === "server" ? Wifi : WifiOff;
   const modeLabel = loginMode === "server" ? "Connected to server" : "Local mode";
@@ -464,8 +508,8 @@ export function LoginPage() {
                 </div>
               )}
 
-              {/* Workspace name — only for new workspaces */}
-              {isCreatingNew && (
+              {/* Workspace name — only for new workspaces, hidden in browser co-hosted mode */}
+              {showWorkspaceName && (
                 <div className="space-y-2">
                   <Label htmlFor="displayName" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Workspace Name
@@ -537,24 +581,28 @@ export function LoginPage() {
                 )}
               </Button>
 
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full text-xs text-muted-foreground"
-                onClick={handleBack}
-              >
-                <ArrowLeft className="h-3 w-3 mr-1" />
-                Back
-              </Button>
+              {showBackButton && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full text-xs text-muted-foreground"
+                  onClick={handleBack}
+                >
+                  <ArrowLeft className="h-3 w-3 mr-1" />
+                  Back
+                </Button>
+              )}
             </form>
           </CardContent>
         </Card>
 
-        {/* Mode indicator */}
-        <div className="flex items-center justify-center gap-1.5 mt-6">
-          <ModeIcon className="h-3.5 w-3.5 text-muted-foreground/60" />
-          <p className="text-xs text-muted-foreground/60">{modeLabel}</p>
-        </div>
+        {/* Mode indicator — hidden in browser co-hosted mode (always server) */}
+        {!isBrowserCohosted && (
+          <div className="flex items-center justify-center gap-1.5 mt-6">
+            <ModeIcon className="h-3.5 w-3.5 text-muted-foreground/60" />
+            <p className="text-xs text-muted-foreground/60">{modeLabel}</p>
+          </div>
+        )}
     </LoginShell>
   );
 }

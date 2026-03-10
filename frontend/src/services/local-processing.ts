@@ -1,4 +1,4 @@
-import { getWasmApi } from "@/workers";
+import { getWasmApi, terminateWasmWorker } from "@/workers";
 import { readFileAsText, type ChunkReadProgress } from "@/lib/chunked-reader";
 import { computeFileHash } from "@/lib/content-hash";
 import * as localDb from "@/db";
@@ -23,6 +23,28 @@ interface EpochResult {
   axis_z: number[];
   vector_magnitude: number[];
 }
+
+/**
+ * Race a promise against a timeout. Rejects with a descriptive error if the timeout fires.
+ * NOTE: This does NOT cancel the underlying WASM operation — it just stops waiting.
+ * On timeout we terminate the worker to actually free resources.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timeoutId)),
+    new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        // Terminate the worker so the WASM computation actually stops
+        terminateWasmWorker();
+        reject(new Error(`WASM operation timed out after ${ms / 1000}s: ${label}`));
+      }, ms);
+    }),
+  ]);
+}
+
+/** Timeout for WASM operations (5 minutes — large files can take a while). */
+const WASM_TIMEOUT_MS = 5 * 60 * 1000;
 
 export type ProcessingPhase = "reading" | "parsing" | "epoching" | "scoring" | "nonwear" | "storing" | "complete";
 
@@ -72,9 +94,9 @@ export async function processLocalFile(
 
   let parseResult: CsvParseResult;
   if (isGeneactiv) {
-    parseResult = await wasmApi.parseGeneactivCsv(content) as CsvParseResult;
+    parseResult = await withTimeout(wasmApi.parseGeneactivCsv(content), WASM_TIMEOUT_MS, "parseGeneactivCsv") as CsvParseResult;
   } else {
-    parseResult = await wasmApi.parseActigraphCsv(content, skipRows) as CsvParseResult;
+    parseResult = await withTimeout(wasmApi.parseActigraphCsv(content, skipRows), WASM_TIMEOUT_MS, "parseActigraphCsv") as CsvParseResult;
   }
 
   let timestamps = parseResult.timestamps_ms;
@@ -84,12 +106,16 @@ export async function processLocalFile(
   // Step 3: Epoch if raw data
   if (parseResult.is_raw && parseResult.sample_frequency > 0) {
     onProgress?.({ phase: "epoching", percent: 45, message: "Converting to epochs..." });
-    const epochResult = await wasmApi.epochRawData(
-      new Float64Array(timestamps),
-      new Float64Array(parseResult.axis_x),
-      new Float64Array(axisY),
-      new Float64Array(parseResult.axis_z),
-      parseResult.sample_frequency,
+    const epochResult = await withTimeout(
+      wasmApi.epochRawData(
+        new Float64Array(timestamps),
+        new Float64Array(parseResult.axis_x),
+        new Float64Array(axisY),
+        new Float64Array(parseResult.axis_z),
+        parseResult.sample_frequency,
+      ),
+      WASM_TIMEOUT_MS,
+      "epochRawData",
     ) as EpochResult;
 
     timestamps = epochResult.timestamps_ms;
@@ -116,9 +142,9 @@ export async function processLocalFile(
     const vmF64 = new Float64Array(group.vectorMagnitude);
 
     const [sadeh, coleKripke, nonwear] = await Promise.all([
-      wasmApi.scoreSadeh(activityF64, -4.0),
-      wasmApi.scoreColeKripke(activityF64, true),
-      wasmApi.detectNonwear(vmF64),
+      withTimeout(wasmApi.scoreSadeh(activityF64, -4.0), WASM_TIMEOUT_MS, `scoreSadeh(${date})`),
+      withTimeout(wasmApi.scoreColeKripke(activityF64, true), WASM_TIMEOUT_MS, `scoreColeKripke(${date})`),
+      withTimeout(wasmApi.detectNonwear(vmF64), WASM_TIMEOUT_MS, `detectNonwear(${date})`),
     ]);
 
     algorithmResultsByDate[date] = { sadeh, coleKripke, nonwear };

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { Settings, Database, Activity, Download, LogOut, Moon, Sun, Monitor, BarChart3, ChevronLeft, ChevronRight, Loader2, Wifi, WifiOff, FolderOpen } from "lucide-react";
+import { Settings, Database, Activity, Download, LogOut, Moon, Sun, Monitor, BarChart3, ChevronLeft, ChevronRight, Loader2, Wifi, WifiOff, FolderOpen, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
 import { useSleepScoringStore } from "@/store";
@@ -67,12 +67,15 @@ export function Layout() {
   const themeIcon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
   const ThemeIcon = themeIcon;
 
+  const isAdmin = useSleepScoringStore((state) => state.isAdmin);
+
   const navItems = [
     { path: "/scoring", label: "Scoring", icon: Activity, description: "Score sleep data" },
     { path: "/analysis", label: "Analysis", icon: BarChart3, description: "Summary & progress" },
     { path: "/settings/study", label: "Study", icon: Settings, description: "Algorithm & rules" },
     { path: "/settings/data", label: caps.server ? "Data" : "Files", icon: caps.server ? Database : FolderOpen, description: caps.server ? "Import settings" : "Open & manage files" },
     { path: "/export", label: "Export", icon: Download, description: caps.server ? "Download results" : "Save results" },
+    ...(isAdmin && caps.server ? [{ path: "/admin/assignments", label: "Assignments", icon: Users, description: "Manage file assignments" }] : []),
   ];
 
   return (

@@ -290,8 +290,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       }
     });
 
-    // Process manual nonwear markers — red lines (gated by showNonwearOverlays toggle)
-    if (showNonwearOverlays) nwMarkers.forEach((marker, index) => {
+    // Process manual nonwear markers — red lines (always visible, user-placed)
+    nwMarkers.forEach((marker, index) => {
       if (marker.startTimestamp === null || marker.endTimestamp === null) return;
 
       const startTs = marker.startTimestamp / 1000;

@@ -172,6 +172,15 @@ export class SleepScoringDB extends Dexie {
       sensorNonwear: "++id, [fileId+analysisDate], fileId",
       diaryEntries: "++id, &[fileId+analysisDate], fileId",
     });
+
+    this.version(5).stores({
+      files: "++id, &filename, fileHash, source",
+      activityDays: "++id, [fileId+date], fileId",
+      markers: "++id, [fileId+date+username], fileId, syncStatus",
+      studySettings: "++id, &key",
+      sensorNonwear: "++id, [fileId+analysisDate], fileId",
+      diaryEntries: "++id, &[fileId+analysisDate], fileId",
+    });
   }
 }
 

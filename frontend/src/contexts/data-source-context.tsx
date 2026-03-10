@@ -2,7 +2,8 @@ import { createContext, useContext, useMemo } from "react";
 import { useSleepScoringStore } from "@/store";
 import { useCapabilitiesStore } from "@/store/capabilities-store";
 import { type DataSource, getDataSource } from "@/services/data-source";
-import { getActiveWorkspaceId, useWorkspaceStore } from "@/store/workspace-store";
+import { useActiveWorkspaceId, useWorkspaceStore } from "@/store/workspace-store";
+import { isTauri } from "@/lib/tauri";
 
 interface DataSourceContextValue {
   dataSource: DataSource;
@@ -17,19 +18,19 @@ export function DataSourceProvider({ children }: { children: React.ReactNode }) 
   const username = useSleepScoringStore((s) => s.username);
   const serverAvailable = useCapabilitiesStore((s) => s.serverAvailable);
 
-  // Select only the active workspace's serverUrl — returns a stable primitive string,
-  // so Zustand's shallow equality check prevents re-renders from unrelated workspace
-  // mutations (e.g. updateLastAccessed changing lastAccessedAt on another field).
+  // Reactively track the active workspace ID (backed by a small Zustand store).
+  const activeWsId = useActiveWorkspaceId();
+
+  // Select only the active workspace's serverUrl — returns a stable primitive string.
   const activeServerUrl = useWorkspaceStore((s) => {
-    const wsId = getActiveWorkspaceId();
-    return wsId ? (s.workspaces.find((w) => w.id === wsId)?.serverUrl ?? "") : "";
+    return activeWsId ? (s.workspaces.find((w) => w.id === activeWsId)?.serverUrl ?? "") : "";
   });
 
-  // Mode is determined by the WORKSPACE, not the capabilities probe.
-  // A local workspace (no serverUrl) stays local even if a co-hosted server is reachable.
-  // A server workspace uses the server regardless of transient probe state.
+  // In browser (non-Tauri) mode, the backend is always co-hosted at the same origin.
+  // An empty serverUrl means "use relative URLs" (co-hosted), NOT "local/offline".
+  // Only Tauri desktop apps can truly run in local mode (no server).
   const value = useMemo((): DataSourceContextValue => {
-    const isLocal = !activeServerUrl;
+    const isLocal = isTauri() && !activeServerUrl;
     const source = isLocal ? "local" : "server";
     const dataSource = getDataSource(source, sitePassword, username);
     return { dataSource, isLocal, serverAvailable };

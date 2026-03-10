@@ -351,6 +351,7 @@ export const importApi = {
     return parseJson<{
       dates_imported: number;
       markers_created: number;
+      nonwear_markers_created: number;
       no_sleep_dates: number;
       dates_skipped: number;
       errors: string[];
@@ -417,6 +418,18 @@ export const assignmentApi = {
     if (!response.ok && response.status !== 204) await checkResponse(response);
     if (response.status === 204) return { deleted: 0 };
     return parseJson<{ deleted: number }>(response);
+  },
+
+  async getAssignmentProgress() {
+    return fetchWithAuth<import("./types").AssignmentProgress[]>(
+      `${getApiBase()}/files/assignments/progress`
+    );
+  },
+
+  async getUnassignedFiles() {
+    return fetchWithAuth<import("./types").FileInfo[]>(
+      `${getApiBase()}/files/assignments/unassigned`
+    );
   },
 };
 
@@ -507,6 +520,17 @@ export const consensusApi = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ candidate_id: candidateId }),
       }
+    );
+  },
+};
+
+/**
+ * Pipeline discovery API calls
+ */
+export const pipelineApi = {
+  async discover() {
+    return fetchWithAuth<import("./types").PipelineDiscoveryResponse>(
+      `${getApiBase()}/markers/pipeline/discover`
     );
   },
 };

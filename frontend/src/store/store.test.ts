@@ -287,7 +287,7 @@ describe("SleepScoringStore", () => {
 
       const state = useSleepScoringStore.getState();
       expect(state.isNoSleep).toBe(true);
-      expect(state.sleepMarkers).toHaveLength(0); // Should clear markers
+      expect(state.sleepMarkers).toHaveLength(0); // Should clear MAIN_SLEEP markers
       expect(state.isDirty).toBe(true);
       expect(state.selectedPeriodIndex).toBeNull();
     });
@@ -307,21 +307,22 @@ describe("SleepScoringStore", () => {
       expect(state.isDirty).toBe(true);
     });
 
-    it("should prevent sleep marker creation when isNoSleep is true", () => {
+    it("should allow NAP marker creation when isNoSleep is true", () => {
       const { setIsNoSleep, handlePlotClick, setMarkerMode } = useSleepScoringStore.getState();
 
       // Set no sleep
       setIsNoSleep(true);
       setMarkerMode("sleep");
 
-      // Attempt to create a marker
+      // Create a marker via two clicks — should be allowed as NAP
       handlePlotClick(1000);
+      expect(useSleepScoringStore.getState().creationMode).toBe("placing_onset");
 
-      // Should remain idle, no pending onset
+      handlePlotClick(2000);
+
       const state = useSleepScoringStore.getState();
-      expect(state.creationMode).toBe("idle");
-      expect(state.pendingOnsetTimestamp).toBeNull();
-      expect(state.sleepMarkers).toHaveLength(0);
+      expect(state.sleepMarkers).toHaveLength(1);
+      expect(state.sleepMarkers[0].markerType).toBe("NAP");
     });
 
     it("should allow nonwear marker creation when isNoSleep is true", () => {

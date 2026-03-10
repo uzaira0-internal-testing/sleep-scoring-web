@@ -7,13 +7,23 @@ import { useConfirmDialog, useAlertDialog } from "@/components/ui/confirm-dialog
 import { EditableList } from "@/components/ui/editable-list";
 import { Database, Cpu, Clock, Settings, FlaskConical, FileCode, TestTube, Info, Loader2, Save, RotateCcw, Users, CalendarDays, HelpCircle, Activity } from "lucide-react";
 import { useSleepScoringStore } from "@/store";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi } from "@/api/client";
+import { studySettingsQueryOptions, pipelineDiscoverQueryOptions } from "@/api/query-options";
 import { SLEEP_DETECTION_RULES } from "@/api/types";
 import { ALGORITHM_OPTIONS, SLEEP_DETECTION_OPTIONS } from "@/constants/options";
 import { useAppCapabilities } from "@/hooks/useAppCapabilities";
 import { getLocalStudySettings, saveLocalStudySettings } from "@/db";
+
+/** Build a label lookup from ALGORITHM_OPTIONS, falling back to title-casing */
+const _ALGO_LABELS: Record<string, string> = Object.fromEntries(
+  ALGORITHM_OPTIONS.map((o) => [o.value, o.label])
+);
+
+function formatComponentId(id: string): string {
+  return _ALGO_LABELS[id] ?? id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 const ACTIVITY_COLUMN_OPTIONS = [
   { value: "axis_y", label: "Y-Axis (default)" },
@@ -56,10 +66,25 @@ export function StudySettingsPage() {
 
   // Load study-wide settings (shared across all users) - server only
   const { data: backendSettings, isLoading: isLoadingServer } = useQuery({
-    queryKey: ["study-settings"],
-    queryFn: settingsApi.getStudySettings,
+    ...studySettingsQueryOptions(),
     enabled: isAuthenticated && caps.server,
   });
+
+  // Discover available pipeline components from backend
+  const { data: pipelineDiscovery } = useQuery({
+    ...pipelineDiscoverQueryOptions(),
+    enabled: isAuthenticated && caps.server,
+  });
+
+  // Build algorithm options from discovery endpoint (fallback to hardcoded)
+  const algorithmOptions = useMemo(() => {
+    const classifiers = pipelineDiscovery?.roles?.epoch_classifier;
+    if (!classifiers?.length) return ALGORITHM_OPTIONS as readonly { value: string; label: string }[];
+    return classifiers.map((id) => ({
+      value: id,
+      label: formatComponentId(id),
+    }));
+  }, [pipelineDiscovery]);
 
   // Load local study settings from IndexedDB when no server
   const [localSettings, setLocalSettings] = useState<Awaited<ReturnType<typeof getLocalStudySettings>> | null>(null);
@@ -106,7 +131,7 @@ export function StudySettingsPage() {
   const saveMutation = useMutation({
     mutationFn: settingsApi.updateStudySettings,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["study-settings"] });
+      queryClient.invalidateQueries({ queryKey: studySettingsQueryOptions().queryKey });
       // Also invalidate per-user settings since they merge study settings
       queryClient.invalidateQueries({ queryKey: ["settings"] });
       setHasChanges(false);
@@ -120,7 +145,7 @@ export function StudySettingsPage() {
   const resetMutation = useMutation({
     mutationFn: settingsApi.resetStudySettings,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["study-settings"] });
+      queryClient.invalidateQueries({ queryKey: studySettingsQueryOptions().queryKey });
       queryClient.invalidateQueries({ queryKey: ["settings"] });
       setHasChanges(false);
     },
@@ -451,7 +476,7 @@ export function StudySettingsPage() {
               id="algorithm"
               value={currentAlgorithm}
               onChange={(e) => handleAlgorithmChange(e.target.value)}
-              options={ALGORITHM_OPTIONS}
+              options={algorithmOptions}
             />
           </div>
           <div className="rounded-lg border p-3 bg-muted/30 text-sm">

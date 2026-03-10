@@ -8,8 +8,8 @@ import { Database, FileText, Trash2, RefreshCw, Info, Loader2, Save, Check, Colu
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog, useAlertDialog } from "@/components/ui/confirm-dialog";
 import { useSleepScoringStore } from "@/store";
-import { settingsApi, filesApi, diaryApi, nonwearApi, importApi, assignmentApi, autoScoreApi } from "@/api/client";
-import type { FileInfo, FileAssignment } from "@/api/types";
+import { settingsApi, filesApi, diaryApi, nonwearApi, importApi, autoScoreApi } from "@/api/client";
+import type { FileInfo } from "@/api/types";
 import { useTusUpload, TUS_SIZE_THRESHOLD } from "@/hooks/useTusUpload";
 import { UploadProgress } from "@/components/upload-progress";
 import { useAppCapabilities } from "@/hooks/useAppCapabilities";
@@ -18,6 +18,7 @@ import { LocalProcessingProgress } from "@/components/local-processing-progress"
 import { getLocalFiles, deleteFileRecord, saveSensorNonwear, saveDiaryEntry, type FileRecord } from "@/db";
 import { parseNonwearCsv } from "@/services/nonwear-csv-parser";
 import { parseDiaryCsv } from "@/services/diary-parser";
+import { studySettingsQueryOptions, filesQueryOptions, autoScoreBatchStatusQueryOptions } from "@/api/query-options";
 
 const ACTIVITY_COLUMN_OPTIONS = [
   { value: "axis_y", label: "Y-Axis (default)" },
@@ -356,23 +357,20 @@ export function DataSettingsPage() {
 
   // Load study-wide settings (data settings are shared across all users)
   const { data: backendSettings, isLoading } = useQuery({
-    queryKey: ["study-settings"],
-    queryFn: settingsApi.getStudySettings,
+    ...studySettingsQueryOptions(),
     enabled: isAuthenticated && caps.server,
   });
 
   // Load file list (server only)
   const { data: filesData } = useQuery({
-    queryKey: ["files"],
-    queryFn: filesApi.listFiles,
+    ...filesQueryOptions(),
     enabled: isAuthenticated && caps.server,
   });
 
   const files: FileInfo[] = filesData?.items ?? [];
 
   const { data: autoScoreBatchStatus } = useQuery({
-    queryKey: ["auto-score-batch-status"],
-    queryFn: autoScoreApi.getBatchStatus,
+    ...autoScoreBatchStatusQueryOptions(),
     enabled: isAuthenticated && caps.server,
     refetchInterval: (query) => (query.state.data?.is_running ? 1500 : false),
     refetchIntervalInBackground: true,
@@ -418,7 +416,7 @@ export function DataSettingsPage() {
   const saveMutation = useMutation({
     mutationFn: settingsApi.updateStudySettings,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["study-settings"] });
+      queryClient.invalidateQueries({ queryKey: studySettingsQueryOptions().queryKey });
       queryClient.invalidateQueries({ queryKey: ["settings"] });
       setHasChanges(false);
       setSaveSuccess(true);
@@ -454,7 +452,7 @@ export function DataSettingsPage() {
       });
     },
     onSuccess: (status) => {
-      queryClient.invalidateQueries({ queryKey: ["auto-score-batch-status"] });
+      queryClient.invalidateQueries({ queryKey: autoScoreBatchStatusQueryOptions().queryKey });
       setAutoScoreBatchResult({
         type: "success",
         message: `Batch started: ${status.total_dates} date${status.total_dates !== 1 ? "s" : ""} queued`,
@@ -469,7 +467,7 @@ export function DataSettingsPage() {
   const deleteFileMutation = useMutation({
     mutationFn: filesApi.deleteFile,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: filesQueryOptions().queryKey });
     },
     onError: (error: Error) => {
       alert({ title: "Delete Failed", description: error.message });
@@ -600,7 +598,7 @@ export function DataSettingsPage() {
         type: (failed > 0 ? "error" : "success") as "success" | "error",
       };
       useSleepScoringStore.getState().setUploadResult(result);
-      queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: filesQueryOptions().queryKey });
       queryClient.invalidateQueries({ queryKey: ["dates-status"] });
     })();
   };
@@ -674,10 +672,11 @@ export function DataSettingsPage() {
       const errMsg = result.errors?.length ? `. ${result.errors[0]}` : "";
       const noSleepMsg = result.no_sleep_dates > 0 ? `, ${result.no_sleep_dates} no-sleep` : "";
       const matchMsg = ` (${result.matched_rows}/${result.total_rows} rows matched)`;
+      const nwMsg = result.nonwear_markers_created > 0 ? `, ${result.nonwear_markers_created} nonwear markers` : "";
       const unresolvedCount = (result.unmatched_identifiers?.length ?? 0) + (result.ambiguous_identifiers?.length ?? 0);
       const unresolvedMsg = unresolvedCount > 0 ? `, ${unresolvedCount} unresolved identifier${unresolvedCount === 1 ? "" : "s"}` : "";
       setSleepImportResult({
-        message: `${result.dates_imported} dates, ${result.markers_created} markers imported${noSleepMsg}${result.dates_skipped > 0 ? `, ${result.dates_skipped} skipped` : ""}${matchMsg}${unresolvedMsg}${errMsg}`,
+        message: `${result.dates_imported} dates, ${result.markers_created} markers imported${nwMsg}${noSleepMsg}${result.dates_skipped > 0 ? `, ${result.dates_skipped} skipped` : ""}${matchMsg}${unresolvedMsg}${errMsg}`,
         type: (result.dates_imported > 0 || result.no_sleep_dates > 0) ? "success" : "error",
       });
       queryClient.invalidateQueries({ queryKey: ["markers"] });
@@ -1103,15 +1102,15 @@ export function DataSettingsPage() {
       {/* Local Nonwear Sensor Data Import (local mode only) */}
       {!caps.server && <LocalNonwearImport localFiles={localFiles} />}
 
-      {/* Import Sleep Marker Exports (server only) */}
+      {/* Import Marker Exports (server only) */}
       {caps.server && (<Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
-            Import Sleep Marker Exports
+            Import Marker Exports
           </CardTitle>
           <CardDescription>
-            Upload a sleep marker CSV exported from the <strong>desktop app</strong> or the <strong>web app&apos;s export page</strong>. Both formats are auto-detected.
+            Upload a marker CSV exported from the <strong>desktop app</strong> or the <strong>web app&apos;s export page</strong>. Both formats are auto-detected. Rows with <code>Marker Type = &quot;Manual Nonwear&quot;</code> are imported as nonwear markers.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1120,7 +1119,7 @@ export function DataSettingsPage() {
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
               <div>
-                <strong className="text-destructive">This action is irreversible.</strong> Existing sleep markers for each imported date are <strong>permanently replaced</strong>. Metrics are recalculated automatically from the imported markers. Only import if the corresponding activity files have already been uploaded.
+                <strong className="text-destructive">This action is irreversible.</strong> Existing sleep and manual nonwear markers for each imported date are <strong>permanently replaced</strong>. Metrics are recalculated automatically from the imported markers. Only import if the corresponding activity files have already been uploaded.
               </div>
             </div>
           </div>
@@ -1157,7 +1156,7 @@ export function DataSettingsPage() {
                 <div className="font-medium">Desktop app exports</div>
                 <div><strong>File matching:</strong> filename column, or participant_id + timepoint</div>
                 <div><strong>Required:</strong> sleep_date (or date), onset_time, offset_time</div>
-                <div><strong>Optional:</strong> marker_type, marker_index, onset_date, offset_date, needs_consensus</div>
+                <div><strong>Optional:</strong> marker_type (including &quot;Manual Nonwear&quot; for nonwear rows), marker_index, onset_date, offset_date, needs_consensus</div>
               </div>
             </div>
             <div className="flex items-start gap-2">
@@ -1166,7 +1165,7 @@ export function DataSettingsPage() {
                 <div className="font-medium">Web app exports</div>
                 <div><strong>File matching:</strong> Filename column or Participant ID</div>
                 <div><strong>Required:</strong> Study Date, plus Onset/Offset Time or Onset/Offset Datetime</div>
-                <div><strong>Optional:</strong> Marker Type, Period Index, Is No Sleep, Needs Consensus</div>
+                <div><strong>Optional:</strong> Marker Type (including &quot;Manual Nonwear&quot; for nonwear rows), Period Index, Is No Sleep, Needs Consensus</div>
               </div>
             </div>
             <div className="text-muted-foreground">
@@ -1462,190 +1461,9 @@ export function DataSettingsPage() {
         </CardContent>
       </Card>
 
-      {/* File Assignments (admin only, server only) */}
-      {caps.server && <FileAssignmentPanel allFiles={filesData?.items ?? []} />}
       {confirmDialog}
       {alertDialog}
     </div>
   );
 }
 
-// =============================================================================
-// File Assignment Panel (admin only)
-// =============================================================================
-
-function FileAssignmentPanel({ allFiles }: { allFiles: FileInfo[] }) {
-  const isAdmin = useSleepScoringStore((state) => state.isAdmin);
-  const [targetUsername, setTargetUsername] = useState("");
-  const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set());
-  const [assignments, setAssignments] = useState<FileAssignment[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ message: string; type: "success" | "error" } | null>(null);
-
-  // Load assignments on mount
-  useEffect(() => {
-    if (!isAdmin) return;
-    assignmentApi.listAssignments()
-      .then(setAssignments)
-      .catch(() => {/* ignore if endpoint not available */});
-  }, [isAdmin]);
-
-  if (!isAdmin) return null;
-
-  // Group assignments by username
-  const byUser = new Map<string, FileAssignment[]>();
-  for (const a of assignments) {
-    const list = byUser.get(a.username) ?? [];
-    list.push(a);
-    byUser.set(a.username, list);
-  }
-
-  const handleAssign = async () => {
-    if (!targetUsername.trim() || selectedFileIds.size === 0) return;
-    setLoading(true);
-    setResult(null);
-    try {
-      const res = await assignmentApi.createAssignments(
-        Array.from(selectedFileIds),
-        targetUsername.trim()
-      );
-      setResult({ message: `Assigned ${res.created} files to ${targetUsername.trim()}`, type: "success" });
-      setSelectedFileIds(new Set());
-      // Refresh assignments
-      const updated = await assignmentApi.listAssignments();
-      setAssignments(updated);
-    } catch (err) {
-      setResult({ message: err instanceof Error ? err.message : "Failed to assign", type: "error" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRemoveUser = async (username: string) => {
-    try {
-      await assignmentApi.deleteUserAssignments(username);
-      setAssignments(prev => prev.filter(a => a.username !== username));
-    } catch (err) {
-      setResult({ message: err instanceof Error ? err.message : "Failed to remove assignments", type: "error" });
-    }
-  };
-
-  const toggleAll = () => {
-    if (selectedFileIds.size === allFiles.length) {
-      setSelectedFileIds(new Set());
-    } else {
-      setSelectedFileIds(new Set(allFiles.map(f => f.id)));
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Database className="h-5 w-5" />
-          File Assignments
-          <span className="text-xs font-normal text-muted-foreground">(Admin)</span>
-        </CardTitle>
-        <CardDescription>
-          Assign files to users. Non-admin users will only see their assigned files.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Current assignments */}
-        {byUser.size > 0 && (
-          <div className="space-y-2">
-            <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Current Assignments
-            </Label>
-            {Array.from(byUser.entries()).map(([username, userAssignments]) => (
-              <div key={username} className="border rounded-md p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-sm">{username}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{userAssignments.length} files</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-destructive"
-                      onClick={() => handleRemoveUser(username)}
-                      title={`Remove all assignments for ${username}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground truncate">
-                  {userAssignments.slice(0, 5).map(a => a.filename).join(", ")}
-                  {userAssignments.length > 5 && ` ...and ${userAssignments.length - 5} more`}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* New assignment */}
-        <div className="space-y-3 border-t pt-3">
-          <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Assign Files
-          </Label>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Username"
-              value={targetUsername}
-              onChange={(e) => setTargetUsername(e.target.value)}
-              className="max-w-[200px]"
-            />
-            <Button
-              size="sm"
-              onClick={handleAssign}
-              disabled={loading || !targetUsername.trim() || selectedFileIds.size === 0}
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Assign"}
-              {selectedFileIds.size > 0 && ` (${selectedFileIds.size})`}
-            </Button>
-          </div>
-
-          {result && (
-            <ActionResult message={result.message} type={result.type} onDismiss={() => setResult(null)} />
-          )}
-
-          {/* File selection */}
-          <div className="border rounded-md max-h-48 overflow-y-auto">
-            <div className="sticky top-0 bg-background border-b px-3 py-1.5 flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={selectedFileIds.size === allFiles.length && allFiles.length > 0}
-                onChange={toggleAll}
-                className="rounded border-input"
-              />
-              <span className="text-xs text-muted-foreground">
-                {selectedFileIds.size > 0 ? `${selectedFileIds.size} selected` : "Select all"}
-              </span>
-            </div>
-            {allFiles.map((f) => (
-              <label
-                key={f.id}
-                className="flex items-center gap-2 px-3 py-1 hover:bg-muted/50 cursor-pointer text-xs"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedFileIds.has(f.id)}
-                  onChange={() => {
-                    setSelectedFileIds(prev => {
-                      const next = new Set(prev);
-                      if (next.has(f.id)) next.delete(f.id);
-                      else next.add(f.id);
-                      return next;
-                    });
-                  }}
-                  className="rounded border-input"
-                />
-                {f.filename}
-              </label>
-            ))}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}

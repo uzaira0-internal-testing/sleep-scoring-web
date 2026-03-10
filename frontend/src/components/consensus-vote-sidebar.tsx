@@ -229,7 +229,9 @@ export function ConsensusVoteSidebar({
                     </div>
                   </div>
                   <div className="text-[11px] text-muted-foreground mt-1">
-                    {candidate.is_no_sleep ? "No-sleep candidate" : markerSummary(candidate.sleep_markers_json)}
+                    {candidate.is_no_sleep
+                      ? `No-sleep candidate${(candidate.sleep_markers_json?.length ?? 0) > 0 ? ` (${candidate.sleep_markers_json!.length} nap${candidate.sleep_markers_json!.length === 1 ? "" : "s"})` : ""}`
+                      : markerSummary(candidate.sleep_markers_json)}
                   </div>
                   <div className="mt-2 flex items-center gap-1">
                     <Button

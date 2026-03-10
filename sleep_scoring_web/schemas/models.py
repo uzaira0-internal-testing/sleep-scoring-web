@@ -39,6 +39,14 @@ class SleepPeriod(BaseModel):
     marker_index: int = 1
     marker_type: MarkerType = MarkerType.MAIN_SLEEP
 
+    @field_validator("onset_timestamp", "offset_timestamp")
+    @classmethod
+    def _validate_timestamp(cls, v: float | None) -> float | None:
+        if v is not None and (v < 0 or v > 4_102_444_800):
+            msg = f"Timestamp {v} out of valid range (0 to year 2100)"
+            raise ValueError(msg)
+        return v
+
     @property
     def is_complete(self) -> bool:
         """Check if both markers are set."""
@@ -72,6 +80,14 @@ class ManualNonwearPeriod(BaseModel):
     end_timestamp: float | None = None
     marker_index: int = 1
     source: NonwearDataSource = NonwearDataSource.MANUAL
+
+    @field_validator("start_timestamp", "end_timestamp")
+    @classmethod
+    def _validate_timestamp(cls, v: float | None) -> float | None:
+        if v is not None and (v < 0 or v > 4_102_444_800):
+            msg = f"Timestamp {v} out of valid range (0 to year 2100)"
+            raise ValueError(msg)
+        return v
 
     @property
     def is_complete(self) -> bool:

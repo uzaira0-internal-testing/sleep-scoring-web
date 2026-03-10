@@ -741,6 +741,123 @@ async def delete_user_assignments(
     return {"deleted": result.rowcount}
 
 
+@router.get("/assignments/progress")
+async def get_assignment_progress(
+    db: DbSession,
+    _: VerifiedPassword,
+    username: Username,
+) -> list[dict]:
+    """Get all assignments with per-user, per-file scoring progress (admin only).
+
+    For each user, returns their assigned files with total_dates and scored_dates.
+    Uses the markers table (created_by) for scored dates and raw_activity_data for
+    total dates per file. Diary-intersected dates are used when diary exists.
+    """
+    from collections import defaultdict
+
+    from sleep_scoring_web.db.models import Marker
+
+    _require_admin(username)
+
+    # 1. Get all assignments
+    result = await db.execute(
+        select(FileAssignment.file_id, FileAssignment.username, FileAssignment.assigned_at, FileModel.filename)
+        .join(FileModel, FileAssignment.file_id == FileModel.id)
+        .where(~_excluded_filename_sql_filter())
+        .order_by(FileAssignment.username, FileModel.filename)
+    )
+    assignments = result.all()
+    if not assignments:
+        return []
+
+    # Collect all assigned file IDs
+    all_file_ids = list({a.file_id for a in assignments})
+
+    # 2. Get total dates per file (distinct analysis_date from raw_activity_data)
+    date_col = func.date(RawActivityData.timestamp).label("d")
+    dates_result = await db.execute(
+        select(RawActivityData.file_id, func.count(date_col.distinct()))
+        .where(RawActivityData.file_id.in_(all_file_ids))
+        .group_by(RawActivityData.file_id)
+    )
+    total_dates_by_file: dict[int, int] = {row[0]: row[1] for row in dates_result.all()}
+
+    # 3. Refine with diary dates where available
+    diary_result = await db.execute(
+        select(DiaryEntry.file_id, func.count(DiaryEntry.analysis_date.distinct()))
+        .where(DiaryEntry.file_id.in_(all_file_ids))
+        .group_by(DiaryEntry.file_id)
+    )
+    diary_dates_by_file: dict[int, int] = {row[0]: row[1] for row in diary_result.all()}
+    # If diary exists for a file, use diary date count (study period) instead of all activity dates
+    for fid, diary_count in diary_dates_by_file.items():
+        total_dates_by_file[fid] = diary_count
+
+    # 4. Get scored dates per (user, file) — distinct dates where user has markers
+    scored_result = await db.execute(
+        select(
+            Marker.created_by,
+            Marker.file_id,
+            func.count(Marker.analysis_date.distinct()),
+        )
+        .where(Marker.file_id.in_(all_file_ids))
+        .group_by(Marker.created_by, Marker.file_id)
+    )
+    scored_dates: dict[tuple[str, int], int] = {}
+    for created_by, file_id, count in scored_result.all():
+        scored_dates[(created_by or "", file_id)] = count
+
+    # 5. Build response grouped by username
+    users: dict[str, dict] = {}
+    for a in assignments:
+        if a.username not in users:
+            users[a.username] = {
+                "username": a.username,
+                "files": [],
+                "total_files": 0,
+                "total_dates": 0,
+                "scored_dates": 0,
+            }
+        user = users[a.username]
+        file_total = total_dates_by_file.get(a.file_id, 0)
+        file_scored = scored_dates.get((a.username, a.file_id), 0)
+        user["files"].append({
+            "file_id": a.file_id,
+            "filename": a.filename,
+            "total_dates": file_total,
+            "scored_dates": file_scored,
+            "assigned_at": str(a.assigned_at) if a.assigned_at else None,
+        })
+        user["total_files"] += 1
+        user["total_dates"] += file_total
+        user["scored_dates"] += file_scored
+
+    return list(users.values())
+
+
+@router.get("/assignments/unassigned")
+async def get_unassigned_files(
+    db: DbSession,
+    _: VerifiedPassword,
+    username: Username,
+) -> list[dict]:
+    """Get files with zero assignments (admin only)."""
+    _require_admin(username)
+
+    result = await db.execute(
+        select(FileModel.id, FileModel.filename, FileModel.participant_id, FileModel.status)
+        .outerjoin(FileAssignment, FileModel.id == FileAssignment.file_id)
+        .where(FileAssignment.id.is_(None))
+        .where(~_excluded_filename_sql_filter())
+        .where(FileModel.status == "ready")
+        .order_by(FileModel.filename)
+    )
+    return [
+        {"id": row[0], "filename": row[1], "participant_id": row[2], "status": row[3]}
+        for row in result.all()
+    ]
+
+
 @router.post("/purge-excluded")
 async def purge_excluded_files(
     db: DbSession,

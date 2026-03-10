@@ -30,7 +30,7 @@ export function OfflineBanner() {
     return (
       <div className="flex items-center gap-2 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 px-4 py-2 text-sm">
         <Wifi className="h-4 w-4" />
-        <span>Back online! Your data will sync...</span>
+        <span>Online</span>
       </div>
     );
   }

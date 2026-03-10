@@ -33,6 +33,9 @@ class PlacementConfig:
     diary_tolerance_minutes: int = 15
     nap_min_consecutive_epochs: int = 10
     epoch_length_seconds: int = 60
+    max_forward_offset_epochs: int = 60
+    nap_max_search_epochs: int = 60
+    enable_rule_8_clamping: bool = True
 
 
 # =============================================================================
@@ -298,10 +301,9 @@ def place_main_sleep(
     # Allow looking up to 60 epochs (1 hour) past wake — but no further.
     # This prevents offsets landing hours past diary wake when there's a
     # long continuous sleep run, while still allowing reasonable forward look.
-    max_forward_epochs = 60  # 1 hour at 1-min epochs
     offset_idx = _find_valid_offset_near_bounded(
         epochs, diary.wake_time, config.offset_min_consecutive_minutes,
-        config.epoch_length_seconds, max_forward_epochs,
+        config.epoch_length_seconds, config.max_forward_offset_epochs,
     )
 
     if onset_idx is None or offset_idx is None:
@@ -310,7 +312,7 @@ def place_main_sleep(
         return None
 
     # Rule 8: if onset is before in-bed time, clamp to in-bed time
-    if diary.in_bed_time and epochs[onset_idx].timestamp < diary.in_bed_time:
+    if config.enable_rule_8_clamping and diary.in_bed_time and epochs[onset_idx].timestamp < diary.in_bed_time:
         # Find nearest valid onset AT or AFTER in-bed time
         clamped = _find_valid_onset_at_or_after(
             epochs, diary.in_bed_time, config.onset_min_consecutive_sleep
@@ -455,7 +457,7 @@ def place_naps(
     """
     naps: list[tuple[int, int]] = []
     min_epochs = config.nap_min_consecutive_epochs
-    max_search_epochs = 60  # 1 hour at 1-min epochs
+    max_search_epochs = config.nap_max_search_epochs
 
     for nap_period in diary.nap_periods:
         if not nap_period.start_time or not nap_period.end_time:
@@ -950,6 +952,7 @@ def place_nonwear_markers(
     threshold: int = 0,
     max_extension_minutes: int = 30,
     min_duration_minutes: int = 10,
+    zero_activity_ratio: float = 0.80,
 ) -> NonwearPlacementResult:
     """
     Auto-place nonwear markers using diary anchors with zero-activity detection.
@@ -1052,7 +1055,7 @@ def place_nonwear_markers(
         total_epochs = ext_end - ext_start + 1
 
         # Require at least 80% of epochs in the range to be zero/near-zero
-        if total_epochs > 0 and (zero_epochs / total_epochs) < 0.8:
+        if total_epochs > 0 and (zero_epochs / total_epochs) < zero_activity_ratio:
             notes.append(
                 f"Nonwear {diary_idx}: diary {diary_start_dt.strftime('%H:%M')}-{diary_end_dt.strftime('%H:%M')} "
                 f"has too much activity ({total_epochs - zero_epochs}/{total_epochs} epochs above threshold), skipped"

@@ -2,6 +2,7 @@
 Export API endpoints.
 
 Provides endpoints for generating CSV exports of sleep scoring data.
+Sleep and nonwear markers are exported as separate CSV files.
 """
 
 from datetime import date
@@ -34,6 +35,26 @@ async def _filter_visible_file_ids(db: DbSession, username: str, requested_ids: 
         return requested_ids
     assigned_ids = set(await get_assigned_file_ids(db, username))
     return [file_id for file_id in requested_ids if file_id in assigned_ids]
+
+
+async def _run_export(service: ExportService, request: ExportRequest, visible_file_ids: list[int]):
+    """Run export and return the ExportResult."""
+    return await service.export_csv(
+        file_ids=visible_file_ids,
+        date_range=request.date_range,
+        columns=request.columns,
+        include_header=request.include_header,
+        include_metadata=request.include_metadata,
+    )
+
+
+def _error_csv(message: str) -> StreamingResponse:
+    """Return an error as a CSV comment file."""
+    return StreamingResponse(
+        iter([f"# Export Error\n# {message}\n"]),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="export_error.csv"'},
+    )
 
 
 @router.get("/columns")
@@ -74,16 +95,8 @@ async def generate_csv_export(
     Returns metadata about the export. Use /csv/download to get the actual file.
     """
     service = ExportService(db)
-
     visible_file_ids = await _filter_visible_file_ids(db, username, request.file_ids)
-
-    result = await service.export_csv(
-        file_ids=visible_file_ids,
-        date_range=request.date_range,
-        columns=request.columns,
-        include_header=request.include_header,
-        include_metadata=request.include_metadata,
-    )
+    result = await _run_export(service, request, visible_file_ids)
 
     return ExportResponse(
         success=result.success,
@@ -102,40 +115,43 @@ async def download_csv_export(
     _: VerifiedPassword,
     username: Username,
 ) -> StreamingResponse:
-    """
-    Generate and download CSV export.
-
-    Returns the CSV file directly as a download.
-    """
+    """Download sleep marker CSV export."""
     service = ExportService(db)
-
     visible_file_ids = await _filter_visible_file_ids(db, username, request.file_ids)
-
-    result = await service.export_csv(
-        file_ids=visible_file_ids,
-        date_range=request.date_range,
-        columns=request.columns,
-        include_header=request.include_header,
-        include_metadata=request.include_metadata,
-    )
+    result = await _run_export(service, request, visible_file_ids)
 
     if not result.success:
-        # Return error as CSV comment
-        error_content = f"# Export Error\n# {'; '.join(result.errors)}\n"
-        return StreamingResponse(
-            iter([error_content]),
-            media_type="text/csv",
-            headers={
-                "Content-Disposition": 'attachment; filename="export_error.csv"',
-            },
-        )
+        return _error_csv("; ".join(result.errors))
 
     return StreamingResponse(
         iter([result.csv_content]),
         media_type="text/csv",
-        headers={
-            "Content-Disposition": f'attachment; filename="{result.filename}"',
-        },
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
+    )
+
+
+@router.post("/csv/download/nonwear")
+async def download_nonwear_csv_export(
+    request: ExportRequest,
+    db: DbSession,
+    _: VerifiedPassword,
+    username: Username,
+) -> StreamingResponse:
+    """Download nonwear marker CSV export (separate from sleep)."""
+    service = ExportService(db)
+    visible_file_ids = await _filter_visible_file_ids(db, username, request.file_ids)
+    result = await _run_export(service, request, visible_file_ids)
+
+    if not result.success:
+        return _error_csv("; ".join(result.errors))
+
+    if not result.nonwear_csv_content:
+        return _error_csv("No nonwear markers found for selected files")
+
+    return StreamingResponse(
+        iter([result.nonwear_csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{result.nonwear_filename}"'},
     )
 
 
@@ -157,26 +173,12 @@ async def quick_export(
     try:
         ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
     except ValueError:
-        error_content = "# Error: Invalid file IDs format\n"
-        return StreamingResponse(
-            iter([error_content]),
-            media_type="text/csv",
-            headers={
-                "Content-Disposition": 'attachment; filename="export_error.csv"',
-            },
-        )
+        return _error_csv("Invalid file IDs format")
 
     visible_ids = await _filter_visible_file_ids(db, username, ids)
 
     if not visible_ids:
-        error_content = "# Error: No file IDs provided\n"
-        return StreamingResponse(
-            iter([error_content]),
-            media_type="text/csv",
-            headers={
-                "Content-Disposition": 'attachment; filename="export_error.csv"',
-            },
-        )
+        return _error_csv("No file IDs provided")
 
     service = ExportService(db)
 
@@ -191,19 +193,10 @@ async def quick_export(
     )
 
     if not result.success:
-        error_content = f"# Export Error\n# {'; '.join(result.errors)}\n"
-        return StreamingResponse(
-            iter([error_content]),
-            media_type="text/csv",
-            headers={
-                "Content-Disposition": 'attachment; filename="export_error.csv"',
-            },
-        )
+        return _error_csv("; ".join(result.errors))
 
     return StreamingResponse(
         iter([result.csv_content]),
         media_type="text/csv",
-        headers={
-            "Content-Disposition": f'attachment; filename="{result.filename}"',
-        },
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
     )

@@ -87,7 +87,7 @@ export function useMarkerLoad() {
 
     // Auto-select the first sleep marker when loading existing markers
     if (sleepChanged && apiSleepMarkers.length > 0 && current.selectedPeriodIndex === null) {
-      useSleepScoringStore.setState({ selectedPeriodIndex: 0, markerMode: "sleep" });
+      useSleepScoringStore.setState({ selectedPeriodIndex: 0 });
     }
   }, [data, _loadSleepMarkersFromServer, _loadNonwearMarkersFromServer]);
 

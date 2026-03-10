@@ -8,14 +8,14 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from dataclasses import field as dc_field
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, select
 
-from sleep_scoring_web.api.access import require_file_access
+from sleep_scoring_web.api.access import require_file_access, require_file_and_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.api.markers import (
     _upsert_consensus_candidate_snapshot,
@@ -24,6 +24,7 @@ from sleep_scoring_web.api.markers import (
 from sleep_scoring_web.db.models import DiaryEntry, Marker, RawActivityData, UserAnnotation
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.schemas.enums import MarkerCategory
+from sleep_scoring_web.schemas.pipeline import PipelineConfigRequest
 from sleep_scoring_web.services.consensus_realtime import broadcast_consensus_update
 from sleep_scoring_web.services.file_identity import is_excluded_activity_filename, is_excluded_file_obj
 
@@ -135,7 +136,7 @@ def _reset_auto_score_batch_state() -> None:
     global _auto_score_batch_state
     _auto_score_batch_state = _AutoScoreBatchState(
         is_running=True,
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(tz=UTC),
     )
 
 
@@ -145,6 +146,25 @@ def _diary_time_present(value: str | None) -> bool:
         return False
     normalized = value.strip().lower()
     return normalized not in {"", "nan", "none", "null"}
+
+
+def _extract_diary_periods(
+    diary: Any,
+) -> tuple[list[tuple[str | None, str | None]], list[tuple[str | None, str | None]]]:
+    """Extract nap and nonwear period tuples from a DiaryEntry row."""
+    naps: list[tuple[str | None, str | None]] = []
+    nonwear: list[tuple[str | None, str | None]] = []
+    for i in range(1, 4):
+        nap_start = getattr(diary, f"nap_{i}_start", None)
+        nap_end = getattr(diary, f"nap_{i}_end", None)
+        if nap_start and nap_end:
+            naps.append((nap_start, nap_end))
+    for i in range(1, 4):
+        nw_start = getattr(diary, f"nonwear_{i}_start", None)
+        nw_end = getattr(diary, f"nonwear_{i}_end", None)
+        if nw_start and nw_end:
+            nonwear.append((nw_start, nw_end))
+    return naps, nonwear
 
 
 # =============================================================================
@@ -246,16 +266,7 @@ async def _run_auto_score_single(
         diary_bed = diary.bed_time
         diary_onset = diary.lights_out
         diary_wake = diary.wake_time
-        for i in range(1, 4):
-            nap_start = getattr(diary, f"nap_{i}_start", None)
-            nap_end = getattr(diary, f"nap_{i}_end", None)
-            if nap_start and nap_end:
-                diary_naps.append((nap_start, nap_end))
-        for i in range(1, 4):
-            nw_start = getattr(diary, f"nonwear_{i}_start", None)
-            nw_end = getattr(diary, f"nonwear_{i}_end", None)
-            if nw_start and nw_end:
-                diary_nonwear.append((nw_start, nw_end))
+        diary_naps, diary_nonwear = _extract_diary_periods(diary)
 
     result = run_auto_scoring(
         timestamps=timestamps,
@@ -447,7 +458,7 @@ async def _run_auto_score_batch(
                 await asyncio.sleep(0)
     finally:
         _auto_score_batch_state.is_running = False
-        _auto_score_batch_state.finished_at = datetime.utcnow()
+        _auto_score_batch_state.finished_at = datetime.now(tz=UTC)
         _auto_score_batch_state.current_file_id = None
         _auto_score_batch_state.current_date = None
         _auto_score_batch_task = None
@@ -641,11 +652,7 @@ async def auto_nonwear_markers(
     diary = diary_result.scalar_one_or_none()
     diary_nonwear: list[tuple[str | None, str | None]] = []
     if diary:
-        for i in range(1, 4):
-            nw_start = getattr(diary, f"nonwear_{i}_start", None)
-            nw_end = getattr(diary, f"nonwear_{i}_end", None)
-            if nw_start and nw_end:
-                diary_nonwear.append((nw_start, nw_end))
+        _, diary_nonwear = _extract_diary_periods(diary)
 
     # Load sensor nonwear periods
     sensor_nw_result = await db.execute(
@@ -708,4 +715,111 @@ async def auto_nonwear_markers(
     return AutoNonwearResponse(
         nonwear_markers=result.nonwear_markers,
         notes=result.notes,
+    )
+
+
+# =============================================================================
+# Pipeline v2 endpoints
+# =============================================================================
+
+
+@router.get("/pipeline/discover")
+async def discover_pipeline(
+    _: VerifiedPassword,
+) -> dict[str, Any]:
+    """Return available pipeline components per role and their parameter schemas."""
+    from sleep_scoring_web.schemas.pipeline import PARAM_JSON_SCHEMAS
+    from sleep_scoring_web.services.pipeline import describe_pipeline
+
+    roles = describe_pipeline()
+    return {"roles": roles, "param_schemas": PARAM_JSON_SCHEMAS}
+
+
+@router.post("/{file_id}/{analysis_date}/auto-score-v2")
+async def auto_score_v2(
+    file_id: int,
+    analysis_date: date,
+    db: DbSession,
+    _: VerifiedPassword,
+    username: Username,
+    request: PipelineConfigRequest | None = None,
+) -> AutoScoreResponse:
+    """Auto-score using the configurable pipeline."""
+    from sleep_scoring_web.services.pipeline import (
+        RawDiaryInput,
+        ScoringPipeline,
+    )
+
+    await require_file_and_access(db, username, file_id)
+
+    if request is None:
+        request = PipelineConfigRequest()
+
+    # Load activity data (noon-to-noon)
+    start_dt = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
+    end_dt = start_dt + timedelta(hours=24)
+
+    data_result = await db.execute(
+        select(RawActivityData)
+        .where(
+            and_(
+                RawActivityData.file_id == file_id,
+                RawActivityData.timestamp >= start_dt,
+                RawActivityData.timestamp < end_dt,
+            )
+        )
+        .order_by(RawActivityData.timestamp)
+    )
+    rows = data_result.scalars().all()
+    if not rows:
+        return AutoScoreResponse(notes=["No activity data found for this date"])
+
+    timestamps = [naive_to_unix(row.timestamp) for row in rows]
+    activity_counts = [float(row.axis_y or 0) for row in rows]
+
+    params = request.to_pipeline_params()
+
+    # Build raw diary
+    raw_diary: RawDiaryInput | None = None
+    from sleep_scoring_web.services.pipeline.params import GUIDER_NONE
+
+    if request.period_guider != GUIDER_NONE:
+        from sleep_scoring_web.db.models import DiaryEntry as DiaryEntryModel
+
+        diary_result = await db.execute(
+            select(DiaryEntryModel).where(
+                and_(
+                    DiaryEntryModel.file_id == file_id,
+                    DiaryEntryModel.analysis_date == analysis_date,
+                )
+            )
+        )
+        diary = diary_result.scalar_one_or_none()
+        if diary and _diary_time_present(diary.lights_out) and _diary_time_present(diary.wake_time):
+            diary_naps, diary_nonwear = _extract_diary_periods(diary)
+
+            raw_diary = RawDiaryInput(
+                bed_time=diary.bed_time,
+                onset_time=diary.lights_out,
+                wake_time=diary.wake_time,
+                naps=diary_naps,
+                nonwear=diary_nonwear,
+                analysis_date=analysis_date.isoformat(),
+            )
+        else:
+            return AutoScoreResponse(notes=["Incomplete diary for this date - auto-score requires lights_out and wake_time"])
+
+    # Run pipeline
+    pipeline = ScoringPipeline(params)
+    result = pipeline.run(
+        timestamps,
+        activity_counts,
+        raw_diary=raw_diary,
+    )
+
+    legacy = result.to_legacy_dict()
+    return AutoScoreResponse(
+        sleep_markers=legacy["sleep_markers"],
+        nap_markers=legacy["nap_markers"],
+        notes=legacy["notes"],
     )

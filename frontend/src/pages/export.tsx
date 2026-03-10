@@ -16,7 +16,8 @@ import { useSleepScoringStore } from "@/store";
 import { fetchWithAuth, getApiBase } from "@/api/client";
 import { useAppCapabilities } from "@/hooks/useAppCapabilities";
 import { getLocalFiles, type FileRecord } from "@/db";
-import { generateLocalExportRows, rowsToCsv, downloadCsv } from "@/services/local-export";
+import { generateLocalExportRows, rowsToCsv, downloadCsv, downloadBlob, downloadMultipleCsvs } from "@/services/local-export";
+import { filesQueryOptions, exportColumnsQueryOptions } from "@/api/query-options";
 
 interface ExportColumnInfo {
   name: string;
@@ -102,15 +103,13 @@ export function ExportPage() {
 
   // Fetch available files (server only)
   const { data: filesData, isLoading: filesLoading } = useQuery({
-    queryKey: ["files"],
-    queryFn: () => fetchWithAuth<FileListResponse>(`${getApiBase()}/files`),
+    ...filesQueryOptions(),
     enabled: isAuthenticated && caps.server,
   });
 
   // Fetch available columns (server only)
   const { data: columnsData, isLoading: columnsLoading } = useQuery({
-    queryKey: ["export-columns"],
-    queryFn: () => fetchWithAuth<ExportColumnsResponse>(`${getApiBase()}/export/columns`),
+    ...exportColumnsQueryOptions(),
     enabled: isAuthenticated && caps.server,
   });
 
@@ -119,47 +118,49 @@ export function ExportPage() {
     : [];
   const activeSelectedColumns = selectedColumns ?? defaultSelectedColumns;
 
-  // Export mutation
+  /** Download a single CSV from the given export endpoint. */
+  const downloadFromEndpoint = async (endpoint: string, request: ExportRequest): Promise<boolean> => {
+    const { sitePassword, username } = useSleepScoringStore.getState();
+    const response = await fetch(`${getApiBase()}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(sitePassword ? { "X-Site-Password": sitePassword } : {}),
+        "X-Username": username || "anonymous",
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) return false;
+
+    const disposition = response.headers.get("Content-Disposition");
+    let filename = "export.csv";
+    if (disposition) {
+      const match = disposition.match(/filename="(.+)"/);
+      if (match) filename = match[1];
+    }
+
+    // Backend returns error CSVs with this filename — skip download
+    if (filename === "export_error.csv") return false;
+
+    downloadBlob(await response.blob(), filename);
+    return true;
+  };
+
+  // Export mutation — downloads sleep + nonwear as separate files
   const exportMutation = useMutation({
     mutationFn: async (request: ExportRequest) => {
-      const { sitePassword, username } = useSleepScoringStore.getState();
-      const response = await fetch(`${getApiBase()}/export/csv/download`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(sitePassword ? { "X-Site-Password": sitePassword } : {}),
-          "X-Username": username || "anonymous",
-        },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        throw new Error("Export failed");
+      const [sleepOk, nonwearOk] = await Promise.all([
+        downloadFromEndpoint("/export/csv/download", request),
+        downloadFromEndpoint("/export/csv/download/nonwear", request).catch(() => false),
+      ]);
+      if (!sleepOk) throw new Error("Export failed");
+      return { success: true, nonwearOk };
+    },
+    onSuccess: (data) => {
+      if (!data.nonwearOk) {
+        alert({ title: "Partial Export", description: "Sleep data exported successfully, but nonwear markers could not be exported. There may be no nonwear data for the selected files." });
       }
-
-      // Get filename from Content-Disposition header
-      const disposition = response.headers.get("Content-Disposition");
-      const contentType = response.headers.get("Content-Type") || "";
-      let filename = contentType.includes("zip") ? "export.zip" : "export.csv";
-      if (disposition) {
-        const match = disposition.match(/filename="(.+)"/);
-        if (match) {
-          filename = match[1];
-        }
-      }
-
-      // Download the file
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      return { success: true, filename };
     },
     onError: (error: Error) => {
       alert({ title: "Export Failed", description: error.message });
@@ -249,13 +250,24 @@ export function ExportPage() {
     }
     setIsLocalExporting(true);
     try {
-      const rows = await generateLocalExportRows(selectedLocalFileIds, username || "anonymous");
-      if (rows.length === 0) {
+      const { sleepRows, nonwearRows } = await generateLocalExportRows(selectedLocalFileIds, username || "anonymous");
+      if (sleepRows.length === 0 && nonwearRows.length === 0) {
         alert({ title: "No Data", description: "No scored data found for the selected files" });
         return;
       }
-      const csv = rowsToCsv(rows);
-      downloadCsv(csv, `sleep-scoring-export-${new Date().toISOString().slice(0, 10)}.csv`);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const files: Array<{ csv: string; filename: string }> = [];
+      if (sleepRows.length > 0) {
+        files.push({ csv: rowsToCsv(sleepRows), filename: `sleep_export_${dateStr}.csv` });
+      }
+      if (nonwearRows.length > 0) {
+        files.push({ csv: rowsToCsv(nonwearRows), filename: `nonwear_export_${dateStr}.csv` });
+      }
+      if (files.length === 1) {
+        downloadCsv(files[0].csv, files[0].filename);
+      } else {
+        downloadMultipleCsvs(files);
+      }
     } catch (err) {
       alert({ title: "Export Failed", description: err instanceof Error ? err.message : "Export failed" });
     } finally {

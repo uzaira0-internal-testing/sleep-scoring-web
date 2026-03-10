@@ -7,6 +7,20 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { isTauri, deleteTauriWorkspace } from "@/lib/tauri";
 
+/** Generate a UUID v4, with fallback for insecure (HTTP) contexts. */
+export function generateId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Fallback: crypto.getRandomValues is available in all modern browsers regardless of context
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export interface WorkspaceEntry {
   id: string;
   displayName: string;
@@ -32,7 +46,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       workspaces: [],
 
       createWorkspace: (serverUrl, displayName) => {
-        const id = crypto.randomUUID();
+        const id = generateId();
         const entry: WorkspaceEntry = {
           id,
           displayName,
@@ -106,16 +120,27 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
   ),
 );
 
-// --- Active workspace ID (per-tab via sessionStorage) ---
+// --- Active workspace ID (per-tab, reactive) ---
+// Backed by sessionStorage for tab isolation, but wrapped in a tiny Zustand store
+// so that React components re-render when the active workspace changes.
 
 const ACTIVE_WS_KEY = "sleep-scoring-active-workspace";
 
+interface ActiveWsStore {
+  activeId: string | null;
+}
+
+const useActiveWsStore = create<ActiveWsStore>()(() => ({
+  activeId: (() => { try { return sessionStorage.getItem(ACTIVE_WS_KEY); } catch { return null; } })(),
+}));
+
 export function getActiveWorkspaceId(): string | null {
-  try {
-    return sessionStorage.getItem(ACTIVE_WS_KEY);
-  } catch {
-    return null;
-  }
+  return useActiveWsStore.getState().activeId;
+}
+
+/** React hook — subscribe to the active workspace ID reactively. */
+export function useActiveWorkspaceId(): string | null {
+  return useActiveWsStore((s) => s.activeId);
 }
 
 export function setActiveWorkspaceId(id: string): void {
@@ -124,6 +149,7 @@ export function setActiveWorkspaceId(id: string): void {
   } catch {
     // sessionStorage unavailable
   }
+  useActiveWsStore.setState({ activeId: id });
 }
 
 export function clearActiveWorkspaceId(): void {
@@ -132,4 +158,5 @@ export function clearActiveWorkspaceId(): void {
   } catch {
     // sessionStorage unavailable
   }
+  useActiveWsStore.setState({ activeId: null });
 }

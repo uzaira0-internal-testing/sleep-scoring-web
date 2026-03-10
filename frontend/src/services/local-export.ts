@@ -1,12 +1,14 @@
 /**
  * Client-side CSV export for local files.
  * Generates the same column format as the backend export API.
+ * Sleep and nonwear markers are exported as separate CSV files.
  */
 import { getLocalFiles, getAllMarkersForFile, getAllActivityDaysForFile } from "@/db";
 import { computePeriodMetrics } from "@/lib/sleep-metrics";
 import { loadActivityForMetrics } from "@/services/local-data-helpers";
 
 const NO_SLEEP_MARKER = "NO_SLEEP" as const;
+const MANUAL_NONWEAR_MARKER = "Manual Nonwear" as const;
 
 interface ExportRow {
   filename: string;
@@ -24,24 +26,30 @@ interface ExportRow {
   notes: string;
 }
 
+export interface LocalExportResult {
+  sleepRows: ExportRow[];
+  nonwearRows: ExportRow[];
+}
+
 function formatTimestamp(ms: number | null): string | null {
   if (ms == null) return null;
   return new Date(ms).toISOString();
 }
 
 /**
- * Generate CSV export rows for local files.
+ * Generate separate sleep and nonwear CSV export rows for local files.
  */
 export async function generateLocalExportRows(
   fileIds: number[],
   username: string,
-): Promise<ExportRow[]> {
+): Promise<LocalExportResult> {
   const allFiles = await getLocalFiles();
   const targetFiles = fileIds.length > 0
     ? allFiles.filter((f) => f.id != null && fileIds.includes(f.id))
     : allFiles;
 
-  const rows: ExportRow[] = [];
+  const sleepRows: ExportRow[] = [];
+  const nonwearRows: ExportRow[] = [];
 
   for (const file of targetFiles) {
     if (!file.id) continue;
@@ -57,39 +65,74 @@ export async function generateLocalExportRows(
       if (!markers) continue;
 
       if (markers.isNoSleep) {
-        rows.push({
+        // Emit sentinel row for no-sleep dates
+        sleepRows.push({
           filename: file.filename, studyDate: date, periodIndex: 0,
           markerType: NO_SLEEP_MARKER, onsetTime: null, offsetTime: null,
           tst: null, sleepEfficiency: null, waso: null, sol: null, awakenings: null,
           isNoSleep: true, notes: markers.notes,
         });
-        continue;
+
+        // Also emit NAP markers on this no-sleep date
+        if (markers.sleepMarkers.length > 0) {
+          const { timestamps, algorithmResults } = loadActivityForMetrics(activityMap.get(date));
+          for (const sm of markers.sleepMarkers) {
+            let metrics: ReturnType<typeof computePeriodMetrics> = null;
+            if (algorithmResults && timestamps.length > 0 && sm.onsetTimestamp && sm.offsetTimestamp) {
+              metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp, sm.offsetTimestamp);
+            }
+            sleepRows.push({
+              filename: file.filename, studyDate: date, periodIndex: sm.markerIndex,
+              markerType: sm.markerType, onsetTime: formatTimestamp(sm.onsetTimestamp),
+              offsetTime: formatTimestamp(sm.offsetTimestamp),
+              tst: metrics?.totalSleepTimeMinutes ?? null,
+              sleepEfficiency: metrics?.sleepEfficiency ?? null,
+              waso: metrics?.wasoMinutes ?? null,
+              sol: metrics?.sleepOnsetLatencyMinutes ?? null,
+              awakenings: metrics?.numberOfAwakenings ?? null,
+              isNoSleep: true, notes: markers.notes,
+            });
+          }
+        }
+        // Don't continue — let nonwear loop below run for no-sleep dates too
+      } else {
+        const { timestamps, algorithmResults } = loadActivityForMetrics(activityMap.get(date));
+
+        for (const sm of markers.sleepMarkers) {
+          let metrics: ReturnType<typeof computePeriodMetrics> = null;
+          if (algorithmResults && timestamps.length > 0 && sm.onsetTimestamp && sm.offsetTimestamp) {
+            metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp, sm.offsetTimestamp);
+          }
+
+          sleepRows.push({
+            filename: file.filename, studyDate: date, periodIndex: sm.markerIndex,
+            markerType: sm.markerType, onsetTime: formatTimestamp(sm.onsetTimestamp),
+            offsetTime: formatTimestamp(sm.offsetTimestamp),
+            tst: metrics?.totalSleepTimeMinutes ?? null,
+            sleepEfficiency: metrics?.sleepEfficiency ?? null,
+            waso: metrics?.wasoMinutes ?? null,
+            sol: metrics?.sleepOnsetLatencyMinutes ?? null,
+            awakenings: metrics?.numberOfAwakenings ?? null,
+            isNoSleep: false, notes: markers.notes,
+          });
+        }
       }
 
-      const { timestamps, algorithmResults } = loadActivityForMetrics(activityMap.get(date));
-
-      for (const sm of markers.sleepMarkers) {
-        let metrics: ReturnType<typeof computePeriodMetrics> = null;
-        if (algorithmResults && timestamps.length > 0 && sm.onsetTimestamp && sm.offsetTimestamp) {
-          metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp, sm.offsetTimestamp);
-        }
-
-        rows.push({
-          filename: file.filename, studyDate: date, periodIndex: sm.markerIndex,
-          markerType: sm.markerType, onsetTime: formatTimestamp(sm.onsetTimestamp),
-          offsetTime: formatTimestamp(sm.offsetTimestamp),
-          tst: metrics?.totalSleepTimeMinutes ?? null,
-          sleepEfficiency: metrics?.sleepEfficiency ?? null,
-          waso: metrics?.wasoMinutes ?? null,
-          sol: metrics?.sleepOnsetLatencyMinutes ?? null,
-          awakenings: metrics?.numberOfAwakenings ?? null,
+      // Nonwear markers go to separate list
+      for (const nw of markers.nonwearMarkers) {
+        nonwearRows.push({
+          filename: file.filename, studyDate: date, periodIndex: nw.markerIndex ?? 0,
+          markerType: MANUAL_NONWEAR_MARKER,
+          onsetTime: formatTimestamp(nw.startTimestamp),
+          offsetTime: formatTimestamp(nw.endTimestamp),
+          tst: null, sleepEfficiency: null, waso: null, sol: null, awakenings: null,
           isNoSleep: false, notes: markers.notes,
         });
       }
     }
   }
 
-  return rows;
+  return { sleepRows, nonwearRows };
 }
 
 /** Escape a CSV field value (RFC 4180). */
@@ -134,11 +177,8 @@ export function rowsToCsv(rows: ExportRow[]): string {
   return lines.join("\n");
 }
 
-/**
- * Trigger a browser download of a CSV string.
- */
-export function downloadCsv(csv: string, filename: string): void {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+/** Trigger a browser download of a Blob. */
+export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -147,4 +187,18 @@ export function downloadCsv(csv: string, filename: string): void {
   a.click();
   URL.revokeObjectURL(url);
   document.body.removeChild(a);
+}
+
+/** Trigger a browser download of a CSV string. */
+export function downloadCsv(csv: string, filename: string): void {
+  downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), filename);
+}
+
+/** Trigger browser downloads for multiple CSV files sequentially. */
+export function downloadMultipleCsvs(
+  files: Array<{ csv: string; filename: string }>,
+): void {
+  for (const file of files) {
+    downloadCsv(file.csv, file.filename);
+  }
 }

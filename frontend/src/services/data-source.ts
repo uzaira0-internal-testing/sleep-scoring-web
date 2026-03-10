@@ -176,12 +176,14 @@ export class ServerDataSource implements DataSource {
     });
     if (!response.ok) throw new Error(`Failed to load activity: ${response.status}`);
     const data = await response.json();
+    // Normalize: API wraps columnar data in `data` field (ActivityDataResponse.data)
+    const d = data.data ?? data;
     return {
-      timestamps: data.data?.timestamps ?? data.timestamps ?? [],
-      axisX: data.data?.axis_x ?? [],
-      axisY: data.data?.axis_y ?? data.axis_y ?? [],
-      axisZ: data.data?.axis_z ?? [],
-      vectorMagnitude: data.data?.vector_magnitude ?? data.vector_magnitude ?? [],
+      timestamps: d.timestamps ?? [],
+      axisX: d.axis_x ?? [],
+      axisY: d.axis_y ?? [],
+      axisZ: d.axis_z ?? [],
+      vectorMagnitude: d.vector_magnitude ?? [],
       algorithmResults: data.algorithm_results ?? null,
       nonwearResults: data.nonwear_results ?? null,
       viewStart: data.view_start ?? null,
@@ -345,7 +347,10 @@ export class ServerDataSource implements DataSource {
   }
 
   private getHeaders(): Record<string, string> {
-    return this.sitePassword ? { "X-Site-Password": this.sitePassword } : {};
+    const headers: Record<string, string> = {};
+    if (this.sitePassword) headers["X-Site-Password"] = this.sitePassword;
+    if (this.username) headers["X-Username"] = this.username;
+    return headers;
   }
 }
 
@@ -369,6 +374,14 @@ function unpackActivityDay(
   const axisY = Array.from(new Float64Array(day.axisY));
   const vectorMagnitude = Array.from(new Float64Array(day.vectorMagnitude));
 
+  // Validate array lengths match — mismatched lengths indicate corrupt data
+  if (timestamps.length !== axisY.length || timestamps.length !== vectorMagnitude.length) {
+    console.error(
+      `[unpackActivityDay] Array length mismatch: timestamps=${timestamps.length} axisY=${axisY.length} vectorMagnitude=${vectorMagnitude.length}`,
+    );
+    throw new Error("Corrupt activity data: array lengths do not match");
+  }
+
   const algoKeys = Object.keys(day.algorithmResults);
   const algoKey = (preferredAlgorithm && day.algorithmResults[preferredAlgorithm])
     ? preferredAlgorithm
@@ -391,19 +404,9 @@ export class LocalDataSource implements DataSource {
   async loadActivityData(fileId: number, date: string, options?: { algorithm?: string; viewHours?: number }): Promise<ActivityData> {
     const day = await localDb.getActivityDay(fileId, date);
     if (!day) {
-      console.warn(`[LocalDataSource] No activity data in IndexedDB for fileId=${fileId} date=${date}`);
-      return {
-        timestamps: [],
-        axisX: [],
-        axisY: [],
-        axisZ: [],
-        vectorMagnitude: [],
-        algorithmResults: null,
-        nonwearResults: null,
-        viewStart: null,
-        viewEnd: null,
-        sensorNonwearPeriods: [],
-      };
+      // Throw rather than silently returning empty data — callers (useQuery) handle
+      // the error and can show an appropriate message to the user.
+      throw new Error(`No activity data found for fileId=${fileId} date=${date}. File may not be processed yet.`);
     }
 
     const unpacked = unpackActivityDay(day, options?.algorithm);

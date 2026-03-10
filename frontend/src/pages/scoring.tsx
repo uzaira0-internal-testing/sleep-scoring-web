@@ -23,13 +23,12 @@ import { ColorThemePopover } from "@/components/color-theme-popover";
 // MetricsPanel and ConsensusPanel hidden by default — available via popout if needed
 import { useKeyboardShortcuts, useMarkerAutoSave, useMarkerLoad, useColorThemeSync } from "@/hooks";
 import { getApiBase, fetchWithAuth, settingsApi } from "@/api/client";
-import type { FileListResponse, ActivityDataResponse, DateStatus, ConsensusBallotCandidate } from "@/api/types";
+import { studySettingsQueryOptions } from "@/api/query-options";
+import { MARKER_TYPES, type FileListResponse, type ActivityDataResponse, type DateStatus, type ConsensusBallotCandidate } from "@/api/types";
 import { formatTime, formatDuration } from "@/utils/formatters";
 import { resolveEditedTimeToTimestamp } from "@/utils/time-edit";
 import {
   ACTIVITY_SOURCE_OPTIONS,
-  ALGORITHM_OPTIONS,
-  SLEEP_DETECTION_OPTIONS,
   VIEW_MODE_OPTIONS,
 } from "@/constants/options";
 import { useDataSource } from "@/contexts/data-source-context";
@@ -164,7 +163,7 @@ export function ScoringPage() {
 
   // Study settings (for auto-nonwear threshold) — server-only
   const { data: studySettings } = useQuery({
-    queryKey: ["study-settings"],
+    ...studySettingsQueryOptions(),
     queryFn: settingsApi.getStudySettings,
     enabled: !isLocal,
   });
@@ -307,7 +306,9 @@ export function ScoringPage() {
   }, [currentFileId, currentDate]);
 
   const copyCandidateMarkers = useCallback(async (candidate: ConsensusBallotCandidate) => {
-    const hasExisting = sleepMarkers.length > 0 || nonwearMarkers.length > 0 || isNoSleep;
+    // Read fresh state via getState() to avoid stale closure after await
+    const preState = useSleepScoringStore.getState();
+    const hasExisting = preState.sleepMarkers.length > 0 || preState.nonwearMarkers.length > 0 || preState.isNoSleep;
     if (hasExisting) {
       const ok = await confirm({ title: "Replace Markers", description: "Replace your current markers with this candidate set?" });
       if (!ok) return;
@@ -320,12 +321,29 @@ export function ScoringPage() {
     store.pushMarkerSnapshot();
 
     if (candidate.is_no_sleep) {
+      const copiedNaps = (candidate.sleep_markers_json ?? [])
+        .filter((m) => m.marker_type === "NAP" && m.onset_timestamp != null)
+        .sort((a, b) => (a.marker_index ?? 9999) - (b.marker_index ?? 9999))
+        .map((m, i) => ({
+          onsetTimestamp: Number(m.onset_timestamp) * 1000,
+          offsetTimestamp: m.offset_timestamp != null ? Number(m.offset_timestamp) * 1000 : null,
+          markerIndex: i + 1,
+          markerType: MARKER_TYPES.NAP,
+        }));
+      const copiedNonwear = (candidate.nonwear_markers_json ?? [])
+        .filter((m) => m.start_timestamp != null)
+        .sort((a, b) => (a.marker_index ?? 9999) - (b.marker_index ?? 9999))
+        .map((m, i) => ({
+          startTimestamp: Number(m.start_timestamp) * 1000,
+          endTimestamp: m.end_timestamp != null ? Number(m.end_timestamp) * 1000 : null,
+          markerIndex: i + 1,
+        }));
       useSleepScoringStore.setState({
         isNoSleep: true,
-        sleepMarkers: [],
-        nonwearMarkers: [],
+        sleepMarkers: copiedNaps,
+        nonwearMarkers: copiedNonwear,
         isDirty: true,
-        selectedPeriodIndex: null,
+        selectedPeriodIndex: copiedNaps.length > 0 ? 0 : null,
         markerMode: "sleep",
       });
       return;
@@ -358,11 +376,7 @@ export function ScoringPage() {
       selectedPeriodIndex: copiedSleepMarkers.length > 0 ? 0 : null,
       markerMode: "sleep",
     });
-  }, [
-    sleepMarkers.length,
-    nonwearMarkers.length,
-    isNoSleep,
-  ]);
+  }, []);
 
   const autoScoreRef = useRef(false);
   // Track which file+date already had auto-score attempted (prevents re-trigger after cancel)
@@ -652,10 +666,10 @@ export function ScoringPage() {
               size="sm"
               className="h-7 text-xs px-2 shrink-0"
               onClick={() => setMarkerMode("sleep")}
-              disabled={isNoSleep}
+              title={isNoSleep ? "Place nap markers (no main sleep)" : undefined}
             >
               <Moon className="h-3.5 w-3.5 mr-1" />
-              Sleep
+              {isNoSleep ? "Nap" : "Sleep"}
             </Button>
             <Button
               variant={markerMode === "nonwear" ? "default" : "outline"}
@@ -673,14 +687,19 @@ export function ScoringPage() {
             size="sm"
             className={`h-7 text-xs px-2 shrink-0 ${isNoSleep ? "bg-amber-600 hover:bg-amber-700" : ""}`}
             onClick={async () => {
-              if (!isNoSleep && sleepMarkers.length > 0) {
-                const ok = await confirm({ title: "No Sleep", description: "Marking as 'No Sleep' will clear all sleep markers. Continue?", variant: "destructive", confirmLabel: "Clear & Mark" });
-                if (ok) setIsNoSleep(true);
+              const state = useSleepScoringStore.getState();
+              if (!state.isNoSleep) {
+                const hasMainSleep = state.sleepMarkers.some(m => m.markerType === MARKER_TYPES.MAIN_SLEEP);
+                if (hasMainSleep) {
+                  const ok = await confirm({ title: "No Sleep", description: "Marking as 'No Sleep' will clear main sleep markers. Nap markers will be preserved. Continue?", variant: "destructive", confirmLabel: "Clear & Mark" });
+                  if (!ok) return;
+                }
+                useSleepScoringStore.getState().setIsNoSleep(true);
               } else {
-                setIsNoSleep(!isNoSleep);
+                state.setIsNoSleep(false);
               }
             }}
-            title={isNoSleep ? "Click to allow sleep markers" : "Mark this date as having no sleep"}
+            title={isNoSleep ? "Click to allow main sleep markers" : "Mark this date as having no main sleep"}
           >
             <Ban className="h-3.5 w-3.5 mr-1" />
             No Sleep

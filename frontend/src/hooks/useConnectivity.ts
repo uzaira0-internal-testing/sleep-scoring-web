@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useSyncStore } from "@/store/sync-store";
 import { useSleepScoringStore } from "@/store";
-import { getApiBase } from "@/api/client";
+import { config } from "@/config";
 import { syncAll } from "@/services/sync";
 import * as localDb from "@/db";
 
@@ -59,7 +59,7 @@ export function useConnectivity(enabled: boolean = true) {
     }
 
     try {
-      const response = await fetch(`${getApiBase()}/health`, {
+      const response = await fetch(`${config.basePath}/health`, {
         method: "GET",
         signal: AbortSignal.timeout(5000),
       });

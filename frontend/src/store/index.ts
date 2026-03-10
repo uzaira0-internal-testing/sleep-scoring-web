@@ -485,7 +485,6 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         setCurrentDateIndex: (index) => {
           if (_isNavigating) return;
           _isNavigating = true;
-          const safetyTimer = setTimeout(() => { _isNavigating = false; }, 10000);
           void (async () => {
             try {
               const { currentDateIndex, isDirty, _flushSave } = get();
@@ -494,8 +493,12 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               }
 
               // Flush pending save and block navigation on failure.
+              // Race against a 10s timeout so a hung save doesn't lock navigation forever.
               if (isDirty && _flushSave) {
-                const saved = await _flushSave();
+                const saved = await Promise.race([
+                  _flushSave(),
+                  new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10_000)),
+                ]);
                 if (!saved) return;
               }
 
@@ -515,7 +518,6 @@ export const useSleepScoringStore = create<SleepScoringState>()(
                 markerHistoryIndex: -1,
               });
             } finally {
-              clearTimeout(safetyTimer);
               _isNavigating = false;
             }
           })();
@@ -524,7 +526,6 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         navigateDate: (direction) => {
           if (_isNavigating) return; // Prevent double-nav from rapid clicks
           _isNavigating = true;
-          const safetyTimer = setTimeout(() => { _isNavigating = false; }, 10000);
           void (async () => {
             try {
               const pre = get();
@@ -532,8 +533,12 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               if (targetIndex < 0 || targetIndex >= pre.availableDates.length) return;
 
               // Flush pending save and block navigation on failure.
+              // Race against a 10s timeout so a hung save doesn't lock navigation forever.
               if (pre.isDirty && pre._flushSave) {
-                const saved = await pre._flushSave();
+                const saved = await Promise.race([
+                  pre._flushSave(),
+                  new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10_000)),
+                ]);
                 if (!saved) return;
               }
 
@@ -560,7 +565,6 @@ export const useSleepScoringStore = create<SleepScoringState>()(
                 markerHistoryIndex: -1,
               });
             } finally {
-              clearTimeout(safetyTimer);
               _isNavigating = false;
             }
           })();
@@ -633,11 +637,6 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           }
 
           if (creationMode === "idle") {
-            // Check if date is marked as "no sleep" - prevent sleep marker creation
-            if (markerMode === "sleep" && isNoSleep) {
-              console.warn("Cannot create sleep markers when date is marked as 'No Sleep'");
-              return;
-            }
             // Check marker limits before starting creation
             if (markerMode === "sleep" && sleepMarkers.length >= MARKER_LIMITS.MAX_SLEEP_PERIODS_PER_DAY) {
               console.warn(`Cannot create more than ${MARKER_LIMITS.MAX_SLEEP_PERIODS_PER_DAY} sleep periods per day`);
@@ -658,8 +657,10 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             pushMarkerSnapshot();
 
             if (markerMode === "sleep") {
-              // Determine marker type: first is MAIN_SLEEP, others are NAP
-              const markerType = sleepMarkers.length === 0 ? MARKER_TYPES.MAIN_SLEEP : MARKER_TYPES.NAP;
+              // Determine marker type: force NAP when isNoSleep, otherwise first is MAIN_SLEEP
+              const markerType = isNoSleep
+                ? MARKER_TYPES.NAP
+                : (sleepMarkers.length === 0 ? MARKER_TYPES.MAIN_SLEEP : MARKER_TYPES.NAP);
               const newArrayIndex = sleepMarkers.length;
               const newMarker = {
                 onsetTimestamp: onset,
@@ -697,7 +698,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           set({ creationMode: "idle", pendingOnsetTimestamp: null }),
 
         addSleepMarker: (onsetTimestamp, offsetTimestamp, markerType) => {
-          const { sleepMarkers, pushMarkerSnapshot } = get();
+          const { sleepMarkers, pushMarkerSnapshot, isNoSleep } = get();
           // Validate marker limit
           if (sleepMarkers.length >= MARKER_LIMITS.MAX_SLEEP_PERIODS_PER_DAY) {
             console.warn(`Cannot create more than ${MARKER_LIMITS.MAX_SLEEP_PERIODS_PER_DAY} sleep periods per day`);
@@ -708,7 +709,11 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             onsetTimestamp,
             offsetTimestamp,
             markerIndex: sleepMarkers.length + 1,  // 1-indexed to match backend
-            markerType: markerType ?? (sleepMarkers.length === 0 ? MARKER_TYPES.MAIN_SLEEP : MARKER_TYPES.NAP),
+            markerType: markerType ?? (
+              isNoSleep
+                ? MARKER_TYPES.NAP
+                : (sleepMarkers.length === 0 ? MARKER_TYPES.MAIN_SLEEP : MARKER_TYPES.NAP)
+            ),
           };
           set({
             sleepMarkers: [...sleepMarkers, newMarker],
@@ -789,12 +794,16 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         setIsNoSleep: (isNoSleep) => {
           get().pushMarkerSnapshot();
           if (isNoSleep) {
-            // When marking as "no sleep", clear all sleep markers
+            // When marking as "no sleep", only clear MAIN_SLEEP markers; preserve NAPs
+            const { sleepMarkers } = get();
+            const napsOnly = sleepMarkers
+              .filter(m => m.markerType !== MARKER_TYPES.MAIN_SLEEP)
+              .map((m, i) => ({ ...m, markerIndex: i + 1 }));
             set({
               isNoSleep: true,
-              sleepMarkers: [],
+              sleepMarkers: napsOnly,
               isDirty: true,
-              selectedPeriodIndex: null,
+              selectedPeriodIndex: napsOnly.length > 0 ? 0 : null,
             });
           } else {
             set({ isNoSleep: false, isDirty: true });

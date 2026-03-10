@@ -69,7 +69,9 @@ export async function computeLocalAnalysis(username: string): Promise<LocalAnaly
 
       fileScoredDates++;
       scoredDates++;
-      if (markers.isNoSleep) continue;
+      // Skip metric computation only if there are no sleep markers at all.
+      // No-sleep dates can still have NAP markers that need metrics.
+      if (markers.sleepMarkers.length === 0) continue;
 
       const { timestamps, algorithmResults } = loadActivityForMetrics(activityMap.get(date));
 

@@ -10,6 +10,7 @@ import { StudySettingsPage } from "@/pages/study-settings";
 import { DataSettingsPage } from "@/pages/data-settings";
 import { AnalysisPage } from "@/pages/analysis";
 import { ExportPage } from "@/pages/export";
+import { AdminAssignmentsPage } from "@/pages/admin-assignments";
 import { config } from "@/config";
 import { getActiveWorkspaceId, useWorkspaceStore } from "@/store/workspace-store";
 import { switchDb, getDb } from "@/lib/workspace-db";
@@ -100,6 +101,7 @@ function App() {
           <Route path="export" element={<ExportPage />} />
           <Route path="settings/study" element={<StudySettingsPage />} />
           <Route path="settings/data" element={<DataSettingsPage />} />
+          <Route path="admin/assignments" element={<AdminAssignmentsPage />} />
         </Route>
 
         {/* Catch-all redirect */}

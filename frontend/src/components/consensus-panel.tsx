@@ -182,7 +182,9 @@ export function ConsensusPanel({ compact = false }: ConsensusPanelProps) {
               </div>
 
               {annotation.is_no_sleep ? (
-                <span className="text-muted-foreground italic">No sleep</span>
+                <span className="text-muted-foreground italic">
+                  No sleep{(annotation.sleep_markers_json?.length ?? 0) > 0 ? ` (${annotation.sleep_markers_json!.length} nap${annotation.sleep_markers_json!.length === 1 ? "" : "s"})` : ""}
+                </span>
               ) : (
                 <div className="space-y-0.5">
                   <div>

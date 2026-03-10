@@ -12,6 +12,35 @@ export interface SyncResult {
   errors: string[];
 }
 
+/** Fetch with exponential backoff for transient network errors. */
+async function fetchWithRetry(
+  url: string,
+  init?: RequestInit,
+  maxRetries = 3,
+): Promise<Response> {
+  // Delays between retries (index 0 = delay before 1st retry, etc.)
+  const retryDelays = [1000, 3000, 5000];
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, init);
+      // Don't retry client errors (4xx) — only server/network errors
+      if (response.status < 500) return response;
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, retryDelays[attempt] ?? 5000));
+        continue;
+      }
+      return response;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, retryDelays[attempt] ?? 5000));
+      }
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Push pending local markers to server.
  */
@@ -54,7 +83,7 @@ async function pushMarkers(
     };
 
     try {
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `${getApiBase()}/markers/${file.serverFileId}/${marker.date}`,
         {
           method: "PUT",
@@ -103,7 +132,7 @@ async function pullMarkers(
         const localMarker = await localDb.getMarkers(file.id!, date, username);
         if (localMarker?.syncStatus === "pending") continue;
 
-        const response = await fetch(
+        const response = await fetchWithRetry(
           `${getApiBase()}/markers/${file.serverFileId}/${date}`,
           {
             headers: {
@@ -154,13 +183,6 @@ async function pullMarkers(
           // Re-check inside transaction — if became pending since our check, skip
           if (current?.syncStatus === "pending") return false;
 
-          const contentHash = await computeMarkerHash({
-            sleepMarkers,
-            nonwearMarkers,
-            isNoSleep: data.is_no_sleep ?? false,
-            notes: data.notes ?? "",
-          });
-
           const record = {
             fileId: file.id!,
             date,
@@ -169,7 +191,7 @@ async function pullMarkers(
             nonwearMarkers,
             isNoSleep: data.is_no_sleep ?? false,
             notes: data.notes ?? "",
-            contentHash,
+            contentHash: remoteHash,
             syncStatus: "synced" as const,
             lastModifiedAt: new Date().toISOString(),
           };

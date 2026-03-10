@@ -50,3 +50,34 @@ async def require_file_access(db, username: str, file_id: int) -> None:
         status_code=status.HTTP_404_NOT_FOUND,
         detail="File not found",
     )
+
+
+async def require_file_and_access(db, username: str, file_id: int):
+    """
+    Load a file and verify access in a single operation.
+
+    Returns the FileModel if access is allowed, raises 404 otherwise.
+    Prevents TOCTOU between separate access check + file load queries.
+    """
+    from sleep_scoring_web.db.models import File as FileModel
+    from sleep_scoring_web.services.file_identity import is_excluded_file_obj
+
+    # Load the file first
+    result = await db.execute(
+        select(FileModel).where(FileModel.id == file_id)
+    )
+    file = result.scalar_one_or_none()
+    if not file or is_excluded_file_obj(file):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+
+    # Check access
+    if not await user_can_access_file(db, username, file_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+
+    return file

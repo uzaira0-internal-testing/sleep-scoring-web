@@ -28,3 +28,8 @@ export function terminateWasmWorker(): void {
     _api = null;
   }
 }
+
+// Clean up worker on page unload to prevent memory leaks
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => terminateWasmWorker());
+}

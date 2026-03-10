@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, select
 
 from sleep_scoring_web.db.models import File, Marker, SleepMetric, UserAnnotation
+from sleep_scoring_web.schemas.enums import MarkerCategory
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 _MARKER_TYPE_DISPLAY = {
     "MAIN_SLEEP": "Main Sleep",
     "NAP": "Nap",
+    "manual": "Manual Nonwear",
 }
 
 _ALGORITHM_DISPLAY = {
@@ -46,6 +48,30 @@ _VERIFICATION_DISPLAY = {
     "verified": "Verified",
     "rejected": "Rejected",
 }
+
+
+def _empty_metric_fields(
+    detection_rule: str = "",
+    verification_status: str = "",
+) -> dict[str, str]:
+    """Return empty metric/algorithm fields for rows without computed metrics."""
+    return {
+        "Time in Bed (min)": "",
+        "Total Sleep Time (min)": "",
+        "WASO (min)": "",
+        "Sleep Onset Latency (min)": "",
+        "Number of Awakenings": "",
+        "Avg Awakening Length (min)": "",
+        "Sleep Efficiency (%)": "",
+        "Movement Index": "",
+        "Fragmentation Index": "",
+        "Sleep Fragmentation Index": "",
+        "Total Activity Counts": "",
+        "Non-zero Epochs": "",
+        "Algorithm": "",
+        "Detection Rule": detection_rule,
+        "Verification Status": verification_status,
+    }
 
 
 # =============================================================================
@@ -73,7 +99,7 @@ EXPORT_COLUMNS: list[ColumnDefinition] = [
     # Period Info
     ColumnDefinition("Study Date", "Period Info", "Study date being scored"),
     ColumnDefinition("Period Index", "Period Info", "Sleep period number (1=first)", "number"),
-    ColumnDefinition("Marker Type", "Period Info", "MAIN_SLEEP or NAP"),
+    ColumnDefinition("Marker Type", "Period Info", "Main Sleep, Nap, or Manual Nonwear"),
     # Time Markers
     ColumnDefinition("Onset Time", "Time Markers", "Sleep onset time (HH:MM)"),
     ColumnDefinition("Offset Time", "Time Markers", "Sleep offset time (HH:MM)"),
@@ -133,6 +159,10 @@ class ExportResult:
     file_count: int = 0
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    # Separate nonwear CSV (populated when nonwear markers exist)
+    nonwear_csv_content: str = ""
+    nonwear_row_count: int = 0
+    nonwear_filename: str = ""
 
 
 # =============================================================================
@@ -172,6 +202,9 @@ class ExportService:
         """
         Generate CSV export for specified files.
 
+        Produces separate CSVs for sleep and nonwear markers.
+        Sleep markers go into csv_content, nonwear into nonwear_csv_content.
+
         Args:
             file_ids: List of file IDs to export
             date_range: Optional (start_date, end_date) filter
@@ -204,27 +237,37 @@ class ExportService:
             return result
 
         try:
-            # Fetch data from database
-            rows = await self._fetch_export_data(file_ids, date_range)
+            sleep_rows, nonwear_rows = await self._fetch_export_data(file_ids, date_range)
 
-            if not rows:
+            if not sleep_rows and not nonwear_rows:
                 result.warnings.append("No data found for selected files and date range")
                 result.success = True
                 result.csv_content = ""
                 return result
 
-            # Generate CSV
-            csv_content = self._generate_csv(rows, export_columns, include_header, include_metadata)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            # Generate sleep CSV
+            if sleep_rows:
+                result.csv_content = self._generate_csv(sleep_rows, export_columns, include_header, include_metadata)
+                result.row_count = len(sleep_rows)
+                result.file_count = len({row.get("File ID") for row in sleep_rows})
+                result.filename = f"sleep_export_{timestamp}.csv"
+
+            # Generate nonwear CSV (separate file)
+            if nonwear_rows:
+                result.nonwear_csv_content = self._generate_csv(nonwear_rows, export_columns, include_header, include_metadata)
+                result.nonwear_row_count = len(nonwear_rows)
+                result.nonwear_filename = f"nonwear_export_{timestamp}.csv"
+                if not result.file_count:
+                    result.file_count = len({row.get("File ID") for row in nonwear_rows})
 
             result.success = True
-            result.csv_content = csv_content
-            result.row_count = len(rows)
-            result.file_count = len({row.get("File ID") for row in rows})
-            result.filename = f"sleep_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
             logger.info(
-                "Export completed: %d rows from %d files",
+                "Export completed: %d sleep rows, %d nonwear rows from %d files",
                 result.row_count,
+                result.nonwear_row_count,
                 result.file_count,
             )
             return result
@@ -238,9 +281,10 @@ class ExportService:
         self,
         file_ids: list[int],
         date_range: tuple[date, date] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Fetch and join data from markers, metrics, and annotations tables."""
-        rows: list[dict[str, Any]] = []
+        sleep_rows: list[dict[str, Any]] = []
+        nonwear_rows: list[dict[str, Any]] = []
 
         # Unpack date range once for use in both annotation and marker queries
         start_date, end_date = date_range if date_range else (None, None)
@@ -273,11 +317,11 @@ class ExportService:
             if key not in ann_lookup or (ann.updated_at and ann_lookup[key].updated_at and ann.updated_at > ann_lookup[key].updated_at):
                 ann_lookup[key] = ann
 
-        # Build marker query
+        # Build sleep marker query
         marker_query = select(Marker).where(
             and_(
                 Marker.file_id.in_(file_ids),
-                Marker.marker_category == "sleep",
+                Marker.marker_category == MarkerCategory.SLEEP,
                 Marker.end_timestamp.isnot(None),  # Only complete markers
             )
         )
@@ -380,28 +424,60 @@ class ExportService:
                 )
             else:
                 rule_raw = (ann.detection_rule if ann else None) or ""
-                # Fill with empty values
-                row.update(
-                    {
-                        "Time in Bed (min)": "",
-                        "Total Sleep Time (min)": "",
-                        "WASO (min)": "",
-                        "Sleep Onset Latency (min)": "",
-                        "Number of Awakenings": "",
-                        "Avg Awakening Length (min)": "",
-                        "Sleep Efficiency (%)": "",
-                        "Movement Index": "",
-                        "Fragmentation Index": "",
-                        "Sleep Fragmentation Index": "",
-                        "Total Activity Counts": "",
-                        "Non-zero Epochs": "",
-                        "Algorithm": "",
-                        "Detection Rule": _DETECTION_RULE_DISPLAY.get(rule_raw, rule_raw),
-                        "Verification Status": "Draft",
-                    }
-                )
+                row.update(_empty_metric_fields(
+                    detection_rule=_DETECTION_RULE_DISPLAY.get(rule_raw, rule_raw),
+                    verification_status="Draft",
+                ))
 
-            rows.append(row)
+            sleep_rows.append(row)
+
+        # Query nonwear markers (manual only, exclude sensor/read-only)
+        nonwear_query = select(Marker).where(and_(
+            Marker.file_id.in_(file_ids),
+            Marker.marker_category == MarkerCategory.NONWEAR,
+            Marker.marker_type != "sensor",
+            Marker.end_timestamp.isnot(None),
+        ))
+        if start_date and end_date:
+            nonwear_query = nonwear_query.where(and_(
+                Marker.analysis_date >= start_date,
+                Marker.analysis_date <= end_date,
+            ))
+        nonwear_query = nonwear_query.order_by(Marker.file_id, Marker.analysis_date, Marker.period_index)
+        nonwear_result = await self.db.execute(nonwear_query)
+        nonwear_markers = nonwear_result.scalars().all()
+
+        for nw in nonwear_markers:
+            file = files.get(nw.file_id)
+            if not file:
+                continue
+
+            # NOTE: Do NOT add nonwear dates to dates_with_markers here.
+            # dates_with_markers gates no-sleep row suppression (line ~482),
+            # and a date can have nonwear markers AND be marked as no-sleep.
+
+            ann = ann_lookup.get((nw.file_id, nw.analysis_date))
+
+            onset_dt = datetime.utcfromtimestamp(nw.start_timestamp) if nw.start_timestamp else None
+            offset_dt = datetime.utcfromtimestamp(nw.end_timestamp) if nw.end_timestamp else None
+
+            nonwear_rows.append({
+                "Filename": file.filename,
+                "File ID": file.id,
+                "Participant ID": file.participant_id or "",
+                "Study Date": str(nw.analysis_date) if nw.analysis_date else "",
+                "Period Index": nw.period_index if nw.period_index is not None else "",
+                "Marker Type": _MARKER_TYPE_DISPLAY.get(nw.marker_type, nw.marker_type or "Manual Nonwear"),
+                "Onset Time": onset_dt.strftime("%H:%M") if onset_dt else "",
+                "Offset Time": offset_dt.strftime("%H:%M") if offset_dt else "",
+                "Onset Datetime": onset_dt.strftime("%Y-%m-%d %H:%M:%S") if onset_dt else "",
+                "Offset Datetime": offset_dt.strftime("%Y-%m-%d %H:%M:%S") if offset_dt else "",
+                "Scored By": nw.created_by or "",
+                "Is No Sleep": "True" if (ann and ann.is_no_sleep) else "False",
+                "Needs Consensus": "True" if (ann and ann.needs_consensus) else "False",
+                "Notes": (ann.notes or "") if ann else "",
+                **_empty_metric_fields(),
+            })
 
         # Add rows for no-sleep dates (have annotation but no marker rows)
         for key, ann in ann_lookup.items():
@@ -413,7 +489,7 @@ class ExportService:
             if not file:
                 continue
             rule_raw = ann.detection_rule or ""
-            rows.append({
+            sleep_rows.append({
                 "Filename": file.filename,
                 "File ID": file.id,
                 "Participant ID": file.participant_id or "",
@@ -428,31 +504,22 @@ class ExportService:
                 "Is No Sleep": "True",
                 "Needs Consensus": "True" if ann.needs_consensus else "False",
                 "Notes": ann.notes or "",
-                "Time in Bed (min)": "",
-                "Total Sleep Time (min)": "",
-                "WASO (min)": "",
-                "Sleep Onset Latency (min)": "",
-                "Number of Awakenings": "",
-                "Avg Awakening Length (min)": "",
-                "Sleep Efficiency (%)": "",
-                "Movement Index": "",
-                "Fragmentation Index": "",
-                "Sleep Fragmentation Index": "",
-                "Total Activity Counts": "",
-                "Non-zero Epochs": "",
-                "Algorithm": "",
-                "Detection Rule": _DETECTION_RULE_DISPLAY.get(rule_raw, rule_raw),
-                "Verification Status": "",
+                **_empty_metric_fields(
+                    detection_rule=_DETECTION_RULE_DISPLAY.get(rule_raw, rule_raw),
+                ),
             })
 
-        # Sort by filename, analysis date, period index (use -1 for empty period index to sort consistently)
-        rows.sort(key=lambda r: (
-            r.get("Filename", ""),
-            r.get("Study Date", ""),
-            r.get("Period Index") if isinstance(r.get("Period Index"), int) else -1,
-        ))
+        def _sort_key(r: dict[str, Any]) -> tuple:
+            return (
+                r.get("Filename", ""),
+                r.get("Study Date", ""),
+                r.get("Period Index") if isinstance(r.get("Period Index"), int) else -1,
+            )
 
-        return rows
+        sleep_rows.sort(key=_sort_key)
+        nonwear_rows.sort(key=_sort_key)
+
+        return sleep_rows, nonwear_rows
 
     @staticmethod
     def _format_number(value: float | None, precision: int = 2) -> str:

@@ -221,6 +221,14 @@ Study → Participant → Date → (Sleep + Nonwear Markers) → Period → Metr
 - **Metrics** belong to each **SleepPeriod**, NOT to the date
 - **Nonwear** is a first-class citizen
 
+### No-Sleep Date Semantics
+
+A date marked `isNoSleep = true` means **no main sleep occurred**, but **NAP markers are allowed**. When toggling no-sleep:
+- **MAIN_SLEEP markers are deleted** (irrecoverable)
+- **NAP markers are preserved**
+- Metrics are still computed for NAP periods on no-sleep dates
+- Export emits a no-sleep sentinel row AND any NAP marker rows for that date
+
 ---
 
 ## Automated Marker Placement Rules

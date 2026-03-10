@@ -10,7 +10,7 @@ annotations. Using Annotated types requires runtime resolution.
 
 import calendar
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Annotated, Any
 
 logger = logging.getLogger(__name__)
@@ -152,35 +152,70 @@ async def get_markers(
     """
     file = await require_file_and_access(db, username, file_id)
 
-    # Get markers for THIS user.
-    # Exclude sensor nonwear (marker_type="sensor") — those are read-only overlay data
-    # returned via the activity endpoint, not editable markers.
-    # Fallback to legacy rows (created_by IS NULL) for backward compatibility.
-    markers_result = await db.execute(
-        select(Marker).where(
-            and_(
-                Marker.file_id == file_id,
-                Marker.analysis_date == analysis_date,
-                Marker.created_by == username,
-                Marker.marker_type != "sensor",
-            )
-        )
-    )
-    markers = markers_result.scalars().all()
-    if not markers:
-        legacy_markers_result = await db.execute(
+    # Fetch markers and metrics concurrently (independent queries).
+    async def _fetch_markers():
+        # Get markers for THIS user.
+        # Exclude sensor nonwear (marker_type="sensor") — those are read-only overlay data
+        # returned via the activity endpoint, not editable markers.
+        # Fallback to legacy rows (created_by IS NULL) for backward compatibility.
+        result = await db.execute(
             select(Marker).where(
                 and_(
                     Marker.file_id == file_id,
                     Marker.analysis_date == analysis_date,
-                    Marker.created_by.is_(None),
+                    Marker.created_by == username,
                     Marker.marker_type != "sensor",
                 )
             )
         )
-        markers = legacy_markers_result.scalars().all()
-        if markers:
-            logger.warning("Using legacy markers (created_by IS NULL) for file %d, date %s", file_id, analysis_date)
+        rows = result.scalars().all()
+        if not rows:
+            legacy_result = await db.execute(
+                select(Marker).where(
+                    and_(
+                        Marker.file_id == file_id,
+                        Marker.analysis_date == analysis_date,
+                        Marker.created_by.is_(None),
+                        Marker.marker_type != "sensor",
+                    )
+                )
+            )
+            rows = legacy_result.scalars().all()
+            if rows:
+                logger.warning("Using legacy markers (created_by IS NULL) for file %d, date %s", file_id, analysis_date)
+        return rows
+
+    async def _fetch_metrics():
+        # Get metrics for THIS user.
+        # Fallback to legacy rows (scored_by IS NULL) for backward compatibility.
+        result = await db.execute(
+            select(SleepMetric).where(
+                and_(
+                    SleepMetric.file_id == file_id,
+                    SleepMetric.analysis_date == analysis_date,
+                    SleepMetric.scored_by == username,
+                )
+            )
+        )
+        rows = result.scalars().all()
+        if not rows:
+            legacy_result = await db.execute(
+                select(SleepMetric).where(
+                    and_(
+                        SleepMetric.file_id == file_id,
+                        SleepMetric.analysis_date == analysis_date,
+                        SleepMetric.scored_by.is_(None),
+                    )
+                )
+            )
+            rows = legacy_result.scalars().all()
+            if rows:
+                logger.warning("Using legacy metrics (scored_by IS NULL) for file %d, date %s", file_id, analysis_date)
+        return rows
+
+    markers = await _fetch_markers()
+    db_metrics = await _fetch_metrics()
+
     sleep_markers: list[SleepPeriod] = []
     nonwear_markers: list[ManualNonwearPeriod] = []
 
@@ -225,32 +260,6 @@ async def get_markers(
         )
         activity_rows_cache = activity_result.scalars().all()
         return activity_rows_cache
-
-    # Get metrics for THIS user.
-    # Fallback to legacy rows (scored_by IS NULL) for backward compatibility.
-    metrics_result = await db.execute(
-        select(SleepMetric).where(
-            and_(
-                SleepMetric.file_id == file_id,
-                SleepMetric.analysis_date == analysis_date,
-                SleepMetric.scored_by == username,
-            )
-        )
-    )
-    db_metrics = metrics_result.scalars().all()
-    if not db_metrics:
-        legacy_metrics_result = await db.execute(
-            select(SleepMetric).where(
-                and_(
-                    SleepMetric.file_id == file_id,
-                    SleepMetric.analysis_date == analysis_date,
-                    SleepMetric.scored_by.is_(None),
-                )
-            )
-        )
-        db_metrics = legacy_metrics_result.scalars().all()
-        if db_metrics:
-            logger.warning("Using legacy metrics (scored_by IS NULL) for file %d, date %s", file_id, analysis_date)
 
     metrics: list[SleepMetrics] = []
     for m in db_metrics:
@@ -554,7 +563,7 @@ async def save_markers(
 
     return SaveStatusResponse(
         success=True,
-        saved_at=datetime.now(timezone.utc),
+        saved_at=datetime.now(UTC),
         sleep_marker_count=sleep_count,
         nonwear_marker_count=nonwear_count,
     )

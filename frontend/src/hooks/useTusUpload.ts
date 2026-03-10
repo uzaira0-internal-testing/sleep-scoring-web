@@ -13,6 +13,7 @@ import { GzipCompressorPlugin } from "@/lib/uppy-gzip-plugin";
 import { queryClient } from "@/query-client";
 import { getWorkspaceApiBase } from "@/lib/workspace-api";
 import { filesApi } from "@/api/client";
+import { filesQueryOptions } from "@/api/query-options";
 
 export type TusPhase = "idle" | "compressing" | "uploading" | "processing" | "done" | "error";
 
@@ -133,7 +134,7 @@ export function useTusUpload() {
         processingPercent: 0,
       }));
       // Invalidate file list so it shows the new file
-      queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: filesQueryOptions().queryKey });
     });
 
     // Upload error
@@ -221,7 +222,7 @@ export function useTusUpload() {
               fileId: cachedFileId,
             }));
             if (pollingRef.current) clearInterval(pollingRef.current);
-            queryClient.invalidateQueries({ queryKey: ["files"] });
+            queryClient.invalidateQueries({ queryKey: filesQueryOptions().queryKey });
             queryClient.invalidateQueries({ queryKey: ["dates-status"] });
             return;
           }

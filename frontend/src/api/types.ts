@@ -94,6 +94,24 @@ export interface FileAssignment {
   assigned_at: string | null;
 }
 
+/** Per-file progress for a user's assignment */
+export interface UserFileProgress {
+  file_id: number;
+  filename: string;
+  total_dates: number;
+  scored_dates: number;
+  assigned_at: string | null;
+}
+
+/** User assignment progress (admin feature) */
+export interface AssignmentProgress {
+  username: string;
+  files: UserFileProgress[];
+  total_files: number;
+  total_dates: number;
+  scored_dates: number;
+}
+
 /** Auth me response */
 export interface AuthMeResponse {
   username: string;
@@ -210,3 +228,33 @@ export const SLEEP_DETECTION_RULES = {
   CONSECUTIVE_5S_10S: "consecutive_onset5s_offset10s" as const,
   TUDOR_LOCKE_2014: "tudor_locke_2014" as const,
 } as const;
+
+// =============================================================================
+// Pipeline Discovery (from /pipeline/discover)
+// =============================================================================
+
+/** JSON Schema for a single parameter field */
+export interface ParamSchemaProperty {
+  type?: string;
+  default?: unknown;
+  description?: string;
+  minimum?: number;
+  maximum?: number;
+  exclusiveMinimum?: number;
+  exclusiveMaximum?: number;
+}
+
+/** JSON Schema for a component's parameter set */
+export interface ParamSchema {
+  type: string;
+  title?: string;
+  description?: string;
+  properties?: Record<string, ParamSchemaProperty>;
+  required?: string[];
+}
+
+/** Response from the pipeline discovery endpoint */
+export interface PipelineDiscoveryResponse {
+  roles: Record<string, string[]>;
+  param_schemas?: Record<string, ParamSchema>;
+}
