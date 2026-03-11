@@ -498,8 +498,8 @@ export function DataSettingsPage() {
 
   const handleApplyPreset = (preset: string) => {
     const defaults = PRESET_DEFAULTS[preset] ?? PRESET_DEFAULTS["generic"]!;
-    setEpochLengthSeconds(defaults!.epochLengthSeconds);
-    setSkipRows(defaults!.skipRows);
+    setEpochLengthSeconds(defaults.epochLengthSeconds);
+    setSkipRows(defaults.skipRows);
     setHasChanges(true);
   };
 

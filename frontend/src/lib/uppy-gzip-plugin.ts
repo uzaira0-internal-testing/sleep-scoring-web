@@ -97,7 +97,7 @@ export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts, Meta, D
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.uppy.emit("preprocess-complete" as any, fileIDs);
+    this.uppy.emit("preprocess-complete" as any, fileIDs);
   };
 
   private async compressBlob(blob: Blob): Promise<Blob> {

@@ -35,8 +35,7 @@ export function WindowPortal({
         windowRef.current.close();
       }
       windowRef.current = null;
-      // Defer to avoid synchronous setState in effect body
-      queueMicrotask(() => setPortalContainer(null));
+      setPortalContainer(null); // eslint-disable-line react-hooks/set-state-in-effect -- Intentional cleanup
       return;
     }
 
@@ -77,8 +76,7 @@ export function WindowPortal({
     const container = popup.document.createElement("div");
     container.id = "portal-root";
     popup.document.body.appendChild(container);
-    // Defer to avoid synchronous setState in effect body
-    queueMicrotask(() => setPortalContainer(container));
+    setPortalContainer(container);
 
     // Handle popup close
     popup.addEventListener("beforeunload", () => {

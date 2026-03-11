@@ -196,7 +196,7 @@ function buildConfirmedNonwearMask(
     }
   }
 
-  return choiNonwear.map((c, i) => c & sensorMask[i]!);
+  return choiNonwear.map((c, i) => c & (sensorMask[i] ?? 0));
 }
 
 function parseTimeTo24h(timeStr: string): [number, number] | null {

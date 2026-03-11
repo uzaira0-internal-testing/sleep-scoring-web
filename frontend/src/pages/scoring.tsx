@@ -206,7 +206,7 @@ export function ScoringPage() {
   useEffect(() => {
     if (!autoScoreMutation.data || !autoScoreMutation.isSuccess) return;
     const data = autoScoreMutation.data;
-    queueMicrotask(() => setAutoScoreResult(data));
+    setAutoScoreResult(data);
   }, [autoScoreMutation.data, autoScoreMutation.isSuccess]);
   useEffect(() => {
     if (autoScoreMutation.error) {
@@ -232,7 +232,7 @@ export function ScoringPage() {
     if (!autoNonwearMutation.data || !autoNonwearMutation.isSuccess) return;
     const data = autoNonwearMutation.data;
     if (data.nonwear_markers.length > 0) {
-      queueMicrotask(() => setAutoNonwearResult(data));
+      setAutoNonwearResult(data);
     }
   }, [autoNonwearMutation.data, autoNonwearMutation.isSuccess]);
   useEffect(() => {
@@ -274,15 +274,13 @@ export function ScoringPage() {
 
   useEffect(() => {
     if (showComparisonMarkers) return;
-    queueMicrotask(() => setHighlightedCandidateId(null));
+    setHighlightedCandidateId(null);
   }, [showComparisonMarkers]);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      setHighlightedCandidateId(null);
-      setAutoScoreResult(null);
-      setAutoNonwearResult(null);
-    });
+    setHighlightedCandidateId(null);
+    setAutoScoreResult(null);
+    setAutoNonwearResult(null);
   }, [currentFileId, currentDate]);
 
   const copyCandidateMarkers = useCallback(async (candidate: ConsensusBallotCandidate) => {
@@ -418,7 +416,7 @@ export function ScoringPage() {
   // Skip dates with infinite complexity (no/incomplete diary)
   // NOTE: This useEffect MUST be below dateStatusMap/hasNoDiary to avoid TDZ errors.
   const autoScoreMutationRef = useRef(autoScoreMutation);
-  useEffect(() => { autoScoreMutationRef.current = autoScoreMutation; });
+  autoScoreMutationRef.current = autoScoreMutation; // eslint-disable-line react-hooks/refs -- Direct assignment, not Zustand state
   useEffect(() => {
     if (!autoScoreOnNavigate || !currentFileId || !currentDate || isNoSleep || hasNoDiary) return;
     // Skip if markers already exist or mutation is already running
@@ -440,7 +438,7 @@ export function ScoringPage() {
 
   // Auto-nonwear on date navigate (when toggle is on and no existing nonwear markers)
   const autoNonwearMutationRef = useRef(autoNonwearMutation);
-  useEffect(() => { autoNonwearMutationRef.current = autoNonwearMutation; });
+  autoNonwearMutationRef.current = autoNonwearMutation; // eslint-disable-line react-hooks/refs -- Direct assignment, not Zustand state
   const autoNonwearKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!autoNonwearOnNavigate || !currentFileId || !currentDate) return;

@@ -1177,8 +1177,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
     // Use view range from backend if available, otherwise fall back to data range
     // This ensures the full expected range is shown even if data is missing at edges
-    const dataMin = timestamps[0]!;
-    const dataMax = timestamps[timestamps.length - 1]!;
+    const dataMin = timestamps[0] ?? 0;
+    const dataMax = timestamps[timestamps.length - 1] ?? dataMin;
     const initialMin = viewStart ?? dataMin;
     const initialMax = viewEnd ?? dataMax;
     originalXScaleRef.current = { min: initialMin, max: initialMax };
