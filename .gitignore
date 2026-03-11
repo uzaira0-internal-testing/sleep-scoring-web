@@ -236,6 +236,7 @@ venv-test/
 # Image files
 *.png
 *.jpg
+!src-tauri/icons/*.png
 *.jpeg
 *.gif
 
