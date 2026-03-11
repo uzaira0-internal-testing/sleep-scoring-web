@@ -63,10 +63,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Install Tauri CLI v2
+        run: npm install -g @tauri-apps/cli@^2
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          tauriScript: tauri
           tagName: v__VERSION__
           releaseName: 'Sleep Scoring v__VERSION__'
           releaseBody: 'See the assets to download and install.'
