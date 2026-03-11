@@ -45,7 +45,12 @@ class SleepPeriod(BaseModel):
     @field_validator("onset_timestamp", "offset_timestamp")
     @classmethod
     def _validate_timestamp(cls, v: float | None) -> float | None:
-        if v is not None and (v < 0 or v > 4_102_444_800):
+        if v is None:
+            return None
+        # Auto-convert milliseconds → seconds (frontend historically sent ms)
+        if v > 1e12:
+            v = v / 1000
+        if v < 0 or v > 4_102_444_800:
             msg = f"Timestamp {v} out of valid range (0 to year 2100)"
             raise ValueError(msg)
         return v
@@ -87,7 +92,12 @@ class ManualNonwearPeriod(BaseModel):
     @field_validator("start_timestamp", "end_timestamp")
     @classmethod
     def _validate_timestamp(cls, v: float | None) -> float | None:
-        if v is not None and (v < 0 or v > 4_102_444_800):
+        if v is None:
+            return None
+        # Auto-convert milliseconds → seconds (frontend historically sent ms)
+        if v > 1e12:
+            v = v / 1000
+        if v < 0 or v > 4_102_444_800:
             msg = f"Timestamp {v} out of valid range (0 to year 2100)"
             raise ValueError(msg)
         return v

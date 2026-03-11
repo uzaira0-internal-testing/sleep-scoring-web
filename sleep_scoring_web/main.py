@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Cleanup stale uploads (UPLOADING status older than 24h → FAILED)
     try:
         async with async_session_maker() as db:
-            cutoff = datetime.now(tz=UTC) - timedelta(hours=24)
+            cutoff = datetime.now(tz=UTC).replace(tzinfo=None) - timedelta(hours=24)
             result = await db.execute(
                 sa_select(FileModel).where(
                     FileModel.status == FileStatus.UPLOADING,

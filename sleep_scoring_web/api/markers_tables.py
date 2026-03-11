@@ -13,7 +13,7 @@ from sqlalchemy import and_, select
 
 from sleep_scoring_web.api.access import require_file_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
-from sleep_scoring_web.utils import naive_to_unix
+from sleep_scoring_web.utils import ensure_seconds, naive_to_unix
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker, RawActivityData
 from sleep_scoring_web.schemas.enums import MarkerCategory
@@ -96,6 +96,10 @@ async def get_onset_offset_data(
 
     if onset_timestamp is None or offset_timestamp is None:
         return OnsetOffsetTableResponse(onset_data=[], offset_data=[], period_index=period_index)
+
+    # Normalize ms → seconds (frontend historically sent ms)
+    onset_timestamp = ensure_seconds(onset_timestamp)
+    offset_timestamp = ensure_seconds(offset_timestamp)
 
     # Get data around onset — strip tzinfo because raw_activity_data uses
     # "timestamp without time zone" and asyncpg rejects tz-aware comparisons.
