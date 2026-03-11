@@ -880,13 +880,13 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
           if (type === 'sleep') {
             const updates = edge === 'start'
-              ? { onsetTimestamp: timestampMs }
-              : { offsetTimestamp: timestampMs };
+              ? { onsetTimestamp: snappedSec }
+              : { offsetTimestamp: snappedSec };
             getMarkerState().updateMarker(type, index, updates);
           } else {
             const updates = edge === 'start'
-              ? { startTimestamp: timestampMs }
-              : { endTimestamp: timestampMs };
+              ? { startTimestamp: snappedSec }
+              : { endTimestamp: snappedSec };
             getMarkerState().updateMarker(type, index, updates);
           }
         }
