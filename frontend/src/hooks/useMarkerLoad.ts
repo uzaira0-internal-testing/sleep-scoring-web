@@ -88,7 +88,7 @@ export function useMarkerLoad() {
 
     // Log session start with initial marker state
     if (sleepChanged || nonwearChanged) {
-      auditLog.setContext(current.currentFileId, current.availableDates[current.currentDateIndex] ?? null);
+      auditLog.setContext(current.currentFileId, current.availableDates[current.currentDateIndex] ?? null, current.username);
       auditLog.log("session_start", {
         sleepMarkers: apiSleepMarkers,
         nonwearMarkers: apiNonwearMarkers,

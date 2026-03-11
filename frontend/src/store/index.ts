@@ -461,7 +461,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         // File actions
         setCurrentFile: (fileId, filename, source) => {
           // Update audit log context when file changes
-          auditLog.setContext(fileId, get().availableDates[0] ?? null);
+          auditLog.setContext(fileId, get().availableDates[0] ?? null, get().username);
           set({
             currentFileId: fileId,
             currentFilename: filename,
@@ -511,7 +511,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               // Log session end for previous date, update context for new date
               auditLog.log("session_end");
               const newDate = get().availableDates[index] ?? null;
-              auditLog.setContext(get().currentFileId, newDate);
+              auditLog.setContext(get().currentFileId, newDate, get().username);
 
               // Clear marker state when switching dates (same as navigateDate)
               set({
@@ -561,7 +561,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               // Log session end for previous date, update context for new date
               auditLog.log("session_end");
               const newDate = post.availableDates[newIndex] ?? null;
-              auditLog.setContext(post.currentFileId, newDate);
+              auditLog.setContext(post.currentFileId, newDate, get().username);
 
               // Clear all marker state so the new date starts fresh.
               // Without this, old markers persist during the API fetch window,

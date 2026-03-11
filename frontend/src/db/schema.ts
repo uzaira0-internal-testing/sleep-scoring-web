@@ -134,6 +134,23 @@ export interface DiaryEntryRecord {
 }
 
 /**
+ * Audit log event stored in IndexedDB.
+ * IndexedDB is the durable commit point — events are written here FIRST,
+ * then replicated to the server. No event is lost on crash/tab kill/power loss.
+ */
+export interface AuditLogRecord {
+  id?: number;
+  fileId: number;
+  analysisDate: string; // "YYYY-MM-DD"
+  username: string;
+  action: string;
+  clientTimestamp: number; // Unix seconds
+  sessionId: string;
+  sequence: number;
+  payload?: Record<string, unknown>;
+}
+
+/**
  * Dexie database for local-first sleep scoring data.
  */
 export class SleepScoringDB extends Dexie {
@@ -143,6 +160,7 @@ export class SleepScoringDB extends Dexie {
   studySettings!: EntityTable<StudySettingsRecord, "id">;
   sensorNonwear!: EntityTable<SensorNonwearRecord, "id">;
   diaryEntries!: EntityTable<DiaryEntryRecord, "id">;
+  auditLog!: EntityTable<AuditLogRecord, "id">;
 
   constructor(dbName: string = "SleepScoringDB") {
     super(dbName);
@@ -242,6 +260,17 @@ export class SleepScoringDB extends Dexie {
           await tx.table("markers").put({ ...record, sleepMarkers, nonwearMarkers });
         }
       }
+    });
+
+    // v7: Add audit log table for ACID-compliant per-user action tracking.
+    this.version(7).stores({
+      files: "++id, &filename, fileHash, source",
+      activityDays: "++id, [fileId+date], fileId",
+      markers: "++id, [fileId+date+username], fileId, syncStatus",
+      studySettings: "++id, &key",
+      sensorNonwear: "++id, [fileId+analysisDate], fileId",
+      diaryEntries: "++id, &[fileId+analysisDate], fileId",
+      auditLog: "++id, [fileId+analysisDate+username], sessionId",
     });
   }
 }
