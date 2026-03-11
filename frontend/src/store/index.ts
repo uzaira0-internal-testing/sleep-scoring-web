@@ -40,8 +40,8 @@ interface FileState {
  * Activity data state (columnar format)
  */
 interface SensorNonwearPeriod {
-  startTimestamp: number;  // milliseconds
-  endTimestamp: number;    // milliseconds
+  startTimestamp: number;  // seconds
+  endTimestamp: number;    // seconds
 }
 
 interface ActivityState {
@@ -628,12 +628,10 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         handlePlotClick: (timestamp) => {
           const { markerMode, creationMode, pendingOnsetTimestamp, sleepMarkers, nonwearMarkers, isNoSleep, pushMarkerSnapshot, timestamps } = get();
 
-          // Clamp to actual data range (timestamp is ms, timestamps[] is seconds)
+          // Clamp to actual data range (both timestamp and timestamps[] are seconds)
           let ts = timestamp;
           if (timestamps.length > 0) {
-            const minMs = timestamps[0] * 1000;
-            const maxMs = timestamps[timestamps.length - 1] * 1000;
-            ts = Math.max(minMs, Math.min(maxMs, ts));
+            ts = Math.max(timestamps[0], Math.min(timestamps[timestamps.length - 1], ts));
           }
 
           if (creationMode === "idle") {
@@ -748,16 +746,16 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           if (!get()._isDragTransaction) {
             get().pushMarkerSnapshot();
           }
-          // Clamp timestamp fields to actual data range (timestamps are seconds, markers are ms)
+          // Clamp timestamp fields to actual data range (both timestamps and markers are seconds)
           const { timestamps } = get();
           const clamped = { ...updates };
           if (timestamps.length > 0) {
-            const minMs = timestamps[0] * 1000;
-            const maxMs = timestamps[timestamps.length - 1] * 1000;
-            if (clamped.onsetTimestamp !== undefined) clamped.onsetTimestamp = Math.max(minMs, Math.min(maxMs, clamped.onsetTimestamp));
-            if (clamped.offsetTimestamp !== undefined) clamped.offsetTimestamp = Math.max(minMs, Math.min(maxMs, clamped.offsetTimestamp));
-            if (clamped.startTimestamp !== undefined) clamped.startTimestamp = Math.max(minMs, Math.min(maxMs, clamped.startTimestamp));
-            if (clamped.endTimestamp !== undefined) clamped.endTimestamp = Math.max(minMs, Math.min(maxMs, clamped.endTimestamp));
+            const minSec = timestamps[0];
+            const maxSec = timestamps[timestamps.length - 1];
+            if (clamped.onsetTimestamp !== undefined) clamped.onsetTimestamp = Math.max(minSec, Math.min(maxSec, clamped.onsetTimestamp));
+            if (clamped.offsetTimestamp !== undefined) clamped.offsetTimestamp = Math.max(minSec, Math.min(maxSec, clamped.offsetTimestamp));
+            if (clamped.startTimestamp !== undefined) clamped.startTimestamp = Math.max(minSec, Math.min(maxSec, clamped.startTimestamp));
+            if (clamped.endTimestamp !== undefined) clamped.endTimestamp = Math.max(minSec, Math.min(maxSec, clamped.endTimestamp));
           }
           if (category === "sleep") {
             const { sleepMarkers } = get();

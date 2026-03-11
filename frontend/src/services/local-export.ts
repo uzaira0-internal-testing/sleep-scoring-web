@@ -31,9 +31,9 @@ export interface LocalExportResult {
   nonwearRows: ExportRow[];
 }
 
-function formatTimestamp(ms: number | null): string | null {
-  if (ms == null) return null;
-  return new Date(ms).toISOString();
+function formatTimestamp(sec: number | null): string | null {
+  if (sec == null) return null;
+  return new Date(sec * 1000).toISOString();
 }
 
 /**
@@ -79,7 +79,7 @@ export async function generateLocalExportRows(
           for (const sm of markers.sleepMarkers) {
             let metrics: ReturnType<typeof computePeriodMetrics> = null;
             if (algorithmResults && timestamps.length > 0 && sm.onsetTimestamp && sm.offsetTimestamp) {
-              metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp / 1000, sm.offsetTimestamp / 1000);
+              metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp, sm.offsetTimestamp);
             }
             sleepRows.push({
               filename: file.filename, studyDate: date, periodIndex: sm.markerIndex,
@@ -101,7 +101,7 @@ export async function generateLocalExportRows(
         for (const sm of markers.sleepMarkers) {
           let metrics: ReturnType<typeof computePeriodMetrics> = null;
           if (algorithmResults && timestamps.length > 0 && sm.onsetTimestamp && sm.offsetTimestamp) {
-            metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp / 1000, sm.offsetTimestamp / 1000);
+            metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp, sm.offsetTimestamp);
           }
 
           sleepRows.push({

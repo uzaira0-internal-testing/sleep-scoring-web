@@ -249,8 +249,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     markers.forEach((marker, index) => {
       if (marker.onsetTimestamp === null || marker.offsetTimestamp === null) return;
 
-      const startTs = marker.onsetTimestamp / 1000;
-      const endTs = marker.offsetTimestamp / 1000;
+      const startTs = marker.onsetTimestamp;
+      const endTs = marker.offsetTimestamp;
 
       const startPx = u.valToPos(startTs, 'x');
       const endPx = u.valToPos(endTs, 'x');
@@ -279,8 +279,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     nwMarkers.forEach((marker, index) => {
       if (marker.startTimestamp === null || marker.endTimestamp === null) return;
 
-      const startTs = marker.startTimestamp / 1000;
-      const endTs = marker.endTimestamp / 1000;
+      const startTs = marker.startTimestamp;
+      const endTs = marker.endTimestamp;
 
       const startPx = u.valToPos(startTs, 'x');
       const endPx = u.valToPos(endTs, 'x');
@@ -311,8 +311,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     // Render sensor nonwear overlays (uploaded CSV, read-only, gold)
     if (showNonwearOverlays && sensorNonwearPeriods.length > 0) {
       sensorNonwearPeriods.forEach((period, index) => {
-        const startPx = u.valToPos(period.startTimestamp / 1000, 'x');
-        const endPx = u.valToPos(period.endTimestamp / 1000, 'x');
+        const startPx = u.valToPos(period.startTimestamp, 'x');
+        const endPx = u.valToPos(period.endTimestamp, 'x');
 
         if (endPx < 0 || startPx > plotWidth) return;
 
@@ -370,8 +370,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
     // Render pending marker line (grayed out line showing first click position)
     if (cMode === "placing_onset" && pendingTs !== null) {
-      const pendingTsSec = pendingTs / 1000;
-      const pendingPx = u.valToPos(pendingTsSec, 'x');
+      const pendingPx = u.valToPos(pendingTs, 'x');
 
       if (pendingPx >= -10 && pendingPx <= plotWidth + 10) {
         const pendingLine = document.createElement('div');
@@ -400,8 +399,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         const { onsetIndex, offsetIndex } = detectSleepOnsetOffset(
           algorithmResults,
           timestamps,
-          selectedMarker.onsetTimestamp / 1000,
-          selectedMarker.offsetTimestamp / 1000,
+          selectedMarker.onsetTimestamp,
+          selectedMarker.offsetTimestamp,
           ruleParams.onsetN,
           ruleParams.offsetN,
           ruleParams.offsetState,
@@ -753,7 +752,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         const currentTs = u.posToVal(currentPx, 'x');
         if (currentTs !== undefined && currentTs !== null) {
           const snappedSec = snapToEpoch(currentTs);
-          const timestampMs = snappedSec * 1000;
 
           // Update time label during drag
           const timeLabel = wrapper.querySelector(`.marker-line.time-label[data-line-type="${type}-${edge}"][data-line-index="${index}"]`) as HTMLElement;
@@ -776,18 +774,18 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
                 const m = marker as { onsetTimestamp: number | null; offsetTimestamp: number | null };
                 if (edge === 'start') {
                   startPx = linePx;
-                  endPx = m.offsetTimestamp !== null ? u.valToPos(m.offsetTimestamp / 1000, 'x') : linePx;
+                  endPx = m.offsetTimestamp !== null ? u.valToPos(m.offsetTimestamp, 'x') : linePx;
                 } else {
-                  startPx = m.onsetTimestamp !== null ? u.valToPos(m.onsetTimestamp / 1000, 'x') : linePx;
+                  startPx = m.onsetTimestamp !== null ? u.valToPos(m.onsetTimestamp, 'x') : linePx;
                   endPx = linePx;
                 }
               } else {
                 const m = marker as { startTimestamp: number | null; endTimestamp: number | null };
                 if (edge === 'start') {
                   startPx = linePx;
-                  endPx = m.endTimestamp !== null ? u.valToPos(m.endTimestamp / 1000, 'x') : linePx;
+                  endPx = m.endTimestamp !== null ? u.valToPos(m.endTimestamp, 'x') : linePx;
                 } else {
-                  startPx = m.startTimestamp !== null ? u.valToPos(m.startTimestamp / 1000, 'x') : linePx;
+                  startPx = m.startTimestamp !== null ? u.valToPos(m.startTimestamp, 'x') : linePx;
                   endPx = linePx;
                 }
               }
@@ -807,16 +805,16 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             const markers = getMarkerState().sleepMarkers;
             const marker = markers[index];
             if (marker) {
-              const currentOnsetMs = edge === 'start' ? timestampMs : marker.onsetTimestamp;
-              const currentOffsetMs = edge === 'end' ? timestampMs : marker.offsetTimestamp;
+              const currentOnset = edge === 'start' ? snappedSec : marker.onsetTimestamp;
+              const currentOffset = edge === 'end' ? snappedSec : marker.offsetTimestamp;
 
-              if (currentOnsetMs !== null && currentOffsetMs !== null) {
+              if (currentOnset !== null && currentOffset !== null) {
                 const dragRuleParams = getDetectionRuleParams(sleepDetectionRule);
                 const { onsetIndex, offsetIndex } = detectSleepOnsetOffset(
                   algorithmResults,
                   timestamps,
-                  currentOnsetMs / 1000,
-                  currentOffsetMs / 1000,
+                  currentOnset,
+                  currentOffset,
                   dragRuleParams.onsetN,
                   dragRuleParams.offsetN,
                   dragRuleParams.offsetState,
@@ -915,17 +913,16 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         if (newTs === undefined || newTs === null) return;
 
         const snappedSec = snapToEpoch(newTs);
-        const timestampMs = snappedSec * 1000;
 
         if (type === 'sleep') {
           const updates = edge === 'start'
-            ? { onsetTimestamp: timestampMs }
-            : { offsetTimestamp: timestampMs };
+            ? { onsetTimestamp: snappedSec }
+            : { offsetTimestamp: snappedSec };
           getMarkerState().updateMarker(type, index, updates);
         } else {
           const updates = edge === 'start'
-            ? { startTimestamp: timestampMs }
-            : { endTimestamp: timestampMs };
+            ? { startTimestamp: snappedSec }
+            : { endTimestamp: snappedSec };
           getMarkerState().updateMarker(type, index, updates);
         }
 
@@ -1084,7 +1081,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             if (ts === undefined || ts === null) return;
 
             const snappedSec = snapToEpoch(ts);
-            getMarkerState().handlePlotClick(snappedSec * 1000);
+            getMarkerState().handlePlotClick(snappedSec);
           });
 
           // Right-click handler to cancel marker placement

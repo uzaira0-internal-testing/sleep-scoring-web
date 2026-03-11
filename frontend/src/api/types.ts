@@ -73,16 +73,14 @@ export type OnsetOffsetDataPoint = components["schemas"]["OnsetOffsetDataPoint"]
 /** Response with data points around a marker */
 export type OnsetOffsetTableResponse = components["schemas"]["OnsetOffsetTableResponse"];
 
+/** Data point for full table view */
+export type FullTableDataPoint = components["schemas"]["FullTableDataPoint"];
+
+/** Response with full table data */
+export type FullTableResponse = components["schemas"]["FullTableResponse"];
+
 /** Date annotation status with complexity scores (from /files/{id}/dates/status) */
-export interface DateStatus {
-  date: string;
-  has_markers: boolean;
-  is_no_sleep: boolean;
-  needs_consensus: boolean;
-  has_auto_score: boolean;
-  complexity_pre: number | null;
-  complexity_post: number | null;
-}
+export type DateStatus = components["schemas"]["DateStatus"];
 
 /** File assignment (admin feature) */
 export interface FileAssignment {

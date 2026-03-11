@@ -278,8 +278,8 @@ export function ScoringPage() {
     if (sleepMarkers.length > 0) return;
     const allMarkers = [...autoScoreResult.sleep_markers, ...autoScoreResult.nap_markers];
     const newMarkers = allMarkers.map((m, i) => ({
-      onsetTimestamp: m.onset_timestamp * 1000,
-      offsetTimestamp: m.offset_timestamp * 1000,
+      onsetTimestamp: m.onset_timestamp,
+      offsetTimestamp: m.offset_timestamp,
       markerIndex: i + 1,
       markerType: m.marker_type as "MAIN_SLEEP" | "NAP",
     }));
@@ -294,8 +294,8 @@ export function ScoringPage() {
     if (!autoNonwearResult || autoNonwearResult.nonwear_markers.length === 0) return;
     if (nonwearMarkers.length > 0) return; // Don't overwrite existing
     const newMarkers = autoNonwearResult.nonwear_markers.map((m, i) => ({
-      startTimestamp: m.start_timestamp * 1000,
-      endTimestamp: m.end_timestamp * 1000,
+      startTimestamp: m.start_timestamp,
+      endTimestamp: m.end_timestamp,
       markerIndex: i + 1,
     }));
     setNonwearMarkers(newMarkers);
@@ -334,8 +334,8 @@ export function ScoringPage() {
         .filter((m) => m.marker_type === "NAP" && m.onset_timestamp != null)
         .sort((a, b) => (a.marker_index ?? 9999) - (b.marker_index ?? 9999))
         .map((m, i) => ({
-          onsetTimestamp: Number(m.onset_timestamp) * 1000,
-          offsetTimestamp: m.offset_timestamp != null ? Number(m.offset_timestamp) * 1000 : null,
+          onsetTimestamp: Number(m.onset_timestamp),
+          offsetTimestamp: m.offset_timestamp != null ? Number(m.offset_timestamp) : null,
           markerIndex: i + 1,
           markerType: MARKER_TYPES.NAP,
         }));
@@ -343,8 +343,8 @@ export function ScoringPage() {
         .filter((m) => m.start_timestamp != null)
         .sort((a, b) => (a.marker_index ?? 9999) - (b.marker_index ?? 9999))
         .map((m, i) => ({
-          startTimestamp: Number(m.start_timestamp) * 1000,
-          endTimestamp: m.end_timestamp != null ? Number(m.end_timestamp) * 1000 : null,
+          startTimestamp: Number(m.start_timestamp),
+          endTimestamp: m.end_timestamp != null ? Number(m.end_timestamp) : null,
           markerIndex: i + 1,
         }));
       useSleepScoringStore.setState({
@@ -362,8 +362,8 @@ export function ScoringPage() {
       .filter((m) => m.onset_timestamp != null)
       .sort((a, b) => (a.marker_index ?? 9999) - (b.marker_index ?? 9999))
       .map((m, i) => ({
-        onsetTimestamp: Number(m.onset_timestamp) * 1000,
-        offsetTimestamp: m.offset_timestamp != null ? Number(m.offset_timestamp) * 1000 : null,
+        onsetTimestamp: Number(m.onset_timestamp),
+        offsetTimestamp: m.offset_timestamp != null ? Number(m.offset_timestamp) : null,
         markerIndex: m.marker_index != null ? Number(m.marker_index) : i + 1,
         markerType: (m.marker_type === "NAP" ? "NAP" : "MAIN_SLEEP") as "MAIN_SLEEP" | "NAP",
       }));
@@ -372,8 +372,8 @@ export function ScoringPage() {
       .filter((m) => m.start_timestamp != null)
       .sort((a, b) => (a.marker_index ?? 9999) - (b.marker_index ?? 9999))
       .map((m, i) => ({
-        startTimestamp: Number(m.start_timestamp) * 1000,
-        endTimestamp: m.end_timestamp != null ? Number(m.end_timestamp) * 1000 : null,
+        startTimestamp: Number(m.start_timestamp),
+        endTimestamp: m.end_timestamp != null ? Number(m.end_timestamp) : null,
         markerIndex: m.marker_index != null ? Number(m.marker_index) : i + 1,
       }));
 
@@ -1330,7 +1330,7 @@ export function ScoringPage() {
                         <div key={`${m.marker_index}-${m.onset_timestamp}-${m.offset_timestamp}`} className="text-xs flex items-center justify-between py-0.5">
                           <span className="font-medium">{m.marker_type === "NAP" ? "Nap" : "Main"} {m.marker_index}</span>
                           <span className="tabular-nums">
-                            {formatTime(m.onset_timestamp * 1000)} - {formatTime(m.offset_timestamp * 1000)}
+                            {formatTime(m.onset_timestamp)} - {formatTime(m.offset_timestamp)}
                           </span>
                         </div>
                       ))}
@@ -1383,7 +1383,7 @@ export function ScoringPage() {
                       <div key={m.marker_index} className="text-xs flex items-center justify-between py-0.5">
                         <span className="font-medium">Nonwear {m.marker_index}</span>
                         <span className="tabular-nums">
-                          {formatTime(m.start_timestamp * 1000)} - {formatTime(m.end_timestamp * 1000)}
+                          {formatTime(m.start_timestamp)} - {formatTime(m.end_timestamp)}
                         </span>
                       </div>
                     ))}

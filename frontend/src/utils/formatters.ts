@@ -31,11 +31,11 @@ export function formatNumber(value: number | null | undefined, decimals = 1): st
 }
 
 /**
- * Format timestamp as HH:MM (marker timestamps are in milliseconds)
+ * Format timestamp as HH:MM (timestamps are in Unix seconds)
  */
-export function formatTime(timestamp: number | null): string {
-  if (timestamp === null) return "--:--";
-  const date = new Date(timestamp);
+export function formatTime(timestampSec: number | null): string {
+  if (timestampSec === null) return "--:--";
+  const date = new Date(timestampSec * 1000);
   return date.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -44,13 +44,13 @@ export function formatTime(timestamp: number | null): string {
 }
 
 /**
- * Calculate and format duration between two timestamps (in milliseconds)
+ * Calculate and format duration between two timestamps (in Unix seconds)
  */
-export function formatDuration(start: number | null, end: number | null): string {
-  if (start === null || end === null) return "--";
-  const durationMs = end - start;
-  const hours = Math.floor(durationMs / (1000 * 60 * 60));
-  const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+export function formatDuration(startSec: number | null, endSec: number | null): string {
+  if (startSec === null || endSec === null) return "--";
+  const durationSec = endSec - startSec;
+  const hours = Math.floor(durationSec / 3600);
+  const minutes = Math.floor((durationSec % 3600) / 60);
   return `${hours}h ${minutes}m`;
 }
 

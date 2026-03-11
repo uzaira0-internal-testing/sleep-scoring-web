@@ -80,7 +80,7 @@ export async function computeLocalAnalysis(username: string): Promise<LocalAnaly
         else totalSleepPeriods++;
 
         if (algorithmResults && timestamps.length > 0 && sm.onsetTimestamp && sm.offsetTimestamp) {
-          const m = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp / 1000, sm.offsetTimestamp / 1000);
+          const m = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp, sm.offsetTimestamp);
           if (m) {
             allTst.push(m.totalSleepTimeMinutes);
             allSe.push(m.sleepEfficiency);

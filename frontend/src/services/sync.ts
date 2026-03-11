@@ -2,7 +2,6 @@ import { getApiBase } from "@/api/client";
 import * as localDb from "@/db";
 import { getDb } from "@/lib/workspace-db";
 import { computeMarkerHash } from "@/lib/content-hash";
-import { toSeconds, toMilliseconds } from "@/utils/timestamps";
 import type { MarkerType } from "@/api/types";
 
 export interface SyncResult {
@@ -68,14 +67,14 @@ async function pushMarkers(
 
     const payload = {
       sleep_markers: marker.sleepMarkers.map((m) => ({
-        onset_timestamp: toSeconds(m.onsetTimestamp),
-        offset_timestamp: toSeconds(m.offsetTimestamp),
+        onset_timestamp: m.onsetTimestamp,
+        offset_timestamp: m.offsetTimestamp,
         marker_index: m.markerIndex,
         marker_type: m.markerType,
       })),
       nonwear_markers: marker.nonwearMarkers.map((m) => ({
-        start_timestamp: toSeconds(m.startTimestamp),
-        end_timestamp: toSeconds(m.endTimestamp),
+        start_timestamp: m.startTimestamp,
+        end_timestamp: m.endTimestamp,
         marker_index: m.markerIndex,
       })),
       is_no_sleep: marker.isNoSleep,
@@ -152,15 +151,15 @@ async function pullMarkers(
         const data = await response.json();
 
         const sleepMarkers = (data.sleep_markers ?? []).map((m: Record<string, unknown>) => ({
-          onsetTimestamp: toMilliseconds(m.onset_timestamp as number | null),
-          offsetTimestamp: toMilliseconds(m.offset_timestamp as number | null),
+          onsetTimestamp: (m.onset_timestamp as number | null),
+          offsetTimestamp: (m.offset_timestamp as number | null),
           markerIndex: m.marker_index as number,
           markerType: m.marker_type as MarkerType,
         }));
 
         const nonwearMarkers = (data.nonwear_markers ?? []).map((m: Record<string, unknown>) => ({
-          startTimestamp: toMilliseconds(m.start_timestamp as number | null),
-          endTimestamp: toMilliseconds(m.end_timestamp as number | null),
+          startTimestamp: (m.start_timestamp as number | null),
+          endTimestamp: (m.end_timestamp as number | null),
           markerIndex: m.marker_index as number,
         }));
 

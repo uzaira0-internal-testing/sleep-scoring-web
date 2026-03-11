@@ -8,7 +8,7 @@ These models are the single source of truth for API request/response shapes.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -19,6 +19,9 @@ from .enums import (
     NonwearDataSource,
     VerificationStatus,
 )
+
+# Semantic type alias — all timestamp fields across the API are Unix seconds.
+UnixSeconds = Annotated[float, Field(description="Unix timestamp in seconds")]
 
 # =============================================================================
 # Sleep Period & Marker Models
@@ -34,8 +37,8 @@ class SleepPeriod(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    onset_timestamp: float | None = None
-    offset_timestamp: float | None = None
+    onset_timestamp: UnixSeconds | None = None
+    offset_timestamp: UnixSeconds | None = None
     marker_index: int = 1
     marker_type: MarkerType = MarkerType.MAIN_SLEEP
 
@@ -76,8 +79,8 @@ class ManualNonwearPeriod(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    start_timestamp: float | None = None
-    end_timestamp: float | None = None
+    start_timestamp: UnixSeconds | None = None
+    end_timestamp: UnixSeconds | None = None
     marker_index: int = 1
     source: NonwearDataSource = NonwearDataSource.MANUAL
 
@@ -162,7 +165,7 @@ class ActivityDataColumnar(BaseModel):
     repeated object keys for each data point.
     """
 
-    timestamps: list[float] = Field(default_factory=list, description="Unix timestamps")
+    timestamps: list[UnixSeconds] = Field(default_factory=list, description="Unix timestamps in seconds")
     axis_x: list[int] = Field(default_factory=list)
     axis_y: list[int] = Field(default_factory=list)
     axis_z: list[int] = Field(default_factory=list)
@@ -185,8 +188,8 @@ class ActivityDataColumnar(BaseModel):
 class SensorNonwearPeriod(BaseModel):
     """A single sensor-detected nonwear period (read-only overlay, not user-editable)."""
 
-    start_timestamp: float  # Unix timestamp in seconds
-    end_timestamp: float  # Unix timestamp in seconds
+    start_timestamp: UnixSeconds
+    end_timestamp: UnixSeconds
 
 
 class ActivityDataResponse(BaseModel):
@@ -201,8 +204,8 @@ class ActivityDataResponse(BaseModel):
     file_id: int
     analysis_date: str
     # Expected view range (for setting axis bounds even if data is missing)
-    view_start: float | None = None  # Unix timestamp for view start
-    view_end: float | None = None  # Unix timestamp for view end
+    view_start: UnixSeconds | None = None
+    view_end: UnixSeconds | None = None
 
 
 # =============================================================================
@@ -351,3 +354,71 @@ class ExportResponse(BaseModel):
     file_count: int = 0
     message: str = ""
     warnings: list[str] = Field(default_factory=list)
+
+
+# =============================================================================
+# Marker Table Models (moved from api/markers_tables.py)
+# =============================================================================
+
+
+class OnsetOffsetDataPoint(BaseModel):
+    """Single data point for onset/offset tables."""
+
+    timestamp: UnixSeconds
+    datetime_str: str
+    axis_y: int
+    vector_magnitude: int
+    algorithm_result: int | None = None  # 0=wake, 1=sleep
+    choi_result: int | None = None  # 0=wear, 1=nonwear
+    is_nonwear: bool = False  # Manual nonwear marker overlap
+
+
+class OnsetOffsetTableResponse(BaseModel):
+    """Response with data points around a marker for tables."""
+
+    onset_data: list[OnsetOffsetDataPoint] = Field(default_factory=list)
+    offset_data: list[OnsetOffsetDataPoint] = Field(default_factory=list)
+    period_index: int
+
+
+class FullTableDataPoint(BaseModel):
+    """Single data point for full 48h table."""
+
+    timestamp: UnixSeconds
+    datetime_str: str
+    axis_y: int
+    vector_magnitude: int
+    algorithm_result: int | None = None
+    choi_result: int | None = None
+    is_nonwear: bool = False
+
+
+class FullTableResponse(BaseModel):
+    """Response with full 48h of data for popout table."""
+
+    data: list[FullTableDataPoint] = Field(default_factory=list)
+    total_rows: int = 0
+    start_time: str | None = None
+    end_time: str | None = None
+
+
+# =============================================================================
+# Date Status Models
+# =============================================================================
+
+
+class DateStatus(BaseModel):
+    """Date annotation status with complexity scores."""
+
+    date: str
+    has_markers: bool
+    is_no_sleep: bool
+    needs_consensus: bool
+    has_auto_score: bool
+    complexity_pre: float | None = None
+    complexity_post: float | None = None
+
+
+# NOTE: Consensus ballot models live in api/consensus.py (CandidateVoteSummary,
+# ConsensusBallotResponse) and are already exposed in the OpenAPI schema via
+# response_model annotations on the ballot endpoints.

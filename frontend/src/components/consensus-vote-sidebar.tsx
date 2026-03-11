@@ -53,7 +53,7 @@ function markerSummary(markers: ConsensusBallotCandidate["sleep_markers_json"]):
   const sorted = [...list].sort((a, b) => (a.marker_index ?? 9999) - (b.marker_index ?? 9999));
   return sorted.map((m) => {
     const label = (m.marker_type === "NAP" ? "Nap" : "Main");
-    return `${label}: ${formatTime(m.onset_timestamp! * 1000)}-${formatTime(m.offset_timestamp! * 1000)}`;
+    return `${label}: ${formatTime(m.onset_timestamp!)}-${formatTime(m.offset_timestamp!)}`;
   }).join(" | ");
 }
 

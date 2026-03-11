@@ -134,6 +134,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Password
+         * @description Verify site password (stateless check).
+         *
+         *     Does not create a session - frontend should store password
+         *     and send via X-Site-Password header on subsequent requests.
+         */
+        post: operations["verify_password_api_v1_auth_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files/upload": {
         parameters: {
             query?: never;
@@ -149,6 +172,8 @@ export interface paths {
          *
          *     The file will be parsed, validated, and stored in the database.
          *     Activity data will be extracted and made available for analysis.
+         *
+         *     Set replace=true to re-upload an existing file (deletes old data first).
          */
         post: operations["upload_file_api_v1_files_upload_post"];
         delete?: never;
@@ -192,7 +217,7 @@ export interface paths {
         };
         /**
          * List Files
-         * @description List all uploaded files with pagination.
+         * @description List uploaded files. Users with assignments see only their files (even admins).
          */
         get: operations["list_files_api_v1_files_get"];
         put?: never;
@@ -204,6 +229,134 @@ export interface paths {
          *     Optionally filter by status (e.g., 'failed' to delete only failed files).
          */
         delete: operations["delete_all_files_api_v1_files_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Me
+         * @description Return current user info including admin status.
+         */
+        get: operations["get_me_api_v1_files_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Assignments
+         * @description List all file assignments (admin only).
+         */
+        get: operations["list_assignments_api_v1_files_assignments_get"];
+        put?: never;
+        /**
+         * Create Assignments
+         * @description Assign files to a user (admin only). Body: {"file_ids": [...], "username": "..."}.
+         */
+        post: operations["create_assignments_api_v1_files_assignments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/assignments/{target_username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete User Assignments
+         * @description Remove all assignments for a user (admin only).
+         */
+        delete: operations["delete_user_assignments_api_v1_files_assignments__target_username__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/assignments/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Assignment Progress
+         * @description Get all assignments with per-user, per-file scoring progress (admin only).
+         *
+         *     For each user, returns their assigned files with total_dates and scored_dates.
+         *     Uses the markers table (created_by) for scored dates and raw_activity_data for
+         *     total dates per file. Diary-intersected dates are used when diary exists.
+         */
+        get: operations["get_assignment_progress_api_v1_files_assignments_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/assignments/unassigned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Unassigned Files
+         * @description Get files with zero assignments (admin only).
+         */
+        get: operations["get_unassigned_files_api_v1_files_assignments_unassigned_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/purge-excluded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge Excluded Files
+         * @description Delete all files whose names contain IGNORE or ISSUE.
+         */
+        post: operations["purge_excluded_files_api_v1_files_purge_excluded_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -233,6 +386,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/files/backfill-participant-ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Backfill Participant Ids
+         * @description Infer and persist missing File.participant_id values from filenames.
+         *
+         *     Useful for older datasets imported before participant_id inference existed.
+         */
+        post: operations["backfill_participant_ids_api_v1_files_backfill_participant_ids_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files/{file_id}/dates": {
         parameters: {
             query?: never;
@@ -242,9 +417,72 @@ export interface paths {
         };
         /**
          * Get File Dates
-         * @description Get available dates for a file.
+         * @description Get available dates for a file. If diary exists, only return study-period dates.
          */
         get: operations["get_file_dates_api_v1_files__file_id__dates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}/dates/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get File Dates Status
+         * @description Get dates with per-user annotation status, auto-score availability, and complexity.
+         */
+        get: operations["get_file_dates_status_api_v1_files__file_id__dates_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}/compute-complexity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compute Complexity
+         * @description Trigger batch complexity computation for all dates in a file.
+         *
+         *     Runs in background: loads activity data, runs Sadeh + Choi, loads diary,
+         *     computes complexity_pre for each date, and upserts into NightComplexity table.
+         */
+        post: operations["compute_complexity_api_v1_files__file_id__compute_complexity_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}/{analysis_date}/complexity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Complexity Detail
+         * @description Get full complexity feature breakdown for a file/date.
+         */
+        get: operations["get_complexity_detail_api_v1_files__file_id___analysis_date__complexity_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -316,6 +554,26 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}/assignments/{target_username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete File Assignment
+         * @description Remove a single file assignment (admin only).
+         */
+        delete: operations["delete_file_assignment_api_v1_files__file_id__assignments__target_username__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -468,6 +726,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/markers/nonwear/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Nonwear Csv
+         * @description Upload nonwear sensor data CSV (study-wide).
+         *
+         *     Matches rows to activity files by participant_id column.
+         *
+         *     Expected CSV columns (case-insensitive):
+         *     - participant_id: Participant identifier (matched to activity filenames)
+         *     - date / startdate: Analysis date (YYYY-MM-DD or MM/DD/YYYY)
+         *     - start_time / nonwear_start: Nonwear start time (HH:MM)
+         *     - end_time / nonwear_end: Nonwear end time (HH:MM)
+         *
+         *     For each date+file, existing nonwear markers are replaced.
+         *     Multiple nonwear periods per date are supported (one row per period).
+         */
+        post: operations["upload_nonwear_csv_api_v1_markers_nonwear_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/{file_id}/nonwear/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Nonwear Csv For File
+         * @description Upload nonwear sensor data CSV for a specific activity file (legacy).
+         *
+         *     Does not require participant_id — all rows go to the specified file.
+         */
+        post: operations["upload_nonwear_csv_for_file_api_v1_markers__file_id__nonwear_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/sleep/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Sleep Csv
+         * @description Upload a sleep marker export CSV (desktop or web app format).
+         *
+         *     Supports both desktop export CSVs (with onset_time/offset_time) and
+         *     web export CSVs (with Onset Datetime/Offset Datetime, Study Date, etc.).
+         *
+         *     Matches rows to activity files by `filename` column, or by
+         *     `participant_id` + `timepoint` columns when no filename is present.
+         *
+         *     For each (file, date), existing sleep markers are replaced and metrics recalculated.
+         *
+         *     Expected CSV columns (comment lines starting with # are stripped):
+         *     - filename OR (numerical_participant_id + participant_timepoint)
+         *     - sleep_date / study_date / date: Analysis date (YYYY-MM-DD)
+         *     - onset_time + offset_time (HH:MM), OR onset_datetime + offset_datetime (full datetime)
+         *     - marker_type (optional): MAIN_SLEEP / NAP (default: MAIN_SLEEP)
+         *     - marker_index / period_index (optional): Period index (default: sequential)
+         *     - is_no_sleep (optional): TRUE/FALSE -- marks date as no-sleep
+         *     - needs_consensus (optional): TRUE/FALSE -- flags for consensus review
+         *     - Rows with NO_SLEEP onset/offset are treated as no-sleep dates.
+         */
+        post: operations["upload_sleep_csv_api_v1_markers_sleep_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/markers/{file_id}/{analysis_date}/table/{period_index}": {
         parameters: {
             query?: never;
@@ -480,6 +829,8 @@ export interface paths {
          * @description Get activity data around a marker for onset/offset tables.
          *
          *     Returns data points within window_minutes of the onset and offset timestamps.
+         *     Accepts optional onset_ts/offset_ts query params to use client-side timestamps
+         *     instead of requiring a saved marker in the database.
          */
         get: operations["get_onset_offset_data_api_v1_markers__file_id___analysis_date__table__period_index__get"];
         put?: never;
@@ -507,6 +858,155 @@ export interface paths {
         get: operations["get_full_table_data_api_v1_markers__file_id___analysis_date__table_full_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/auto-score/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Auto Score Batch
+         * @description Start background auto-score prepopulation across complete-diary dates.
+         *
+         *     Uses complete diary rows only; incomplete diary dates are never auto-scored.
+         */
+        post: operations["start_auto_score_batch_api_v1_markers_auto_score_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/auto-score/batch/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Auto Score Batch Status
+         * @description Return in-memory auto-score batch progress.
+         */
+        get: operations["get_auto_score_batch_status_api_v1_markers_auto_score_batch_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/{file_id}/{analysis_date}/auto-score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auto Score Markers
+         * @description Automatically score a date using the rule-based engine.
+         *
+         *     Returns suggestions for user to accept/reject.
+         *     Also saves results as a "auto_score" UserAnnotation for consensus comparison.
+         */
+        post: operations["auto_score_markers_api_v1_markers__file_id___analysis_date__auto_score_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/{file_id}/{analysis_date}/auto-score-result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Auto Score Result
+         * @description Get the auto_score user's saved annotation for this file/date.
+         *
+         *     Returns the markers in SleepPeriod format so the frontend can
+         *     accept them as the current user's own score.
+         */
+        get: operations["get_auto_score_result_api_v1_markers__file_id___analysis_date__auto_score_result_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/{file_id}/{analysis_date}/auto-nonwear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auto Nonwear Markers
+         * @description Automatically detect nonwear periods using diary anchors and zero-activity detection.
+         *     Returns suggestions for user to accept/reject.
+         */
+        post: operations["auto_nonwear_markers_api_v1_markers__file_id___analysis_date__auto_nonwear_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/pipeline/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discover Pipeline
+         * @description Return available pipeline components per role and their parameter schemas.
+         */
+        get: operations["discover_pipeline_api_v1_markers_pipeline_discover_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/{file_id}/{analysis_date}/auto-score-v2": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auto Score V2
+         * @description Auto-score using the configurable pipeline.
+         */
+        post: operations["auto_score_v2_api_v1_markers__file_id___analysis_date__auto_score_v2_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -568,11 +1068,29 @@ export interface paths {
         put?: never;
         /**
          * Download Csv Export
-         * @description Generate and download CSV export.
-         *
-         *     Returns the CSV file directly as a download.
+         * @description Download sleep marker CSV export.
          */
         post: operations["download_csv_export_api_v1_export_csv_download_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/export/csv/download/nonwear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Download Nonwear Csv Export
+         * @description Download nonwear marker CSV export (separate from sleep).
+         */
+        post: operations["download_nonwear_csv_export_api_v1_export_csv_download_nonwear_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -593,6 +1111,46 @@ export interface paths {
          *     Uses default columns and returns CSV directly.
          */
         get: operations["quick_export_api_v1_export_csv_quick_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analysis/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Analysis Summary
+         * @description Get cross-file summary statistics and scoring progress.
+         */
+        get: operations["get_analysis_summary_api_v1_analysis_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/diary/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Diary Entries
+         * @description Get all diary entries for a file, ordered by date.
+         */
+        get: operations["list_diary_entries_api_v1_diary__file_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -631,7 +1189,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/diary/{file_id}/upload": {
+    "/api/v1/diary/upload": {
         parameters: {
             query?: never;
             header?: never;
@@ -642,20 +1200,39 @@ export interface paths {
         put?: never;
         /**
          * Upload Diary Csv
-         * @description Upload a diary CSV file to import entries for a specific activity file.
+         * @description Upload a diary CSV file (study-wide).
          *
-         *     Expected CSV columns (case-insensitive):
-         *     - date: Analysis date (YYYY-MM-DD or MM/DD/YYYY)
-         *     - bed_time: Time went to bed (HH:MM)
-         *     - wake_time: Time woke up (HH:MM)
-         *     - lights_out: Time lights were turned off (optional)
-         *     - got_up: Time got out of bed (optional)
-         *     - sleep_quality: Quality rating 1-5 or 1-10 (optional)
-         *     - time_to_fall_asleep: Minutes to fall asleep (optional)
-         *     - awakenings: Number of awakenings (optional)
-         *     - notes: Free text notes (optional)
+         *     Matching priority:
+         *     1) filename column (exact/stem)
+         *     2) participant_id + optional timepoint
+         *     3) unique filename token fallback
+         *
+         *     Ambiguous matches are skipped and reported (never guessed).
          */
-        post: operations["upload_diary_csv_api_v1_diary__file_id__upload_post"];
+        post: operations["upload_diary_csv_api_v1_diary_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/diary/{file_id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Diary Csv For File
+         * @description Upload a diary CSV for a specific activity file (legacy endpoint).
+         *
+         *     This endpoint does NOT require a participant_id column — all rows
+         *     are assigned to the specified file_id.
+         */
+        post: operations["upload_diary_csv_for_file_api_v1_diary__file_id__upload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -671,9 +1248,11 @@ export interface paths {
         };
         /**
          * Get Settings
-         * @description Get current user's settings.
+         * @description Get current user's settings, merged with study-wide settings.
          *
-         *     Returns default settings if no settings have been saved yet.
+         *     Study-wide settings (detection rule, night hours, filename patterns)
+         *     are shared across all users. Per-user settings (algorithm, display
+         *     preferences) are personal.
          */
         get: operations["get_settings_api_v1_settings_get"];
         /**
@@ -697,6 +1276,219 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/study": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Study Settings
+         * @description Get study-wide settings shared across all users.
+         */
+        get: operations["get_study_settings_api_v1_settings_study_get"];
+        /**
+         * Update Study Settings
+         * @description Update study-wide settings. These are shared across all users.
+         */
+        put: operations["update_study_settings_api_v1_settings_study_put"];
+        post?: never;
+        /**
+         * Reset Study Settings
+         * @description Reset study-wide settings to defaults.
+         */
+        delete: operations["reset_study_settings_api_v1_settings_study_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/consensus/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Consensus Overview
+         * @description Get overview of all dates with 2+ user annotations.
+         *
+         *     Returns dates that need consensus review, ordered by annotation count descending.
+         */
+        get: operations["get_consensus_overview_api_v1_consensus_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/consensus/{file_id}/{analysis_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Consensus For Date
+         * @description Get all user annotations for a specific file/date.
+         *
+         *     Returns all submitted annotations plus any admin resolution.
+         */
+        get: operations["get_consensus_for_date_api_v1_consensus__file_id___analysis_date__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/consensus/{file_id}/{analysis_date}/ballot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Consensus Ballot
+         * @description Get vote-ready candidate marker sets with aggregate counts.
+         */
+        get: operations["get_consensus_ballot_api_v1_consensus__file_id___analysis_date__ballot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/consensus/{file_id}/{analysis_date}/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cast Consensus Vote
+         * @description Cast or replace vote for a consensus candidate.
+         *
+         *     One active vote per user/date. candidate_id=null clears the vote.
+         */
+        post: operations["cast_consensus_vote_api_v1_consensus__file_id___analysis_date__vote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/consensus/{file_id}/{analysis_date}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Consensus
+         * @description Admin resolves disputed annotations for a file/date.
+         *
+         *     Creates or updates the resolved annotation with the final markers.
+         *     Stores resolution separately — does NOT overwrite the main Marker table.
+         *     Main markers are preserved but the date is marked as "resolved" status
+         *     via the resolved_annotations table.
+         */
+        post: operations["resolve_consensus_api_v1_consensus__file_id___analysis_date__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tus/files/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Extension Termination Route */
+        delete: operations["extension_termination_route_api_v1_tus_files__uuid__delete"];
+        options?: never;
+        /** Core Head Route */
+        head: operations["core_head_route_api_v1_tus_files__uuid__head"];
+        /** Core Patch Route */
+        patch: operations["core_patch_route_api_v1_tus_files__uuid__patch"];
+        trace?: never;
+    };
+    "/api/v1/tus/files/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extension Creation Route */
+        post: operations["extension_creation_route_api_v1_tus_files__post"];
+        delete?: never;
+        /** Core Options Route */
+        options: operations["core_options_route_api_v1_tus_files__options"];
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tus/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extension Creation Route */
+        post: operations["extension_creation_route_api_v1_tus_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}/processing-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Processing Status
+         * @description Get processing status for a file (in-memory tracker or DB fallback).
+         */
+        get: operations["get_processing_status_api_v1_files__file_id__processing_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -711,7 +1503,7 @@ export interface components {
         ActivityDataColumnar: {
             /**
              * Timestamps
-             * @description Unix timestamps
+             * @description Unix timestamps in seconds
              */
             timestamps?: number[];
             /** Axis X */
@@ -740,6 +1532,8 @@ export interface components {
             algorithm_results?: number[] | null;
             /** Nonwear Results */
             nonwear_results?: number[] | null;
+            /** Sensor Nonwear Periods */
+            sensor_nonwear_periods?: components["schemas"]["SensorNonwearPeriod"][];
             /** File Id */
             file_id: number;
             /** Analysis Date */
@@ -748,11 +1542,6 @@ export interface components {
             view_start?: number | null;
             /** View End */
             view_end?: number | null;
-            /**
-             * Sensor Nonwear Periods
-             * @default []
-             */
-            sensor_nonwear_periods?: components["schemas"]["SensorNonwearPeriod"][];
         };
         /**
          * AdjacentDayMarkersResponse
@@ -768,6 +1557,27 @@ export interface components {
             /** Next Date */
             next_date?: string | null;
         };
+        /** AggregateMetrics */
+        AggregateMetrics: {
+            /** Mean Tst Minutes */
+            mean_tst_minutes?: number | null;
+            /** Mean Sleep Efficiency */
+            mean_sleep_efficiency?: number | null;
+            /** Mean Waso Minutes */
+            mean_waso_minutes?: number | null;
+            /** Mean Sleep Onset Latency */
+            mean_sleep_onset_latency?: number | null;
+            /**
+             * Total Sleep Periods
+             * @default 0
+             */
+            total_sleep_periods: number;
+            /**
+             * Total Nap Periods
+             * @default 0
+             */
+            total_nap_periods: number;
+        };
         /**
          * AlgorithmType
          * @description Sleep scoring algorithm identifiers.
@@ -776,6 +1586,61 @@ export interface components {
          * @enum {string}
          */
         AlgorithmType: "sadeh_1994_original" | "sadeh_1994_actilife" | "cole_kripke_1992_original" | "cole_kripke_1992_actilife" | "manual";
+        /** AnalysisSummaryResponse */
+        AnalysisSummaryResponse: {
+            /**
+             * Total Files
+             * @default 0
+             */
+            total_files: number;
+            /**
+             * Total Dates
+             * @default 0
+             */
+            total_dates: number;
+            /**
+             * Scored Dates
+             * @default 0
+             */
+            scored_dates: number;
+            /** Files Summary */
+            files_summary?: components["schemas"]["FileSummary"][];
+            aggregate_metrics?: components["schemas"]["AggregateMetrics"];
+        };
+        /**
+         * AnnotationSummary
+         * @description Summary of a single user's annotation for a file/date.
+         */
+        AnnotationSummary: {
+            /** Username */
+            username: string;
+            /** Sleep Markers Json */
+            sleep_markers_json?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Nonwear Markers Json */
+            nonwear_markers_json?: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Is No Sleep
+             * @default false
+             */
+            is_no_sleep: boolean;
+            /** Algorithm Used */
+            algorithm_used?: string | null;
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            /** Notes */
+            notes?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /**
          * AuthStatusResponse
          * @description Response for auth status check.
@@ -787,8 +1652,113 @@ export interface components {
              */
             password_required: boolean;
         };
-        /** Body_upload_diary_csv_api_v1_diary__file_id__upload_post */
-        Body_upload_diary_csv_api_v1_diary__file_id__upload_post: {
+        /**
+         * AutoNonwearResponse
+         * @description Response with suggested nonwear marker placements.
+         */
+        AutoNonwearResponse: {
+            /** Nonwear Markers */
+            nonwear_markers?: {
+                [key: string]: unknown;
+            }[];
+            /** Notes */
+            notes?: string[];
+        };
+        /**
+         * AutoScoreBatchRequest
+         * @description Request payload for background batch auto-score prepopulation.
+         */
+        AutoScoreBatchRequest: {
+            /** File Ids */
+            file_ids?: number[] | null;
+            /**
+             * Only Missing
+             * @default true
+             */
+            only_missing: boolean;
+            /**
+             * Algorithm
+             * @default sadeh_1994_actilife
+             */
+            algorithm: string;
+            /**
+             * Include Diary
+             * @default true
+             */
+            include_diary: boolean;
+            /**
+             * Onset Epochs
+             * @default 3
+             */
+            onset_epochs: number;
+            /**
+             * Offset Minutes
+             * @default 5
+             */
+            offset_minutes: number;
+            /** Detection Rule */
+            detection_rule?: string | null;
+        };
+        /**
+         * AutoScoreBatchStatusResponse
+         * @description In-memory batch auto-score progress snapshot.
+         */
+        AutoScoreBatchStatusResponse: {
+            /** Is Running */
+            is_running: boolean;
+            /** Total Dates */
+            total_dates: number;
+            /** Processed Dates */
+            processed_dates: number;
+            /** Scored Dates */
+            scored_dates: number;
+            /** Skipped Existing */
+            skipped_existing: number;
+            /** Skipped Incomplete Diary */
+            skipped_incomplete_diary: number;
+            /** Skipped No Activity */
+            skipped_no_activity: number;
+            /** Skipped No Markers */
+            skipped_no_markers: number;
+            /** Failed Dates */
+            failed_dates: number;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Current File Id */
+            current_file_id?: number | null;
+            /** Current Date */
+            current_date?: string | null;
+            /** Errors */
+            errors?: string[];
+        };
+        /**
+         * AutoScoreResponse
+         * @description Response with suggested marker placements.
+         */
+        AutoScoreResponse: {
+            /** Sleep Markers */
+            sleep_markers?: {
+                [key: string]: unknown;
+            }[];
+            /** Nap Markers */
+            nap_markers?: {
+                [key: string]: unknown;
+            }[];
+            /** Notes */
+            notes?: string[];
+        };
+        /** Body_upload_diary_csv_api_v1_diary_upload_post */
+        Body_upload_diary_csv_api_v1_diary_upload_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
+        /** Body_upload_diary_csv_for_file_api_v1_diary__file_id__upload_post */
+        Body_upload_diary_csv_for_file_api_v1_diary__file_id__upload_post: {
             /**
              * File
              * Format: binary
@@ -812,6 +1782,174 @@ export interface components {
              * @description CSV file to upload
              */
             file: string;
+        };
+        /** Body_upload_nonwear_csv_api_v1_markers_nonwear_upload_post */
+        Body_upload_nonwear_csv_api_v1_markers_nonwear_upload_post: {
+            /**
+             * File
+             * Format: binary
+             * @description Nonwear CSV file
+             */
+            file: string;
+        };
+        /** Body_upload_nonwear_csv_for_file_api_v1_markers__file_id__nonwear_upload_post */
+        Body_upload_nonwear_csv_for_file_api_v1_markers__file_id__nonwear_upload_post: {
+            /**
+             * File
+             * Format: binary
+             * @description Nonwear CSV file
+             */
+            file: string;
+        };
+        /** Body_upload_sleep_csv_api_v1_markers_sleep_upload_post */
+        Body_upload_sleep_csv_api_v1_markers_sleep_upload_post: {
+            /**
+             * File
+             * Format: binary
+             * @description Desktop sleep marker CSV export
+             */
+            file: string;
+        };
+        /**
+         * CandidateVoteSummary
+         * @description Consensus candidate marker set with vote counts.
+         */
+        CandidateVoteSummary: {
+            /** Candidate Id */
+            candidate_id: number;
+            /** Label */
+            label: string;
+            /** Source Type */
+            source_type: string;
+            /** Sleep Markers Json */
+            sleep_markers_json?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Nonwear Markers Json */
+            nonwear_markers_json?: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Is No Sleep
+             * @default false
+             */
+            is_no_sleep: boolean;
+            /**
+             * Vote Count
+             * @default 0
+             */
+            vote_count: number;
+            /**
+             * Selected By Me
+             * @default false
+             */
+            selected_by_me: boolean;
+            /** Created At */
+            created_at?: string | null;
+        };
+        /**
+         * ConsensusBallotResponse
+         * @description Ballot view for voting on marker sets.
+         */
+        ConsensusBallotResponse: {
+            /** File Id */
+            file_id: number;
+            /**
+             * Analysis Date
+             * Format: date
+             */
+            analysis_date: string;
+            /** Candidates */
+            candidates?: components["schemas"]["CandidateVoteSummary"][];
+            /**
+             * Total Votes
+             * @default 0
+             */
+            total_votes: number;
+            /** Leading Candidate Id */
+            leading_candidate_id?: number | null;
+            /** My Vote Candidate Id */
+            my_vote_candidate_id?: number | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * ConsensusDateResponse
+         * @description All annotations for a specific file/date.
+         */
+        ConsensusDateResponse: {
+            /** File Id */
+            file_id: number;
+            /**
+             * Analysis Date
+             * Format: date
+             */
+            analysis_date: string;
+            /** Annotations */
+            annotations?: components["schemas"]["AnnotationSummary"][];
+            /**
+             * Has Resolution
+             * @default false
+             */
+            has_resolution: boolean;
+            resolution?: components["schemas"]["ResolvedAnnotationResponse"] | null;
+        };
+        /**
+         * ConsensusOverviewItem
+         * @description Overview item for dates needing consensus review.
+         */
+        ConsensusOverviewItem: {
+            /** File Id */
+            file_id: number;
+            /** Filename */
+            filename: string;
+            /**
+             * Analysis Date
+             * Format: date
+             */
+            analysis_date: string;
+            /** Annotation Count */
+            annotation_count: number;
+            /** Usernames */
+            usernames: string[];
+            /**
+             * Has Resolution
+             * @default false
+             */
+            has_resolution: boolean;
+        };
+        /**
+         * ConsensusOverviewResponse
+         * @description Overview of all dates with multiple annotations.
+         */
+        ConsensusOverviewResponse: {
+            /** Items */
+            items?: components["schemas"]["ConsensusOverviewItem"][];
+            /**
+             * Total Dates With Multiple
+             * @default 0
+             */
+            total_dates_with_multiple: number;
+        };
+        /**
+         * DateStatus
+         * @description Date annotation status with complexity scores.
+         */
+        DateStatus: {
+            /** Date */
+            date: string;
+            /** Has Markers */
+            has_markers: boolean;
+            /** Is No Sleep */
+            is_no_sleep: boolean;
+            /** Needs Consensus */
+            needs_consensus: boolean;
+            /** Has Auto Score */
+            has_auto_score: boolean;
+            /** Complexity Pre */
+            complexity_pre?: number | null;
+            /** Complexity Post */
+            complexity_post?: number | null;
         };
         /**
          * DiaryEntryCreate
@@ -937,6 +2075,20 @@ export interface components {
             entries_skipped: number;
             /** Errors */
             errors: string[];
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
+            /**
+             * Matched Rows
+             * @default 0
+             */
+            matched_rows: number;
+            /** Unmatched Identifiers */
+            unmatched_identifiers?: string[];
+            /** Ambiguous Identifiers */
+            ambiguous_identifiers?: string[];
         };
         /**
          * ExportColumnCategory
@@ -1032,12 +2184,6 @@ export interface components {
              * @default false
              */
             include_metadata: boolean;
-            /**
-             * Export Nonwear Separate
-             * @description Export nonwear markers to separate file
-             * @default false
-             */
-            export_nonwear_separate: boolean;
         };
         /**
          * ExportResponse
@@ -1082,6 +2228,8 @@ export interface components {
              * @default csv
              */
             file_type: string;
+            /** Participant Id */
+            participant_id?: string | null;
             /** @default pending */
             status: components["schemas"]["FileStatus"];
             /** Row Count */
@@ -1100,7 +2248,31 @@ export interface components {
          * @description File processing status.
          * @enum {string}
          */
-        FileStatus: "pending" | "processing" | "ready" | "failed";
+        FileStatus: "pending" | "uploading" | "processing" | "ready" | "failed";
+        /** FileSummary */
+        FileSummary: {
+            /** File Id */
+            file_id: number;
+            /** Filename */
+            filename: string;
+            /** Participant Id */
+            participant_id?: string | null;
+            /**
+             * Total Dates
+             * @default 0
+             */
+            total_dates: number;
+            /**
+             * Scored Dates
+             * @default 0
+             */
+            scored_dates: number;
+            /**
+             * Has Diary
+             * @default false
+             */
+            has_diary: boolean;
+        };
         /**
          * FileUploadResponse
          * @description Response after file upload.
@@ -1124,7 +2296,10 @@ export interface components {
          * @description Single data point for full 48h table.
          */
         FullTableDataPoint: {
-            /** Timestamp */
+            /**
+             * Timestamp
+             * @description Unix timestamp in seconds
+             */
             timestamp: number;
             /** Datetime Str */
             datetime_str: string;
@@ -1225,8 +2400,6 @@ export interface components {
          * @description Response with markers and their calculated metrics.
          */
         MarkersWithMetricsResponse: {
-            /** Notes */
-            notes?: string | null;
             /** Sleep Markers */
             sleep_markers?: components["schemas"]["SleepPeriod"][];
             /** Nonwear Markers */
@@ -1254,6 +2427,8 @@ export interface components {
              * @default false
              */
             needs_consensus: boolean;
+            /** Notes */
+            notes?: string | null;
         };
         /**
          * NonwearDataSource
@@ -1262,11 +2437,42 @@ export interface components {
          */
         NonwearDataSource: "choi_algorithm" | "manual";
         /**
+         * NonwearUploadResponse
+         * @description Response after uploading nonwear sensor CSV.
+         */
+        NonwearUploadResponse: {
+            /** Dates Imported */
+            dates_imported: number;
+            /** Markers Created */
+            markers_created: number;
+            /** Dates Skipped */
+            dates_skipped: number;
+            /** Errors */
+            errors?: string[];
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
+            /**
+             * Matched Rows
+             * @default 0
+             */
+            matched_rows: number;
+            /** Unmatched Identifiers */
+            unmatched_identifiers?: string[];
+            /** Ambiguous Identifiers */
+            ambiguous_identifiers?: string[];
+        };
+        /**
          * OnsetOffsetDataPoint
          * @description Single data point for onset/offset tables.
          */
         OnsetOffsetDataPoint: {
-            /** Timestamp */
+            /**
+             * Timestamp
+             * @description Unix timestamp in seconds
+             */
             timestamp: number;
             /** Datetime Str */
             datetime_str: string;
@@ -1296,31 +2502,155 @@ export interface components {
             /** Period Index */
             period_index: number;
         };
-        /** PaginatedResponse[FileInfo] */
-        PaginatedResponse_FileInfo_: {
-            /** Items */
-            items: components["schemas"]["FileInfo"][];
-            /** Total */
-            total: number;
-            /** Page */
-            page: number;
-            /** Page Size */
-            page_size: number;
+        /**
+         * PasswordVerifyRequest
+         * @description Request body for password verification.
+         */
+        PasswordVerifyRequest: {
             /**
-             * Pages
-             * @description Total number of pages.
+             * Password
+             * @description Site password to verify
              */
-            readonly pages: number;
+            password: string;
+        };
+        /**
+         * PasswordVerifyResponse
+         * @description Response from password verification.
+         */
+        PasswordVerifyResponse: {
             /**
-             * Has Next
-             * @description Whether there is a next page.
+             * Valid
+             * @description Whether the password is valid
              */
-            readonly has_next: boolean;
+            valid: boolean;
             /**
-             * Has Prev
-             * @description Whether there is a previous page.
+             * Password Required
+             * @description Whether password is required
              */
-            readonly has_prev: boolean;
+            password_required: boolean;
+        };
+        /**
+         * PipelineConfigRequest
+         * @description Request body for the v2 auto-score endpoint.
+         */
+        PipelineConfigRequest: {
+            /**
+             * Epoch Classifier
+             * @default sadeh_1994_actilife
+             */
+            epoch_classifier: string;
+            /**
+             * Bout Detector
+             * @default consecutive_run
+             */
+            bout_detector: string;
+            /**
+             * Period Guider
+             * @default diary
+             */
+            period_guider: string;
+            /**
+             * Period Constructor
+             * @default onset_offset
+             */
+            period_constructor: string;
+            /**
+             * Nonwear Detector
+             * @default choi
+             */
+            nonwear_detector: string;
+            /**
+             * Diary Preprocessor
+             * @default ampm_corrector
+             */
+            diary_preprocessor: string;
+            /** Epoch Classifier Params */
+            epoch_classifier_params?: {
+                [key: string]: unknown;
+            };
+            /** Bout Detector Params */
+            bout_detector_params?: {
+                [key: string]: unknown;
+            };
+            /** Period Guider Params */
+            period_guider_params?: {
+                [key: string]: unknown;
+            };
+            /** Period Constructor Params */
+            period_constructor_params?: {
+                [key: string]: unknown;
+            };
+            /** Nonwear Detector Params */
+            nonwear_detector_params?: {
+                [key: string]: unknown;
+            };
+            /** Diary Preprocessor Params */
+            diary_preprocessor_params?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ProcessingStatusResponse
+         * @description Response for background file processing progress.
+         */
+        ProcessingStatusResponse: {
+            /** File Id */
+            file_id: number;
+            status: components["schemas"]["FileStatus"];
+            /** Phase */
+            phase?: string | null;
+            /**
+             * Percent
+             * @default 0
+             */
+            percent: number;
+            /**
+             * Rows Processed
+             * @default 0
+             */
+            rows_processed: number;
+            /** Total Rows Estimate */
+            total_rows_estimate?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Started At */
+            started_at?: string | null;
+        };
+        /**
+         * ResolveRequest
+         * @description Request to resolve a disputed annotation.
+         */
+        ResolveRequest: {
+            /** Final Sleep Markers Json */
+            final_sleep_markers_json?: {
+                [key: string]: unknown;
+            }[];
+            /** Final Nonwear Markers Json */
+            final_nonwear_markers_json?: {
+                [key: string]: unknown;
+            }[];
+            /** Resolution Notes */
+            resolution_notes?: string | null;
+        };
+        /**
+         * ResolvedAnnotationResponse
+         * @description Admin-resolved annotation data.
+         */
+        ResolvedAnnotationResponse: {
+            /** Resolved By */
+            resolved_by: string;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Resolution Notes */
+            resolution_notes?: string | null;
+            /** Final Sleep Markers Json */
+            final_sleep_markers_json?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Final Nonwear Markers Json */
+            final_nonwear_markers_json?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /**
          * SaveStatusResponse
@@ -1343,6 +2673,22 @@ export interface components {
              * @default Markers saved successfully
              */
             message: string;
+        };
+        /**
+         * SensorNonwearPeriod
+         * @description A single sensor-detected nonwear period (read-only overlay, not user-editable).
+         */
+        SensorNonwearPeriod: {
+            /**
+             * Start Timestamp
+             * @description Unix timestamp in seconds
+             */
+            start_timestamp: number;
+            /**
+             * End Timestamp
+             * @description Unix timestamp in seconds
+             */
+            end_timestamp: number;
         };
         /**
          * SessionLoginRequest
@@ -1377,6 +2723,41 @@ export interface components {
              * @description Session lifetime in seconds
              */
             expires_in_seconds: number;
+        };
+        /**
+         * SleepImportResponse
+         * @description Response after importing sleep marker CSV (desktop or web export).
+         */
+        SleepImportResponse: {
+            /** Dates Imported */
+            dates_imported: number;
+            /** Markers Created */
+            markers_created: number;
+            /**
+             * Nonwear Markers Created
+             * @default 0
+             */
+            nonwear_markers_created: number;
+            /** No Sleep Dates */
+            no_sleep_dates: number;
+            /** Dates Skipped */
+            dates_skipped: number;
+            /** Errors */
+            errors?: string[];
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
+            /**
+             * Matched Rows
+             * @default 0
+             */
+            matched_rows: number;
+            /** Unmatched Identifiers */
+            unmatched_identifiers?: string[];
+            /** Ambiguous Identifiers */
+            ambiguous_identifiers?: string[];
         };
         /**
          * SleepMetrics
@@ -1430,16 +2811,6 @@ export interface components {
          *
          *     Ported from desktop's dataclasses_markers.SleepPeriod.
          */
-        /**
-         * SensorNonwearPeriod
-         * @description A nonwear period uploaded from sensor CSV data (read-only overlay).
-         */
-        SensorNonwearPeriod: {
-            /** Start Timestamp */
-            start_timestamp: number;
-            /** End Timestamp */
-            end_timestamp: number;
-        };
         SleepPeriod: {
             /** Onset Timestamp */
             onset_timestamp?: number | null;
@@ -1452,6 +2823,54 @@ export interface components {
             marker_index: number;
             /** @default MAIN_SLEEP */
             marker_type: components["schemas"]["MarkerType"];
+        };
+        /**
+         * StudySettingsResponse
+         * @description Response model for study-wide settings.
+         */
+        StudySettingsResponse: {
+            /** Sleep Detection Rule */
+            sleep_detection_rule?: string | null;
+            /** Night Start Hour */
+            night_start_hour?: string | null;
+            /** Night End Hour */
+            night_end_hour?: string | null;
+            /** Device Preset */
+            device_preset?: string | null;
+            /** Epoch Length Seconds */
+            epoch_length_seconds?: number | null;
+            /** Skip Rows */
+            skip_rows?: number | null;
+            /** Default Algorithm */
+            default_algorithm?: string | null;
+            /** Extra Settings */
+            extra_settings?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * StudySettingsUpdate
+         * @description Request model for updating study-wide settings.
+         */
+        StudySettingsUpdate: {
+            /** Sleep Detection Rule */
+            sleep_detection_rule?: string | null;
+            /** Night Start Hour */
+            night_start_hour?: string | null;
+            /** Night End Hour */
+            night_end_hour?: string | null;
+            /** Device Preset */
+            device_preset?: string | null;
+            /** Epoch Length Seconds */
+            epoch_length_seconds?: number | null;
+            /** Skip Rows */
+            skip_rows?: number | null;
+            /** Default Algorithm */
+            default_algorithm?: string | null;
+            /** Extra Settings */
+            extra_settings?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * UserSettingsResponse
@@ -1524,6 +2943,14 @@ export interface components {
          * @enum {string}
          */
         VerificationStatus: "draft" | "submitted" | "verified" | "disputed" | "resolved";
+        /**
+         * VoteRequest
+         * @description Cast/replace vote for a candidate; null clears vote.
+         */
+        VoteRequest: {
+            /** Candidate Id */
+            candidate_id?: number | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -1674,9 +3101,44 @@ export interface operations {
             };
         };
     };
-    upload_file_api_v1_files_upload_post: {
+    verify_password_api_v1_auth_verify_post: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordVerifyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_file_api_v1_files_upload_post: {
+        parameters: {
+            query?: {
+                replace?: boolean;
+            };
             header?: {
                 "X-Site-Password"?: string | null;
                 "X-Username"?: string | null;
@@ -1749,14 +3211,10 @@ export interface operations {
     };
     list_files_api_v1_files_get: {
         parameters: {
-            query?: {
-                /** @description Page number (1-indexed) */
-                page?: number;
-                /** @description Items per page */
-                page_size?: number;
-            };
+            query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1769,7 +3227,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponse_FileInfo_"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -1818,11 +3278,260 @@ export interface operations {
             };
         };
     };
+    get_me_api_v1_files_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_assignments_api_v1_files_assignments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_assignments_api_v1_files_assignments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_user_assignments_api_v1_files_assignments__target_username__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                target_username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_assignment_progress_api_v1_files_assignments_progress_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_unassigned_files_api_v1_files_assignments_unassigned_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_excluded_files_api_v1_files_purge_excluded_post: {
+        parameters: {
+            query?: {
+                delete_disk_files?: boolean;
+            };
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_file_api_v1_files__file_id__get: {
         parameters: {
             query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -1882,7 +3591,109 @@ export interface operations {
             };
         };
     };
+    backfill_participant_ids_api_v1_files_backfill_participant_ids_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_file_dates_api_v1_files__file_id__dates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_file_dates_status_api_v1_files__file_id__dates_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DateStatus"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compute_complexity_api_v1_files__file_id__compute_complexity_post: {
         parameters: {
             query?: never;
             header?: {
@@ -1901,7 +3712,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": string[];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_complexity_detail_api_v1_files__file_id___analysis_date__complexity_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -2015,6 +3864,43 @@ export interface operations {
             };
         };
     };
+    delete_file_assignment_api_v1_files__file_id__assignments__target_username__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                target_username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_activity_data_api_v1_activity__file_id___analysis_date__get: {
         parameters: {
             query?: {
@@ -2023,6 +3909,7 @@ export interface operations {
             };
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2061,6 +3948,7 @@ export interface operations {
             };
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2097,6 +3985,7 @@ export interface operations {
             };
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2134,6 +4023,7 @@ export interface operations {
             };
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2209,6 +4099,7 @@ export interface operations {
             };
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2246,6 +4137,7 @@ export interface operations {
             query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2275,13 +4167,128 @@ export interface operations {
             };
         };
     };
+    upload_nonwear_csv_api_v1_markers_nonwear_upload_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_nonwear_csv_api_v1_markers_nonwear_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NonwearUploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_nonwear_csv_for_file_api_v1_markers__file_id__nonwear_upload_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_nonwear_csv_for_file_api_v1_markers__file_id__nonwear_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NonwearUploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_sleep_csv_api_v1_markers_sleep_upload_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_sleep_csv_api_v1_markers_sleep_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SleepImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_onset_offset_data_api_v1_markers__file_id___analysis_date__table__period_index__get: {
         parameters: {
             query?: {
                 window_minutes?: number;
+                /** @description Onset timestamp in seconds (use instead of DB lookup) */
+                onset_ts?: number | null;
+                /** @description Offset timestamp in seconds (use instead of DB lookup) */
+                offset_ts?: number | null;
             };
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2317,6 +4324,7 @@ export interface operations {
             query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2333,6 +4341,266 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FullTableResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_auto_score_batch_api_v1_markers_auto_score_batch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutoScoreBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoScoreBatchStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_auto_score_batch_status_api_v1_markers_auto_score_batch_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoScoreBatchStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_score_markers_api_v1_markers__file_id___analysis_date__auto_score_post: {
+        parameters: {
+            query?: {
+                /** @description Algorithm type */
+                algorithm?: string;
+                /** @description Use diary data for placement */
+                include_diary?: boolean;
+                /** @description Min consecutive sleep epochs for onset (e.g. 3 or 5) */
+                onset_epochs?: number;
+                /** @description Min consecutive minutes for offset (e.g. 5 or 10) */
+                offset_minutes?: number;
+                /** @description Sleep detection rule active at time of scoring */
+                detection_rule?: string | null;
+            };
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoScoreResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_auto_score_result_api_v1_markers__file_id___analysis_date__auto_score_result_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_nonwear_markers_api_v1_markers__file_id___analysis_date__auto_nonwear_post: {
+        parameters: {
+            query?: {
+                /** @description Max activity count to consider as zero */
+                threshold?: number;
+            };
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoNonwearResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_pipeline_api_v1_markers_pipeline_discover_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_score_v2_api_v1_markers__file_id___analysis_date__auto_score_v2_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PipelineConfigRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoScoreResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2382,6 +4650,7 @@ export interface operations {
             query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2417,6 +4686,43 @@ export interface operations {
             query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_nonwear_csv_export_api_v1_export_csv_download_nonwear_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2459,6 +4765,7 @@ export interface operations {
             };
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2485,11 +4792,78 @@ export interface operations {
             };
         };
     };
+    get_analysis_summary_api_v1_analysis_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_diary_entries_api_v1_diary__file_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiaryEntryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_diary_entry_api_v1_diary__file_id___analysis_date__get: {
         parameters: {
             query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2563,6 +4937,7 @@ export interface operations {
             query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path: {
                 file_id: number;
@@ -2590,7 +4965,43 @@ export interface operations {
             };
         };
     };
-    upload_diary_csv_api_v1_diary__file_id__upload_post: {
+    upload_diary_csv_api_v1_diary_upload_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_diary_csv_api_v1_diary_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiaryUploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_diary_csv_for_file_api_v1_diary__file_id__upload_post: {
         parameters: {
             query?: never;
             header?: {
@@ -2604,7 +5015,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_diary_csv_api_v1_diary__file_id__upload_post"];
+                "multipart/form-data": components["schemas"]["Body_upload_diary_csv_for_file_api_v1_diary__file_id__upload_post"];
             };
         };
         responses: {
@@ -2714,6 +5125,514 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_study_settings_api_v1_settings_study_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudySettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_study_settings_api_v1_settings_study_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudySettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudySettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_study_settings_api_v1_settings_study_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_consensus_overview_api_v1_consensus_overview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsensusOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_consensus_for_date_api_v1_consensus__file_id___analysis_date__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsensusDateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_consensus_ballot_api_v1_consensus__file_id___analysis_date__ballot_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsensusBallotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cast_consensus_vote_api_v1_consensus__file_id___analysis_date__vote_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsensusBallotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_consensus_api_v1_consensus__file_id___analysis_date__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedAnnotationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extension_termination_route_api_v1_tus_files__uuid__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "tus-resumable"?: string;
+            };
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    core_head_route_api_v1_tus_files__uuid__head: {
+        parameters: {
+            query?: never;
+            header?: {
+                "tus-resumable"?: string;
+            };
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    core_patch_route_api_v1_tus_files__uuid__patch: {
+        parameters: {
+            query?: {
+                post_request?: boolean;
+            };
+            header: {
+                "content-length": number;
+                "upload-offset": number;
+                "upload-length"?: number;
+                "content-type"?: string;
+                "tus-resumable"?: string;
+            };
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extension_creation_route_api_v1_tus_files__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "upload-metadata"?: string;
+                "upload-length"?: number;
+                "upload-defer-length"?: number;
+                "upload-concat"?: string;
+                "tus-resumable"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    core_options_route_api_v1_tus_files__options: {
+        parameters: {
+            query?: never;
+            header?: {
+                "tus-resumable"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extension_creation_route_api_v1_tus_files_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "upload-metadata"?: string;
+                "upload-length"?: number;
+                "upload-defer-length"?: number;
+                "upload-concat"?: string;
+                "tus-resumable"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_processing_status_api_v1_files__file_id__processing_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path: {
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessingStatusResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

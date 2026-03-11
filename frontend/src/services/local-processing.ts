@@ -4,9 +4,13 @@ import { computeFileHash } from "@/lib/content-hash";
 import { stripBom } from "@/lib/csv-utils";
 import * as localDb from "@/db";
 
-/** Result from WASM CSV parsing (matches Rust CsvParseResult via serde) */
+/**
+ * Result from WASM CSV parsing (matches Rust CsvParseResult via serde).
+ * IMPORTANT: timestamps_ms are in milliseconds — convert to seconds
+ * before storing in IndexedDB (done in processLocalFile).
+ */
 interface CsvParseResult {
-  timestamps_ms: number[];
+  timestamps_ms: number[]; // Unix milliseconds from WASM
   axis_y: number[];
   axis_x: number[];
   axis_z: number[];
@@ -16,9 +20,12 @@ interface CsvParseResult {
   header_rows_skipped: number;
 }
 
-/** Result from WASM epoching (matches Rust EpochResult via serde) */
+/**
+ * Result from WASM epoching (matches Rust EpochResult via serde).
+ * timestamps_ms are in milliseconds — converted to seconds downstream.
+ */
 interface EpochResult {
-  timestamps_ms: number[];
+  timestamps_ms: number[]; // Unix milliseconds from WASM
   axis_y: number[];
   axis_x: number[];
   axis_z: number[];
@@ -154,10 +161,12 @@ export async function processLocalFile(
   }
   const selectedChoiData = choiAxisData ?? vectorMagnitude;
 
-  // Step 4: Split into per-date arrays (extra array for Choi axis if it differs)
+  // Step 4: Convert ms→seconds and split into per-date arrays
+  // WASM outputs timestamps_ms — convert once here so all downstream storage is seconds.
   onProgress?.({ phase: "scoring", percent: 55, message: "Running sleep algorithms..." });
+  const timestampsSec = timestamps.map(t => t / 1000);
   const extraChoiArray = choiAxis !== "vector_magnitude" ? selectedChoiData : undefined;
-  const dateGroups = splitByDate(timestamps, axisY, vectorMagnitude, extraChoiArray);
+  const dateGroups = splitByDate(timestampsSec, axisY, vectorMagnitude, extraChoiArray);
   const availableDates = Object.keys(dateGroups).sort();
 
   // Step 5: Run ALL algorithm variants on each day
@@ -257,10 +266,10 @@ function splitByDate(
     const ts = timestamps[i];
 
     if (ts < cachedDayStart || ts >= cachedDayEnd) {
-      const date = new Date(ts);
+      const date = new Date(ts * 1000);
       cachedDateStr = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
-      cachedDayStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-      cachedDayEnd = cachedDayStart + 86400000;
+      cachedDayStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) / 1000;
+      cachedDayEnd = cachedDayStart + 86400;
     }
 
     if (!groups[cachedDateStr]) {

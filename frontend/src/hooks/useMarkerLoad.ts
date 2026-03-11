@@ -8,7 +8,7 @@ import type { MarkerData } from "@/services/data-source";
  * Hook to load markers when file/date changes.
  * Routes through DataSource (server or local) based on current file source.
  *
- * MarkerData from both DataSource impls is already in milliseconds.
+ * MarkerData from both DataSource impls uses Unix seconds.
  */
 export function useMarkerLoad() {
   const currentFileId = useSleepScoringStore((state) => state.currentFileId);
@@ -60,7 +60,7 @@ export function useMarkerLoad() {
     // CRITICAL: Never overwrite unsaved local changes with stale data.
     if (current.isDirty) return;
 
-    // MarkerData is already in ms from both DataSource impls
+    // MarkerData is already in seconds from both DataSource impls
     const apiSleepMarkers = data.sleepMarkers ?? [];
     const apiNonwearMarkers = data.nonwearMarkers ?? [];
 

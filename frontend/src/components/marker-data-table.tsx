@@ -6,7 +6,7 @@ import { hexToRgba } from "@/lib/color-themes";
 import { Maximize2, Home } from "lucide-react";
 import type { OnsetOffsetDataPoint, OnsetOffsetTableResponse } from "@/api/types";
 import * as localDb from "@/db";
-import { isMilliseconds } from "@/utils/timestamps";
+
 
 /** Build table data from local IndexedDB activity data around a marker timestamp. */
 async function buildLocalTableData(
@@ -19,10 +19,7 @@ async function buildLocalTableData(
   const day = await localDb.getActivityDay(fileId, date);
   if (!day) return null;
 
-  const rawF64 = new Float64Array(day.timestamps);
-  const tsSec = rawF64.length > 0 && isMilliseconds(rawF64[0])
-    ? Array.from(rawF64, (t) => t / 1000)
-    : Array.from(rawF64);
+  const tsSec = Array.from(new Float64Array(day.timestamps));
   const axisY = Array.from(new Float64Array(day.axisY));
   const vm = Array.from(new Float64Array(day.vectorMagnitude));
   const algoKey = Object.keys(day.algorithmResults)[0];
@@ -31,11 +28,10 @@ async function buildLocalTableData(
 
   const buildWindow = (centerTs: number | null): OnsetOffsetDataPoint[] => {
     if (centerTs == null || tsSec.length === 0) return [];
-    const centerSec = centerTs / 1000; // ms → seconds
     const halfWindow = windowMinutes * 60 / 2;
     const points: OnsetOffsetDataPoint[] = [];
     for (let i = 0; i < tsSec.length; i++) {
-      if (tsSec[i] >= centerSec - halfWindow && tsSec[i] <= centerSec + halfWindow) {
+      if (tsSec[i] >= centerTs - halfWindow && tsSec[i] <= centerTs + halfWindow) {
         const d = new Date(tsSec[i] * 1000);
         points.push({
           timestamp: tsSec[i],
@@ -106,7 +102,7 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
 
   // Quantize timestamps to 5-minute buckets for the query key so that small drag
   // movements don't create a new cache key on every mousemove tick (reduces flicker)
-  const quantize = (ts: number | null) => ts !== null ? Math.round(ts / 300000) : null;
+  const quantize = (ts: number | null) => ts !== null ? Math.round(ts / 300) : null;
 
   const isLocal = useSleepScoringStore((state) => state.currentFileSource === "local");
 
@@ -122,8 +118,8 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
 
       // Server mode: fetch from backend API
       const params = new URLSearchParams({ window_minutes: "100" });
-      if (onsetTs !== null) params.set("onset_ts", String(onsetTs / 1000)); // Convert ms to seconds
-      if (offsetTs !== null) params.set("offset_ts", String(offsetTs / 1000));
+      if (onsetTs !== null) params.set("onset_ts", String(onsetTs));
+      if (offsetTs !== null) params.set("offset_ts", String(offsetTs));
       const url = `${getApiBase()}/markers/${currentFileId}/${currentDate}/table/${selectedPeriodIndex + 1}?${params}`;
       try {
         return await fetchWithAuth<OnsetOffsetTableResponse>(url);
@@ -140,7 +136,7 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
   const data = type === "onset" ? tableData?.onset_data : tableData?.offset_data;
 
   const markerRowIndex = data?.findIndex(
-    (row) => targetTimestamp && Math.abs(row.timestamp * 1000 - targetTimestamp) < 60000
+    (row) => targetTimestamp && Math.abs(row.timestamp - targetTimestamp) < 60
   );
 
   // Track previous marker row index to only scroll when it actually changes
@@ -165,13 +161,12 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
 
   const handleRowClick = useCallback((row: OnsetOffsetDataPoint) => {
     if (selectedPeriodIndex === null) return;
-    const newTimestamp = row.timestamp * 1000;
     if (isSleepMode) {
-      if (type === "onset") updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: newTimestamp });
-      else updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: newTimestamp });
+      if (type === "onset") updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: row.timestamp });
+      else updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: row.timestamp });
     } else {
-      if (type === "onset") updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: newTimestamp });
-      else updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: newTimestamp });
+      if (type === "onset") updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: row.timestamp });
+      else updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: row.timestamp });
     }
   }, [selectedPeriodIndex, isSleepMode, type, updateMarker]);
 

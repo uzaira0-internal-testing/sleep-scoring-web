@@ -1,8 +1,8 @@
 import { useEffect, useCallback } from "react";
 import { useSleepScoringStore, useMarkers, useDates } from "@/store";
 
-/** Epoch duration for fine adjustments (60 seconds in ms) */
-const EPOCH_DURATION_MS = 60 * 1000;
+/** Epoch duration for fine adjustments (60 seconds) */
+const EPOCH_DURATION_SEC = 60;
 
 /**
  * Keyboard shortcuts for the scoring page.
@@ -78,14 +78,14 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
               const marker = sleepMarkers[selectedPeriodIndex];
               if (marker?.onsetTimestamp != null) {
                 updateMarker("sleep", selectedPeriodIndex, {
-                  onsetTimestamp: marker.onsetTimestamp - EPOCH_DURATION_MS,
+                  onsetTimestamp: marker.onsetTimestamp - EPOCH_DURATION_SEC,
                 });
               }
             } else {
               const marker = nonwearMarkers[selectedPeriodIndex];
               if (marker?.startTimestamp != null) {
                 updateMarker("nonwear", selectedPeriodIndex, {
-                  startTimestamp: marker.startTimestamp - EPOCH_DURATION_MS,
+                  startTimestamp: marker.startTimestamp - EPOCH_DURATION_SEC,
                 });
               }
             }
@@ -103,7 +103,7 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
                 marker?.onsetTimestamp != null &&
                 marker?.offsetTimestamp != null
               ) {
-                const newOnset = marker.onsetTimestamp + EPOCH_DURATION_MS;
+                const newOnset = marker.onsetTimestamp + EPOCH_DURATION_SEC;
                 // Don't allow onset to go past offset
                 if (newOnset < marker.offsetTimestamp) {
                   updateMarker("sleep", selectedPeriodIndex, {
@@ -117,7 +117,7 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
                 marker?.startTimestamp != null &&
                 marker?.endTimestamp != null
               ) {
-                const newStart = marker.startTimestamp + EPOCH_DURATION_MS;
+                const newStart = marker.startTimestamp + EPOCH_DURATION_SEC;
                 if (newStart < marker.endTimestamp) {
                   updateMarker("nonwear", selectedPeriodIndex, {
                     startTimestamp: newStart,
@@ -139,7 +139,7 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
                 marker?.onsetTimestamp != null &&
                 marker?.offsetTimestamp != null
               ) {
-                const newOffset = marker.offsetTimestamp - EPOCH_DURATION_MS;
+                const newOffset = marker.offsetTimestamp - EPOCH_DURATION_SEC;
                 // Don't allow offset to go before onset
                 if (newOffset > marker.onsetTimestamp) {
                   updateMarker("sleep", selectedPeriodIndex, {
@@ -153,7 +153,7 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
                 marker?.startTimestamp != null &&
                 marker?.endTimestamp != null
               ) {
-                const newEnd = marker.endTimestamp - EPOCH_DURATION_MS;
+                const newEnd = marker.endTimestamp - EPOCH_DURATION_SEC;
                 if (newEnd > marker.startTimestamp) {
                   updateMarker("nonwear", selectedPeriodIndex, {
                     endTimestamp: newEnd,
@@ -173,14 +173,14 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
               const marker = sleepMarkers[selectedPeriodIndex];
               if (marker?.offsetTimestamp != null) {
                 updateMarker("sleep", selectedPeriodIndex, {
-                  offsetTimestamp: marker.offsetTimestamp + EPOCH_DURATION_MS,
+                  offsetTimestamp: marker.offsetTimestamp + EPOCH_DURATION_SEC,
                 });
               }
             } else {
               const marker = nonwearMarkers[selectedPeriodIndex];
               if (marker?.endTimestamp != null) {
                 updateMarker("nonwear", selectedPeriodIndex, {
-                  endTimestamp: marker.endTimestamp + EPOCH_DURATION_MS,
+                  endTimestamp: marker.endTimestamp + EPOCH_DURATION_SEC,
                 });
               }
             }

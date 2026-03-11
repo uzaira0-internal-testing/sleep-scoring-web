@@ -18,6 +18,7 @@ from .enums import (
 from .models import (
     ActivityDataColumnar,
     ActivityDataResponse,
+    DateStatus,
     ExportColumnCategory,
     ExportColumnInfo,
     ExportColumnsResponse,
@@ -25,9 +26,13 @@ from .models import (
     ExportResponse,
     FileInfo,
     FileUploadResponse,
+    FullTableDataPoint,
+    FullTableResponse,
     ManualNonwearPeriod,
     MarkerResponse,
     MarkerUpdateRequest,
+    OnsetOffsetDataPoint,
+    OnsetOffsetTableResponse,
     SleepMetrics,
     SleepPeriod,
 )
@@ -38,6 +43,8 @@ __all__ = [
     "ActivityDataResponse",
     # Enums
     "AlgorithmType",
+    # Date status
+    "DateStatus",
     # Export
     "ExportColumnCategory",
     "ExportColumnInfo",
@@ -48,6 +55,9 @@ __all__ = [
     "FileInfo",
     "FileStatus",
     "FileUploadResponse",
+    # Table models
+    "FullTableDataPoint",
+    "FullTableResponse",
     # Markers
     "ManualNonwearPeriod",
     "MarkerCategory",
@@ -55,6 +65,8 @@ __all__ = [
     "MarkerType",
     "MarkerUpdateRequest",
     "NonwearAlgorithm",
+    "OnsetOffsetDataPoint",
+    "OnsetOffsetTableResponse",
     "SleepMetrics",
     "SleepPeriod",
     "SleepPeriodDetectorType",

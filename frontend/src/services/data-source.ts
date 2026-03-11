@@ -1,6 +1,5 @@
 import type { MarkerType, DateStatus } from "@/api/types";
 import { getApiBase, fetchWithAuth } from "@/api/client";
-import { toMilliseconds, toSeconds, isMilliseconds } from "@/utils/timestamps";
 import * as localDb from "@/db";
 import type { SleepMarkerJson, NonwearMarkerJson, ActivityDay } from "@/db/schema";
 import { runAutoScoring, placeNonwearMarkers } from "@/services/marker-placement";
@@ -201,8 +200,8 @@ export class ServerDataSource implements DataSource {
       viewStart: data.view_start ?? null,
       viewEnd: data.view_end ?? null,
       sensorNonwearPeriods: (data.sensor_nonwear_periods ?? []).map((p: { start_timestamp: number; end_timestamp: number }) => ({
-        startTimestamp: p.start_timestamp * 1000,
-        endTimestamp: p.end_timestamp * 1000,
+        startTimestamp: p.start_timestamp,
+        endTimestamp: p.end_timestamp,
       })),
     };
   }
@@ -219,14 +218,14 @@ export class ServerDataSource implements DataSource {
     const data = await response.json();
     return {
       sleepMarkers: (data.sleep_markers ?? []).map((m: Record<string, unknown>) => ({
-        onsetTimestamp: toMilliseconds(m.onset_timestamp as number | null),
-        offsetTimestamp: toMilliseconds(m.offset_timestamp as number | null),
+        onsetTimestamp: (m.onset_timestamp as number | null),
+        offsetTimestamp: (m.offset_timestamp as number | null),
         markerIndex: m.marker_index as number,
         markerType: m.marker_type as MarkerType,
       })),
       nonwearMarkers: (data.nonwear_markers ?? []).map((m: Record<string, unknown>) => ({
-        startTimestamp: toMilliseconds(m.start_timestamp as number | null),
-        endTimestamp: toMilliseconds(m.end_timestamp as number | null),
+        startTimestamp: (m.start_timestamp as number | null),
+        endTimestamp: (m.end_timestamp as number | null),
         markerIndex: m.marker_index as number,
       })),
       isNoSleep: data.is_no_sleep ?? false,
@@ -238,14 +237,14 @@ export class ServerDataSource implements DataSource {
   async saveMarkers(fileId: number, date: string, username: string, data: MarkerData): Promise<void> {
     const payload: Record<string, unknown> = {
       sleep_markers: data.sleepMarkers.map((m) => ({
-        onset_timestamp: toSeconds(m.onsetTimestamp),
-        offset_timestamp: toSeconds(m.offsetTimestamp),
+        onset_timestamp: m.onsetTimestamp,
+        offset_timestamp: m.offsetTimestamp,
         marker_index: m.markerIndex,
         marker_type: m.markerType,
       })),
       nonwear_markers: data.nonwearMarkers.map((m) => ({
-        start_timestamp: toSeconds(m.startTimestamp),
-        end_timestamp: toSeconds(m.endTimestamp),
+        start_timestamp: m.startTimestamp,
+        end_timestamp: m.endTimestamp,
         marker_index: m.markerIndex,
       })),
       is_no_sleep: data.isNoSleep,
@@ -393,11 +392,8 @@ function unpackActivityDay(
   day: ActivityDay,
   preferredAlgorithm?: string,
 ): UnpackedActivityDay {
-  // WASM stores timestamps in ms; frontend expects seconds. Single-pass convert.
-  const rawF64 = new Float64Array(day.timestamps);
-  const timestamps = rawF64.length > 0 && isMilliseconds(rawF64[0])
-    ? Array.from(rawF64, (t) => t / 1000)
-    : Array.from(rawF64);
+  // IndexedDB stores timestamps in seconds (converted from WASM ms at storage time).
+  const timestamps = Array.from(new Float64Array(day.timestamps));
   const axisY = Array.from(new Float64Array(day.axisY));
   const vectorMagnitude = Array.from(new Float64Array(day.vectorMagnitude));
 
@@ -472,10 +468,10 @@ export class LocalDataSource implements DataSource {
     const viewStart = unpacked.timestamps.length > 0 ? unpacked.timestamps[0] : null;
     const viewEnd = unpacked.timestamps.length > 0 ? unpacked.timestamps[unpacked.timestamps.length - 1] : null;
 
-    // Load sensor nonwear from IndexedDB (timestamps stored in seconds, convert to ms for markers)
+    // Load sensor nonwear from IndexedDB (timestamps in seconds, matching store convention)
     const sensorNonwearPeriods = (await localDb.getSensorNonwear(fileId, date)).map((p) => ({
-      startTimestamp: p.startTimestamp * 1000,  // seconds → ms (marker convention)
-      endTimestamp: p.endTimestamp * 1000,
+      startTimestamp: p.startTimestamp,
+      endTimestamp: p.endTimestamp,
     }));
 
     return {
@@ -587,10 +583,8 @@ export class LocalDataSource implements DataSource {
       p.endTimestamp,
     ]);
 
-    // Convert ms (store units) → seconds (placement algorithm units)
-    const existingSleepMarkersSec: Array<[number, number]> = options.existingSleepMarkers.map(
-      ([onset, offset]) => [onset / 1000, offset / 1000],
-    );
+    // Store already uses seconds — pass through directly
+    const existingSleepMarkersSec: Array<[number, number]> = options.existingSleepMarkers;
 
     const result = placeNonwearMarkers({
       timestamps,
@@ -675,10 +669,10 @@ export class LocalDataSource implements DataSource {
 
           if (markers && complexityPre >= 0) {
             // MarkerRecord.sleepMarkers uses camelCase (onsetTimestamp/offsetTimestamp)
-            // Markers are in ms, timestamps are in seconds — convert for consistency
+            // Both markers and timestamps are in seconds
             const sleepMarkerPairs: Array<[number, number]> = markers.sleepMarkers
               .filter((m) => m.onsetTimestamp != null && m.offsetTimestamp != null)
-              .map((m) => [m.onsetTimestamp! / 1000, m.offsetTimestamp! / 1000]);
+              .map((m) => [m.onsetTimestamp!, m.offsetTimestamp!]);
             const post = computePostComplexity(complexityPre, pre.features, sleepMarkerPairs, sleepScores, timestamps);
             complexityPost = post.score;
           }
@@ -712,11 +706,11 @@ export class LocalDataSource implements DataSource {
       nextDate ? localDb.getMarkers(fileId, nextDate, username) : null,
     ]);
 
-    // Server API returns timestamps in seconds; local markers are in ms → convert
+    // Both server and local markers use seconds
     const mapMarkers = (record: localDb.MarkerRecord | null | undefined) =>
       (record?.sleepMarkers ?? []).map((m) => ({
-        onset_timestamp: m.onsetTimestamp != null ? m.onsetTimestamp / 1000 : null,
-        offset_timestamp: m.offsetTimestamp != null ? m.offsetTimestamp / 1000 : null,
+        onset_timestamp: m.onsetTimestamp,
+        offset_timestamp: m.offsetTimestamp,
         marker_index: m.markerIndex,
       }));
 

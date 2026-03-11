@@ -9,7 +9,6 @@ from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field
 from sqlalchemy import and_, select
 
 from sleep_scoring_web.api.access import require_file_access
@@ -18,57 +17,17 @@ from sleep_scoring_web.api.markers import naive_to_unix
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker, RawActivityData
 from sleep_scoring_web.schemas.enums import MarkerCategory
+from sleep_scoring_web.schemas.models import (
+    FullTableDataPoint,
+    FullTableResponse,
+    OnsetOffsetDataPoint,
+    OnsetOffsetTableResponse,
+)
 from sleep_scoring_web.services.file_identity import is_excluded_file_obj
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# =============================================================================
-# Request/Response Models
-# =============================================================================
-
-
-class OnsetOffsetDataPoint(BaseModel):
-    """Single data point for onset/offset tables."""
-
-    timestamp: float
-    datetime_str: str
-    axis_y: int
-    vector_magnitude: int
-    algorithm_result: int | None = None  # 0=wake, 1=sleep
-    choi_result: int | None = None  # 0=wear, 1=nonwear
-    is_nonwear: bool = False  # Manual nonwear marker overlap
-
-
-class OnsetOffsetTableResponse(BaseModel):
-    """Response with data points around a marker for tables."""
-
-    onset_data: list[OnsetOffsetDataPoint] = Field(default_factory=list)
-    offset_data: list[OnsetOffsetDataPoint] = Field(default_factory=list)
-    period_index: int
-
-
-class FullTableDataPoint(BaseModel):
-    """Single data point for full 48h table."""
-
-    timestamp: float
-    datetime_str: str
-    axis_y: int
-    vector_magnitude: int
-    algorithm_result: int | None = None
-    choi_result: int | None = None
-    is_nonwear: bool = False
-
-
-class FullTableResponse(BaseModel):
-    """Response with full 48h of data for popout table."""
-
-    data: list[FullTableDataPoint] = Field(default_factory=list)
-    total_rows: int = 0
-    start_time: str | None = None
-    end_time: str | None = None
 
 
 # =============================================================================

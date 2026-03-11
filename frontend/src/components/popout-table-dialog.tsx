@@ -5,24 +5,7 @@ import { fetchWithAuth, getApiBase } from "@/api/client";
 import { hexToRgba } from "@/lib/color-themes";
 import { WindowPortal } from "./window-portal";
 import { Home } from "lucide-react";
-
-// TODO: Generate these types from backend OpenAPI schema
-interface FullTableDataPoint {
-  timestamp: number;
-  datetime_str: string;
-  axis_y: number;
-  vector_magnitude: number;
-  algorithm_result: number | null;
-  choi_result: number | null;
-  is_nonwear: boolean;
-}
-
-interface FullTableResponse {
-  data: FullTableDataPoint[];
-  total_rows: number;
-  start_time: string | null;
-  end_time: string | null;
-}
+import type { FullTableDataPoint, FullTableResponse } from "@/api/types";
 
 interface PopoutTableDialogProps {
   open: boolean;
@@ -73,7 +56,7 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
 
   // Find marker row index
   const markerRowIndex = tableData?.data?.findIndex(
-    (row) => targetTimestamp && Math.abs(row.timestamp * 1000 - targetTimestamp) < 60000
+    (row) => targetTimestamp && Math.abs(row.timestamp - targetTimestamp) < 60
   );
 
   // Scroll marker row into view when data loads or marker changes
@@ -102,19 +85,17 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
   const handleRowClick = useCallback((row: FullTableDataPoint) => {
     if (selectedPeriodIndex === null) return;
 
-    const newTimestamp = row.timestamp * 1000;
-
     if (markerMode === "sleep") {
       if (highlightType === "onset") {
-        updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: newTimestamp });
+        updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: row.timestamp });
       } else {
-        updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: newTimestamp });
+        updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: row.timestamp });
       }
     } else {
       if (highlightType === "onset") {
-        updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: newTimestamp });
+        updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: row.timestamp });
       } else {
-        updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: newTimestamp });
+        updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: row.timestamp });
       }
     }
   }, [selectedPeriodIndex, markerMode, highlightType, updateMarker]);

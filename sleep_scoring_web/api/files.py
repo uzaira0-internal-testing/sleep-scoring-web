@@ -26,11 +26,10 @@ from sqlalchemy import func, or_, select
 from sleep_scoring_web.api.access import is_admin_user, require_file_access
 from sleep_scoring_web.api.deps import ApiKey, DbSession, Username, VerifiedPassword
 from sleep_scoring_web.config import get_settings, settings
-from sleep_scoring_web.db.models import DiaryEntry, FileAssignment
+from sleep_scoring_web.db.models import DiaryEntry, FileAssignment, RawActivityData, UserSettings
 from sleep_scoring_web.db.models import File as FileModel
-from sleep_scoring_web.db.models import RawActivityData, UserSettings
 from sleep_scoring_web.db.session import async_session_maker
-from sleep_scoring_web.schemas import FileInfo, FileStatus, FileUploadResponse
+from sleep_scoring_web.schemas import DateStatus, FileInfo, FileStatus, FileUploadResponse
 from sleep_scoring_web.services.file_identity import (
     infer_participant_id_and_timepoint_from_filename,
     is_excluded_activity_filename,
@@ -66,12 +65,14 @@ _scan_status = ScanStatus()
 
 
 async def get_user_data_settings(db, username: str) -> tuple[int, str | None]:
-    """Get skip_rows and device_preset from user settings.
+    """
+    Get skip_rows and device_preset from user settings.
 
     Checks study-wide settings first, then user settings, then global defaults.
 
     Returns:
         (skip_rows, device_preset)
+
     """
     # Check study-wide settings first
     study_result = await db.execute(select(UserSettings).where(UserSettings.username == "__study__"))
@@ -573,7 +574,7 @@ async def list_files(
     assignment_result = await db.execute(
         select(FileAssignment.file_id).where(FileAssignment.username == username)
     )
-    assigned_ids = [row for row in assignment_result.scalars().all()]
+    assigned_ids = list(assignment_result.scalars().all())
     is_admin = is_admin_user(username)
 
     # Security: unassigned non-admin users must not see any file names/metadata.
@@ -682,7 +683,7 @@ async def create_assignments(
     _: VerifiedPassword,
     username: Username,
 ) -> dict:
-    """Assign files to a user (admin only). Body: {"file_ids": [...], "username": "..."}"""
+    """Assign files to a user (admin only). Body: {"file_ids": [...], "username": "..."}."""
     _require_admin(username)
     file_ids = request.get("file_ids", [])
     target_username = request.get("username", "")
@@ -747,7 +748,8 @@ async def get_assignment_progress(
     _: VerifiedPassword,
     username: Username,
 ) -> list[dict]:
-    """Get all assignments with per-user, per-file scoring progress (admin only).
+    """
+    Get all assignments with per-user, per-file scoring progress (admin only).
 
     For each user, returns their assigned files with total_dates and scored_dates.
     Uses the markers table (created_by) for scored dates and raw_activity_data for
@@ -998,13 +1000,13 @@ async def get_file_dates(
     return all_dates
 
 
-@router.get("/{file_id}/dates/status")
+@router.get("/{file_id}/dates/status", response_model=list[DateStatus])
 async def get_file_dates_status(
     file_id: int,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> list[dict]:
+) -> list[DateStatus]:
     """Get dates with per-user annotation status, auto-score availability, and complexity."""
     from sleep_scoring_web.db.models import NightComplexity, UserAnnotation
 
@@ -1093,15 +1095,15 @@ async def get_file_dates_status(
             has_auto_score = len(auto_markers) > 0
 
         complexity = complexity_map.get(date_str)
-        out.append({
-            "date": date_str,
-            "has_markers": has_markers or is_no_sleep,
-            "is_no_sleep": is_no_sleep,
-            "needs_consensus": needs_consensus,
-            "has_auto_score": has_auto_score,
-            "complexity_pre": complexity.complexity_pre if complexity else None,
-            "complexity_post": complexity.complexity_post if complexity else None,
-        })
+        out.append(DateStatus(
+            date=date_str,
+            has_markers=has_markers or is_no_sleep,
+            is_no_sleep=is_no_sleep,
+            needs_consensus=needs_consensus,
+            has_auto_score=has_auto_score,
+            complexity_pre=complexity.complexity_pre if complexity else None,
+            complexity_post=complexity.complexity_post if complexity else None,
+        ))
     return out
 
 
@@ -1178,10 +1180,9 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
 
     from sqlalchemy import and_
 
-    from sleep_scoring_web.db.models import DiaryEntry, NightComplexity
-    from sleep_scoring_web.db.models import Marker
-    from sleep_scoring_web.schemas.enums import MarkerCategory
+    from sleep_scoring_web.db.models import DiaryEntry, Marker, NightComplexity
     from sleep_scoring_web.db.session import async_session_maker
+    from sleep_scoring_web.schemas.enums import MarkerCategory
     from sleep_scoring_web.services.algorithms import ChoiAlgorithm, SadehAlgorithm
     from sleep_scoring_web.services.complexity import compute_pre_complexity
 
