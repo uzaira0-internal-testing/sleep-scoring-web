@@ -329,6 +329,7 @@ export class ServerDataSource implements DataSource {
     );
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async listDatesStatus(fileId: number, _dates: string[], _username: string): Promise<DateStatus[]> {
     return fetchWithAuth<DateStatus[]>(`${getApiBase()}/files/${fileId}/dates/status`);
   }
@@ -415,7 +416,7 @@ function unpackActivityDay(
     ? preferredAlgorithm
     : algoKeys[0] ?? null;
   const sleepScores = algoKey
-    ? Array.from(new Uint8Array(day.algorithmResults[algoKey]))
+    ? Array.from(new Uint8Array(day.algorithmResults[algoKey]!))
     : [];
 
   const nonwearResults = day.nonwearResults
@@ -470,8 +471,8 @@ export class LocalDataSource implements DataSource {
     }
 
     // Compute view bounds from timestamp array
-    const viewStart = unpacked.timestamps.length > 0 ? unpacked.timestamps[0] : null;
-    const viewEnd = unpacked.timestamps.length > 0 ? unpacked.timestamps[unpacked.timestamps.length - 1] : null;
+    const viewStart = unpacked.timestamps.length > 0 ? unpacked.timestamps[0]! : null;
+    const viewEnd = unpacked.timestamps.length > 0 ? unpacked.timestamps[unpacked.timestamps.length - 1]! : null;
 
     // Load sensor nonwear from IndexedDB (timestamps in seconds, matching store convention)
     const sensorNonwearPeriods = (await localDb.getSensorNonwear(fileId, date)).map((p) => ({
@@ -629,10 +630,10 @@ export class LocalDataSource implements DataSource {
 
     // Parse night hours from study settings (default 21:00-09:00)
     const rawStart = studySettings?.nightStartHour
-      ? parseInt(studySettings.nightStartHour.split(":")[0], 10) : 21;
+      ? parseInt(studySettings.nightStartHour.split(":")[0]!, 10) : 21;
     const nightStartHour = Number.isNaN(rawStart) ? (console.warn(`[data-source] Invalid nightStartHour "${studySettings?.nightStartHour}", using default 21`), 21) : rawStart;
     const rawEnd = studySettings?.nightEndHour
-      ? parseInt(studySettings.nightEndHour.split(":")[0], 10) : 9;
+      ? parseInt(studySettings.nightEndHour.split(":")[0]!, 10) : 9;
     const nightEndHour = Number.isNaN(rawEnd) ? (console.warn(`[data-source] Invalid nightEndHour "${studySettings?.nightEndHour}", using default 9`), 9) : rawEnd;
 
     return dates.map((date) => {
@@ -703,8 +704,8 @@ export class LocalDataSource implements DataSource {
     const idx = allDates.indexOf(date);
     if (idx < 0) return null;
 
-    const prevDate = idx > 0 ? allDates[idx - 1] : null;
-    const nextDate = idx < allDates.length - 1 ? allDates[idx + 1] : null;
+    const prevDate = idx > 0 ? allDates[idx - 1]! : null;
+    const nextDate = idx < allDates.length - 1 ? allDates[idx + 1]! : null;
 
     const [prevMarkers, nextMarkers] = await Promise.all([
       prevDate ? localDb.getMarkers(fileId, prevDate, username) : null,

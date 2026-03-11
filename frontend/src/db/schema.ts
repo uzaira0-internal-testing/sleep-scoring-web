@@ -200,10 +200,10 @@ export class SleepScoringDB extends Dexie {
       const days = await tx.table("activityDays").toArray();
       for (const day of days) {
         const ts = new Float64Array(day.timestamps);
-        if (ts.length > 0 && ts[0] > 1e10) {
+        if (ts.length > 0 && ts[0]! > 1e10) {
           // Timestamps are in milliseconds — convert to seconds
           const converted = new Float64Array(ts.length);
-          for (let i = 0; i < ts.length; i++) converted[i] = ts[i] / 1000;
+          for (let i = 0; i < ts.length; i++) converted[i] = ts[i]! / 1000;
           await tx.table("activityDays").put({ ...day, timestamps: converted.buffer });
         }
       }

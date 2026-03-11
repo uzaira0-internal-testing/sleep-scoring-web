@@ -98,7 +98,7 @@ async function processFiles(
   const results: Array<{ fileId: number; availableDates: string[] }> = [];
 
   for (let i = 0; i < files.length; i++) {
-    const file = files[i];
+    const file = files[i]!;
     const onProgress = (p: ProcessingProgress) => {
       setProgress({
         ...p,
@@ -119,9 +119,9 @@ async function processFiles(
   // Set first file as current
   if (results.length > 0) {
     useSleepScoringStore.setState({
-      currentFileId: results[0].fileId,
-      currentFilename: files[0].name,
-      availableDates: results[0].availableDates,
+      currentFileId: results[0]!.fileId,
+      currentFilename: files[0]!.name,
+      availableDates: results[0]!.availableDates,
       currentDateIndex: 0,
       currentFileSource: "local",
     });

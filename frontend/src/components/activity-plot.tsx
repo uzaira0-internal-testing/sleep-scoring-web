@@ -164,7 +164,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       if (c.source_type === "auto") {
         map.set(String(c.candidate_id), isDark ? "#34d399" : "#059669");
       } else {
-        map.set(String(c.candidate_id), palette[i % palette.length]);
+        map.set(String(c.candidate_id), palette[i % palette.length]!);
         i += 1;
       }
     }
@@ -187,8 +187,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         regions.push({
           startIdx: regionStart,
           endIdx: i - 1,
-          startTs: timestamps[regionStart],
-          endTs: timestamps[i - 1],
+          startTs: timestamps[regionStart]!,
+          endTs: timestamps[i - 1]!,
         });
         regionStart = null;
       }
@@ -199,8 +199,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       regions.push({
         startIdx: regionStart,
         endIdx: mask.length - 1,
-        startTs: timestamps[regionStart],
-        endTs: timestamps[mask.length - 1],
+        startTs: timestamps[regionStart]!,
+        endTs: timestamps[mask.length - 1]!,
       });
     }
 
@@ -386,7 +386,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     if (mode === "sleep" && selIdx !== null && selIdx >= 0 && selIdx < markers.length && algorithmResults && algorithmResults.length > 0) {
       const selectedMarker = markers[selIdx];
 
-      if (selectedMarker?.onsetTimestamp !== null && selectedMarker?.offsetTimestamp !== null) {
+      if (selectedMarker && selectedMarker.onsetTimestamp !== null && selectedMarker.offsetTimestamp !== null) {
         const ruleParams = getDetectionRuleParams(sleepDetectionRule);
         const { onsetIndex, offsetIndex } = detectSleepOnsetOffset(
           algorithmResults,
@@ -404,7 +404,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           : `${ruleParams.offsetN} consecutive sleep epochs`;
 
         if (onsetIndex !== null) {
-          const onsetTs = timestamps[onsetIndex];
+          const onsetTs = timestamps[onsetIndex]!;
           const onsetPx = u.valToPos(onsetTs, 'x');
           if (onsetPx >= 0 && onsetPx <= plotWidth) {
             const timeStr = new Date(onsetTs * 1000).toLocaleTimeString('en-US', {
@@ -416,7 +416,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         }
 
         if (offsetIndex !== null) {
-          const offsetTs = timestamps[offsetIndex];
+          const offsetTs = timestamps[offsetIndex]!;
           const offsetPx = u.valToPos(offsetTs, 'x');
           if (offsetPx >= 0 && offsetPx <= plotWidth) {
             const timeStr = new Date(offsetTs * 1000).toLocaleTimeString('en-US', {
@@ -819,7 +819,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
                 const onsetArrow = wrapper.querySelector('.sleep-rule-arrow.onset') as HTMLElement | null;
                 const onsetLabel = wrapper.querySelector('.sleep-rule-label.onset') as HTMLElement | null;
                 if (onsetIndex !== null) {
-                  const oTs = timestamps[onsetIndex];
+                  const oTs = timestamps[onsetIndex]!;
                   const oPx = u.valToPos(oTs, 'x');
                   if (onsetArrow) {
                     onsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px';
@@ -847,7 +847,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
                 const offsetArrow = wrapper.querySelector('.sleep-rule-arrow.offset') as HTMLElement | null;
                 const offsetLabel = wrapper.querySelector('.sleep-rule-label.offset') as HTMLElement | null;
                 if (offsetIndex !== null) {
-                  const oTs = timestamps[offsetIndex];
+                  const oTs = timestamps[offsetIndex]!;
                   const oPx = u.valToPos(oTs, 'x');
                   if (offsetArrow) {
                     offsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px';
@@ -966,7 +966,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             if (left < 0 || left > rect.width) return;
 
             const xVal = u.posToVal(left, 'x');
-            const oxRange = (u.scales.x.max ?? 0) - (u.scales.x.min ?? 0);
+            const oxRange = (u.scales.x!.max ?? 0) - (u.scales.x!.min ?? 0);
 
             const nxRange = e.deltaY > 0 ? oxRange / factor : oxRange * factor;
             const minRange = 60;
@@ -998,8 +998,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             if (e.button === 0 || e.button === 1) {
               panStartX = e.clientX;
               panStartY = e.clientY;
-              panStartMin = u.scales.x.min ?? 0;
-              panStartMax = u.scales.x.max ?? 0;
+              panStartMin = u.scales.x!.min ?? 0;
+              panStartMax = u.scales.x!.max ?? 0;
               hasDragged = false;
               // Don't set isPanning yet - wait for actual drag movement
               // This allows click events to still work for marker placement
@@ -1054,7 +1054,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           document.addEventListener('mouseup', onDocMouseUp);
 
           // Stash cleanup references on the uPlot instance for the destroy hook
-          (u as any)._panCleanup = { onDocMouseMove, onDocMouseUp };
+          (u as unknown as Record<string, unknown>)._panCleanup = { onDocMouseMove, onDocMouseUp };
 
           // Click handler for marker placement - only if not dragging
           u.over.addEventListener('click', (e: MouseEvent) => {
@@ -1094,8 +1094,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             // Track zoom state by comparing current range to original
             if (originalXScaleRef.current) {
               const orig = originalXScaleRef.current;
-              const curMin = u.scales.x.min ?? orig.min;
-              const curMax = u.scales.x.max ?? orig.max;
+              const curMin = u.scales.x!.min ?? orig.min;
+              const curMax = u.scales.x!.max ?? orig.max;
               const tolerance = (orig.max - orig.min) * 0.01;
               const zoomed = Math.abs(curMin - orig.min) > tolerance || Math.abs(curMax - orig.max) > tolerance;
               setIsZoomed(zoomed);
@@ -1107,7 +1107,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         }],
         destroy: [(u: uPlot) => {
           // Clean up document-level listeners to prevent memory leaks on chart rebuild
-          const cleanup = (u as any)._panCleanup;
+          const cleanup = (u as unknown as Record<string, unknown>)._panCleanup as { onDocMouseMove: (e: MouseEvent) => void; onDocMouseUp: () => void } | undefined;
           if (cleanup) {
             document.removeEventListener('mousemove', cleanup.onDocMouseMove);
             document.removeEventListener('mouseup', cleanup.onDocMouseUp);
@@ -1177,8 +1177,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
     // Use view range from backend if available, otherwise fall back to data range
     // This ensures the full expected range is shown even if data is missing at edges
-    const dataMin = timestamps[0];
-    const dataMax = timestamps[timestamps.length - 1];
+    const dataMin = timestamps[0]!;
+    const dataMax = timestamps[timestamps.length - 1]!;
     const initialMin = viewStart ?? dataMin;
     const initialMax = viewEnd ?? dataMax;
     originalXScaleRef.current = { min: initialMin, max: initialMax };
@@ -1192,8 +1192,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       scales: {
         x: {
           time: true,
-          min: initialMin,
-          max: initialMax,
+          min: initialMin as number,
+          max: initialMax as number,
         },
         y: { auto: true },
       },
@@ -1249,8 +1249,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             return;
           }
           
-          const ts = u.data[0][idx];
-          const val = u.data[1][idx];
+          const ts = u.data[0]![idx];
+          const val = u.data[1]![idx];
           
           if (ts == null || val == null) {
             tooltip.style.display = 'none';

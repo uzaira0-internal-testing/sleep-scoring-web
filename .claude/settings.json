@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "f=\"$CLAUDE_FILE_PATH\"; case \"$f\" in *.ts|*.tsx) cd /opt/sleep-scoring-web/frontend && npx eslint --fix \"$f\" 2>/dev/null || true;; esac",
+        "description": "Auto-lint .ts/.tsx files with ESLint on edit"
+      },
+      {
+        "matcher": "Edit|Write",
+        "command": "f=\"$CLAUDE_FILE_PATH\"; case \"$f\" in *.py) ruff format \"$f\" 2>/dev/null && ruff check --fix \"$f\" 2>/dev/null || true;; esac",
+        "description": "Auto-format .py files with ruff on edit"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "f=\"$CLAUDE_FILE_PATH\"; case \"$f\" in *.env|*.env.*) echo 'BLOCKED: Do not edit .env files directly. Use .env.example instead.' >&2; exit 1;; esac",
+        "description": "Block direct .env edits — use .env.example"
+      }
+    ]
+  }
+}

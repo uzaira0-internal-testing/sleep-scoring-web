@@ -34,10 +34,10 @@ function nightWindowIndices(
   let startIdx = 0;
   let endIdx = timestamps.length;
   for (let i = 0; i < timestamps.length; i++) {
-    if (timestamps[i] >= nightStartTs) { startIdx = i; break; }
+    if (timestamps[i]! >= nightStartTs) { startIdx = i; break; }
   }
   for (let i = timestamps.length - 1; i >= 0; i--) {
-    if (timestamps[i] <= nightEndTs) { endIdx = i + 1; break; }
+    if (timestamps[i]! <= nightEndTs) { endIdx = i + 1; break; }
   }
   return [startIdx, endIdx];
 }
@@ -86,15 +86,15 @@ function totalSleepPeriodHours(
       currentRun++;
     } else {
       if (currentRun >= minRun) {
-        if (firstOnsetTs === null) firstOnsetTs = timestamps[runStart];
-        lastOffsetTs = timestamps[i - 1];
+        if (firstOnsetTs === null) firstOnsetTs = timestamps[runStart]!;
+        lastOffsetTs = timestamps[i - 1]!;
       }
       currentRun = 0;
     }
   }
   if (currentRun >= minRun) {
-    if (firstOnsetTs === null) firstOnsetTs = timestamps[runStart];
-    lastOffsetTs = timestamps[Math.min(n - 1, timestamps.length - 1)];
+    if (firstOnsetTs === null) firstOnsetTs = timestamps[runStart]!;
+    lastOffsetTs = timestamps[Math.min(n - 1, timestamps.length - 1)]!;
   }
 
   if (firstOnsetTs === null || lastOffsetTs === null) return 0;
@@ -111,7 +111,7 @@ function countActivitySpikes(
   let inSpike = false;
   const limit = Math.min(end, activityCounts.length);
   for (let i = start; i < limit; i++) {
-    if (activityCounts[i] >= threshold) {
+    if (activityCounts[i]! >= threshold) {
       if (!inSpike) { spikes++; inSpike = true; }
     } else {
       inSpike = false;
@@ -187,16 +187,16 @@ function buildConfirmedNonwearMask(
     return new Array(choiNonwear.length).fill(0);
   }
 
-  const sensorMask = new Array(timestamps.length).fill(0);
+  const sensorMask: number[] = new Array(timestamps.length).fill(0) as number[];
   for (const [nwStart, nwEnd] of sensorNonwearPeriods) {
     for (let i = 0; i < timestamps.length; i++) {
-      if (nwStart <= timestamps[i] && timestamps[i] <= nwEnd) {
+      if (nwStart <= timestamps[i]! && timestamps[i]! <= nwEnd) {
         sensorMask[i] = 1;
       }
     }
   }
 
-  return choiNonwear.map((c, i) => c & (sensorMask[i] ?? 0));
+  return choiNonwear.map((c, i) => c & sensorMask[i]!);
 }
 
 function parseTimeTo24h(timeStr: string): [number, number] | null {
@@ -206,8 +206,8 @@ function parseTimeTo24h(timeStr: string): [number, number] | null {
   const clean = s.replace(/PM/g, "").replace(/AM/g, "").trim();
   const parts = clean.split(":");
   if (parts.length < 2) return null;
-  let h = parseInt(parts[0], 10);
-  const m = parseInt(parts[1], 10);
+  let h = parseInt(parts[0]!, 10);
+  const m = parseInt(parts[1]!, 10);
   if (isNaN(h) || isNaN(m)) return null;
   if (isPM && h !== 12) h += 12;
   else if (isAM && h === 12) h = 0;
@@ -235,17 +235,17 @@ function findSleepRunBoundaries(
       runLength++;
     } else {
       if (inRun && runLength >= minRun) {
-        onsets.push(timestamps[runStart]);
-        offsets.push(timestamps[i - 1]);
+        onsets.push(timestamps[runStart]!);
+        offsets.push(timestamps[i - 1]!);
       }
       inRun = false;
       runLength = 0;
     }
   }
   if (inRun && runLength >= minRun) {
-    onsets.push(timestamps[runStart]);
+    onsets.push(timestamps[runStart]!);
     const last = Math.min(end, timestamps.length) - 1;
-    offsets.push(timestamps[last]);
+    offsets.push(timestamps[last]!);
   }
   return { onsets, offsets };
 }
@@ -269,7 +269,7 @@ function nearestSleepBoundaryTs(
       const runStart = i;
       while (i < n && sleepScores[i] === 1) i++;
       if (i - runStart >= minRun) {
-        const ts = boundaryType === "onset" ? timestamps[runStart] : timestamps[i - 1];
+        const ts = boundaryType === "onset" ? timestamps[runStart]! : timestamps[i - 1]!;
         if (windowStart <= ts && ts <= windowEnd) candidates.push(ts);
       }
     } else {
@@ -369,7 +369,7 @@ function candidateAmbiguityPenalty(
       let bestIdx = 0;
       let bestDiff = Infinity;
       for (let i = 0; i < timestamps.length; i++) {
-        const diff = Math.abs(timestamps[i] - t);
+        const diff = Math.abs(timestamps[i]! - t);
         if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
       }
       const checkStart = Math.max(nightStart, bestIdx - 10);
@@ -599,8 +599,8 @@ export function computePostComplexity(
   let algoOffsetTs: number | null = null;
   for (let i = 0; i < sleepScores.length; i++) {
     if (sleepScores[i] === 1) {
-      if (algoOnsetTs === null) algoOnsetTs = timestamps[i];
-      algoOffsetTs = timestamps[i];
+      if (algoOnsetTs === null) algoOnsetTs = timestamps[i]!;
+      algoOffsetTs = timestamps[i]!;
     }
   }
 

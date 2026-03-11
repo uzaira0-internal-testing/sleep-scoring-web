@@ -72,12 +72,12 @@ function nearestEpochIndex(epochs: EpochData[], targetTs: number): number | null
   let hi = epochs.length - 1;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (epochs[mid].timestamp < targetTs) lo = mid + 1;
+    if (epochs[mid]!.timestamp < targetTs) lo = mid + 1;
     else hi = mid;
   }
   if (lo > 0) {
-    const dLo = Math.abs(epochs[lo].timestamp - targetTs);
-    const dPrev = Math.abs(epochs[lo - 1].timestamp - targetTs);
+    const dLo = Math.abs(epochs[lo]!.timestamp - targetTs);
+    const dPrev = Math.abs(epochs[lo - 1]!.timestamp - targetTs);
     if (dPrev < dLo) return lo - 1;
   }
   return lo;
@@ -88,9 +88,9 @@ function findSleepRuns(epochs: EpochData[]): Array<[number, number, number]> {
   const runs: Array<[number, number, number]> = [];
   let i = 0;
   while (i < epochs.length) {
-    if (epochs[i].sleepScore === 1) {
+    if (epochs[i]!.sleepScore === 1) {
       const start = i;
-      while (i < epochs.length && epochs[i].sleepScore === 1) i++;
+      while (i < epochs.length && epochs[i]!.sleepScore === 1) i++;
       runs.push([start, i - 1, i - start]);
     } else {
       i++;
@@ -175,15 +175,15 @@ function findValidOnsetAtOrAfter(
   if (i === null) return null;
 
   // If in the middle of a sleep run, skip past it
-  if (i > 0 && epochs[i].sleepScore === 1 && epochs[i - 1].sleepScore === 1) {
-    while (i < epochs.length && epochs[i].sleepScore === 1) i++;
+  if (i > 0 && epochs[i]!.sleepScore === 1 && epochs[i - 1]!.sleepScore === 1) {
+    while (i < epochs.length && epochs[i]!.sleepScore === 1) i++;
   }
 
   // Search forward for next valid W→S onset
   while (i < epochs.length) {
-    if (epochs[i].sleepScore === 1) {
+    if (epochs[i]!.sleepScore === 1) {
       const runStart = i;
-      while (i < epochs.length && epochs[i].sleepScore === 1) i++;
+      while (i < epochs.length && epochs[i]!.sleepScore === 1) i++;
       if (i - runStart >= minConsecutive) return runStart;
     } else {
       i++;
@@ -244,7 +244,7 @@ function placeMainSleep(
   let finalOnset = onsetIdx;
 
   // Rule 8: if onset is before in-bed time, clamp to in-bed time
-  if (diary.inBedTime !== null && epochs[finalOnset].timestamp < diary.inBedTime) {
+  if (diary.inBedTime !== null && epochs[finalOnset]!.timestamp < diary.inBedTime) {
     const clamped = findValidOnsetAtOrAfter(
       epochs, diary.inBedTime, config.onsetMinConsecutiveSleep,
     );
@@ -342,8 +342,8 @@ function parseTimeTo24h(timeStr: string): [number, number] | null {
 
   const parts = clean.split(":");
   if (parts.length < 2) return null;
-  let h = parseInt(parts[0], 10);
-  const m = parseInt(parts[1], 10);
+  let h = parseInt(parts[0]!, 10);
+  const m = parseInt(parts[1]!, 10);
   if (isNaN(h) || isNaN(m)) return null;
 
   if (isAM || isPM) {
@@ -401,7 +401,7 @@ function tryAmPmCorrections(
   bedTs: number | null;
   notes: string[];
 } {
-  let onsetTs = onsetStr ? parseDiaryTime(onsetStr, analysisDate, true) : null;
+  const onsetTs = onsetStr ? parseDiaryTime(onsetStr, analysisDate, true) : null;
   let wakeTs = wakeStr ? parseDiaryTime(wakeStr, analysisDate, false) : null;
   const bedTs = bedStr ? parseDiaryTime(bedStr, analysisDate, true) : null;
 
@@ -437,7 +437,7 @@ function tryAmPmCorrections(
   }
 
   for (const att of attempts) {
-    let altOnset = att.altOnsetStr ? parseDiaryTime(att.altOnsetStr, analysisDate, true) : null;
+    const altOnset = att.altOnsetStr ? parseDiaryTime(att.altOnsetStr, analysisDate, true) : null;
     let altWake = att.altWakeStr ? parseDiaryTime(att.altWakeStr, analysisDate, false) : null;
     if (altWake !== null && altOnset !== null && altWake <= altOnset) altWake += 86400;
 
@@ -514,8 +514,8 @@ export function runAutoScoring(opts: {
 
   if (analysisDate) {
     const onsetStr = opts.diaryOnsetTime || opts.diaryBedTime || null;
-    const dataStartTs = epochs[0].timestamp;
-    const dataEndTs = epochs[epochs.length - 1].timestamp;
+    const dataStartTs = epochs[0]!.timestamp;
+    const dataEndTs = epochs[epochs.length - 1]!.timestamp;
 
     const corrected = tryAmPmCorrections(
       onsetStr, opts.diaryWakeTime ?? null, opts.diaryBedTime ?? null,
@@ -527,7 +527,7 @@ export function runAutoScoring(opts: {
     const napPeriods: DiaryPeriod[] = [];
     for (const [napStart, napEnd] of opts.diaryNaps ?? []) {
       if (napStart && napEnd) {
-        let ns = parseNapTime(napStart, analysisDate);
+        const ns = parseNapTime(napStart, analysisDate);
         let ne = parseNapTime(napEnd, analysisDate);
         if (ns !== null && ne !== null && ne <= ns) ne += 86400;
         if (ns !== null && ne !== null) {
@@ -574,8 +574,8 @@ export function runAutoScoring(opts: {
     mainResult = placeMainSleep(epochs, diary, config);
     if (mainResult) {
       const [onsetIdx, offsetIdx] = mainResult;
-      const onsetTime = epochs[onsetIdx].timestamp;
-      const offsetTime = epochs[offsetIdx].timestamp;
+      const onsetTime = epochs[onsetIdx]!.timestamp;
+      const offsetTime = epochs[offsetIdx]!.timestamp;
       const durationMin = (offsetIdx - onsetIdx + 1) * config.epochLengthSeconds / 60;
 
       notes.push(
@@ -614,9 +614,9 @@ export function runAutoScoring(opts: {
     const napResults = placeNaps(epochs, diary, mainOnset, mainOffset, config);
 
     for (let i = 0; i < napResults.length; i++) {
-      const [napOn, napOff] = napResults[i];
-      const napOnsetTime = epochs[napOn].timestamp;
-      const napOffsetTime = epochs[napOff].timestamp;
+      const [napOn, napOff] = napResults[i]!;
+      const napOnsetTime = epochs[napOn]!.timestamp;
+      const napOffsetTime = epochs[napOff]!.timestamp;
       const durationMin = (napOff - napOn + 1) * config.epochLengthSeconds / 60;
 
       notes.push(
@@ -674,9 +674,9 @@ export function placeNonwearMarkers(opts: {
   // Parse diary nonwear periods
   const validDiaryPeriods: Array<{ startTs: number; endTs: number; idx: number }> = [];
   for (let i = 0; i < opts.diaryNonwear.length; i++) {
-    const [nwStartStr, nwEndStr] = opts.diaryNonwear[i];
+    const [nwStartStr, nwEndStr] = opts.diaryNonwear[i]!;
     if (isNullLike(nwStartStr) || isNullLike(nwEndStr)) continue;
-    let nwStartTs = parseDiaryTime(nwStartStr!, opts.analysisDate, true);
+    const nwStartTs = parseDiaryTime(nwStartStr!, opts.analysisDate, true);
     let nwEndTs = parseDiaryTime(nwEndStr!, opts.analysisDate, true);
     if (nwStartTs === null || nwEndTs === null) continue;
     if (nwEndTs <= nwStartTs) nwEndTs += 86400;
@@ -718,7 +718,7 @@ export function placeNonwearMarkers(opts: {
     const maxExtEpochs = (maxExtMin * 60) / epochLen;
     while (extStart > 0) {
       const candidate = extStart - 1;
-      if (opts.activityCounts[candidate] > threshold) break;
+      if (opts.activityCounts[candidate]! > threshold) break;
       if (hasExternalSignals) {
         if (!epochInNonwearSignal(candidate, choiSet, sensorRanges)) break;
       } else if (startIdx - candidate >= maxExtEpochs) {
@@ -731,7 +731,7 @@ export function placeNonwearMarkers(opts: {
     let extEnd = endIdx;
     while (extEnd < opts.timestamps.length - 1) {
       const candidate = extEnd + 1;
-      if (opts.activityCounts[candidate] > threshold) break;
+      if (opts.activityCounts[candidate]! > threshold) break;
       if (hasExternalSignals) {
         if (!epochInNonwearSignal(candidate, choiSet, sensorRanges)) break;
       } else if (candidate - endIdx >= maxExtEpochs) {
@@ -743,7 +743,7 @@ export function placeNonwearMarkers(opts: {
     // Count zero-activity epochs
     let zeroEpochs = 0;
     for (let i = extStart; i <= extEnd; i++) {
-      if (opts.activityCounts[i] <= threshold) zeroEpochs++;
+      if (opts.activityCounts[i]! <= threshold) zeroEpochs++;
     }
     const totalEpochs = extEnd - extStart + 1;
 
@@ -759,12 +759,12 @@ export function placeNonwearMarkers(opts: {
     }
 
     // Check overlap with sleep markers
-    const nwStartTs = opts.timestamps[extStart];
-    const nwEndTs = opts.timestamps[extEnd];
-    const overlapsSleep = opts.existingSleepMarkers.some(
+    const nwStartTs = opts.timestamps[extStart]!;
+    const nwEndTs = opts.timestamps[extEnd]!;
+    const overlapsSleepMarker = opts.existingSleepMarkers.some(
       ([smStart, smEnd]) => nwStartTs < smEnd && nwEndTs > smStart,
     );
-    if (overlapsSleep) {
+    if (overlapsSleepMarker) {
       notes.push(`Nonwear ${diaryIdx}: overlaps with sleep marker, skipped`);
       continue;
     }
@@ -786,7 +786,7 @@ export function placeNonwearMarkers(opts: {
 
     const bothNw: number[] = [];
     for (const i of choiSet) {
-      if (sensorSet.has(i) && i < opts.activityCounts.length && opts.activityCounts[i] <= threshold) {
+      if (sensorSet.has(i) && i < opts.activityCounts.length && opts.activityCounts[i]! <= threshold) {
         bothNw.push(i);
       }
     }
@@ -795,15 +795,15 @@ export function placeNonwearMarkers(opts: {
     if (bothNw.length > 0) {
       // Extract contiguous runs
       const runs: Array<[number, number]> = [];
-      let runStart = bothNw[0];
-      let prev = bothNw[0];
+      let runStart = bothNw[0]!;
+      let prev = bothNw[0]!;
       for (let j = 1; j < bothNw.length; j++) {
-        if (bothNw[j] === prev + 1) {
-          prev = bothNw[j];
+        if (bothNw[j]! === prev + 1) {
+          prev = bothNw[j]!;
         } else {
           runs.push([runStart, prev]);
-          runStart = bothNw[j];
-          prev = bothNw[j];
+          runStart = bothNw[j]!;
+          prev = bothNw[j]!;
         }
       }
       runs.push([runStart, prev]);
@@ -814,8 +814,8 @@ export function placeNonwearMarkers(opts: {
         const durEpochs = runEndIdx - runStartIdx + 1;
         if (durEpochs < minEpochs) continue;
 
-        const runStartTs = opts.timestamps[runStartIdx];
-        const runEndTs = opts.timestamps[runEndIdx];
+        const runStartTs = opts.timestamps[runStartIdx]!;
+        const runEndTs = opts.timestamps[runEndIdx]!;
 
         const overlapsSleep = opts.existingSleepMarkers.some(
           ([smStart, smEnd]) => runStartTs < smEnd && runEndTs > smStart,
@@ -852,9 +852,9 @@ export function placeNonwearMarkers(opts: {
 function findNearestEpoch(timestamps: number[], targetTs: number): number | null {
   if (timestamps.length === 0) return null;
   let bestIdx = 0;
-  let bestDiff = Math.abs(timestamps[0] - targetTs);
+  let bestDiff = Math.abs(timestamps[0]! - targetTs);
   for (let i = 1; i < timestamps.length; i++) {
-    const diff = Math.abs(timestamps[i] - targetTs);
+    const diff = Math.abs(timestamps[i]! - targetTs);
     if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
   }
   return bestIdx;

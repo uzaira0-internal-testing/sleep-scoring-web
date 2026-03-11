@@ -44,10 +44,15 @@ export function PopoverTrigger({
     setOpen(!open);
   };
 
+  const setTriggerRef = React.useCallback((node: HTMLElement | null) => {
+    (triggerRef as React.MutableRefObject<HTMLElement | null>).current = node;
+  }, [triggerRef]);
+
   if (asChild && React.isValidElement(children)) {
+    // eslint-disable-next-line react-hooks/refs -- callback ref is the standard pattern for cloneElement
     return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
       onClick: handleClick,
-      ref: triggerRef,
+      ref: setTriggerRef,
       "aria-expanded": open,
     });
   }

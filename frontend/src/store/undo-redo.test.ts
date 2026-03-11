@@ -229,7 +229,7 @@ describe("Undo/Redo System", () => {
 
       // Add a NAP marker
       addSleepMarker(1000, 2000, "NAP");
-      expect(useSleepScoringStore.getState().sleepMarkers[0].markerType).toBe("NAP");
+      expect(useSleepScoringStore.getState().sleepMarkers[0]!.markerType).toBe("NAP");
 
       // Add another marker
       addSleepMarker(3000, 4000);
@@ -238,7 +238,7 @@ describe("Undo/Redo System", () => {
       useSleepScoringStore.getState().undo();
       const markers = useSleepScoringStore.getState().sleepMarkers;
       expect(markers).toHaveLength(1);
-      expect(markers[0].markerType).toBe("NAP");
+      expect(markers[0]!.markerType).toBe("NAP");
     });
   });
 });

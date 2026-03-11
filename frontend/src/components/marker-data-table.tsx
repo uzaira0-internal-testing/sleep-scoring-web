@@ -23,7 +23,7 @@ async function buildLocalTableData(
   const axisY = Array.from(new Float64Array(day.axisY));
   const vm = Array.from(new Float64Array(day.vectorMagnitude));
   const algoKey = Object.keys(day.algorithmResults)[0];
-  const algoResults = algoKey ? new Uint8Array(day.algorithmResults[algoKey]) : null;
+  const algoResults = algoKey ? new Uint8Array(day.algorithmResults[algoKey]!) : null;
   const nwResults = day.nonwearResults ? new Uint8Array(day.nonwearResults) : null;
 
   const buildWindow = (centerTs: number | null): OnsetOffsetDataPoint[] => {
@@ -31,10 +31,10 @@ async function buildLocalTableData(
     const halfWindow = windowMinutes * 60 / 2;
     const points: OnsetOffsetDataPoint[] = [];
     for (let i = 0; i < tsSec.length; i++) {
-      if (tsSec[i] >= centerTs - halfWindow && tsSec[i] <= centerTs + halfWindow) {
-        const d = new Date(tsSec[i] * 1000);
+      if (tsSec[i]! >= centerTs - halfWindow && tsSec[i]! <= centerTs + halfWindow) {
+        const d = new Date(tsSec[i]! * 1000);
         points.push({
-          timestamp: tsSec[i],
+          timestamp: tsSec[i]!,
           datetime_str: `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`,
           axis_y: Math.round(axisY[i] ?? 0),
           vector_magnitude: Math.round(vm[i] ?? 0),

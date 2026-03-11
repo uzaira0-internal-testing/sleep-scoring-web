@@ -68,18 +68,18 @@ export function useMarkerLoad() {
     const sleepChanged =
       current.sleepMarkers.length !== apiSleepMarkers.length ||
       current.sleepMarkers.some((m, i) =>
-        m.onsetTimestamp !== apiSleepMarkers[i].onsetTimestamp ||
-        m.offsetTimestamp !== apiSleepMarkers[i].offsetTimestamp ||
-        m.markerType !== apiSleepMarkers[i].markerType ||
-        m.markerIndex !== apiSleepMarkers[i].markerIndex
+        m.onsetTimestamp !== apiSleepMarkers[i]!.onsetTimestamp ||
+        m.offsetTimestamp !== apiSleepMarkers[i]!.offsetTimestamp ||
+        m.markerType !== apiSleepMarkers[i]!.markerType ||
+        m.markerIndex !== apiSleepMarkers[i]!.markerIndex
       );
 
     const nonwearChanged =
       current.nonwearMarkers.length !== apiNonwearMarkers.length ||
       current.nonwearMarkers.some((m, i) =>
-        m.startTimestamp !== apiNonwearMarkers[i].startTimestamp ||
-        m.endTimestamp !== apiNonwearMarkers[i].endTimestamp ||
-        m.markerIndex !== apiNonwearMarkers[i].markerIndex
+        m.startTimestamp !== apiNonwearMarkers[i]!.startTimestamp ||
+        m.endTimestamp !== apiNonwearMarkers[i]!.endTimestamp ||
+        m.markerIndex !== apiNonwearMarkers[i]!.markerIndex
       );
 
     if (sleepChanged) _loadSleepMarkersFromServer(apiSleepMarkers);

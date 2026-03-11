@@ -21,8 +21,8 @@ type DefaultBody = Record<string, never>;
 
 export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts, Meta, DefaultBody> {
   static VERSION = "1.0.0";
-  id = "GzipCompressor";
-  type = "preprocessor";
+  override id = "GzipCompressor";
+  override type = "preprocessor";
 
   private readonly minSize: number;
 
@@ -54,6 +54,7 @@ export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts, Meta, D
         continue;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       this.uppy.emit("preprocess-progress" as any, file, {
         mode: "determinate",
         message: "Compressing...",
@@ -87,6 +88,7 @@ export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts, Meta, D
         });
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       this.uppy.emit("preprocess-progress" as any, file, {
         mode: "determinate",
         message: "Compressed",
@@ -94,7 +96,8 @@ export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts, Meta, D
       });
     }
 
-    this.uppy.emit("preprocess-complete" as any, fileIDs);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.uppy.emit("preprocess-complete" as any, fileIDs);
   };
 
   private async compressBlob(blob: Blob): Promise<Blob> {

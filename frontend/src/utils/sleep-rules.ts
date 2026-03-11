@@ -50,8 +50,8 @@ export function findMarkerIndexRange(
   let endIdx: number | null = null;
 
   for (let i = 0; i < timestamps.length; i++) {
-    if (startIdx === null && timestamps[i] >= markerStartSec) startIdx = i;
-    if (timestamps[i] <= markerEndSec) endIdx = i;
+    if (startIdx === null && timestamps[i]! >= markerStartSec) startIdx = i;
+    if (timestamps[i]! <= markerEndSec) endIdx = i;
   }
 
   if (startIdx === null || endIdx === null) return null;

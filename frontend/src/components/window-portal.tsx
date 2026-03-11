@@ -27,8 +27,7 @@ export function WindowPortal({
   children,
 }: WindowPortalProps) {
   const windowRef = useRef<Window | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -36,8 +35,8 @@ export function WindowPortal({
         windowRef.current.close();
       }
       windowRef.current = null;
-      containerRef.current = null;
-      setMounted(false);
+      // Defer to avoid synchronous setState in effect body
+      queueMicrotask(() => setPortalContainer(null));
       return;
     }
 
@@ -78,14 +77,13 @@ export function WindowPortal({
     const container = popup.document.createElement("div");
     container.id = "portal-root";
     popup.document.body.appendChild(container);
-    containerRef.current = container;
-    setMounted(true);
+    // Defer to avoid synchronous setState in effect body
+    queueMicrotask(() => setPortalContainer(container));
 
     // Handle popup close
     popup.addEventListener("beforeunload", () => {
       windowRef.current = null;
-      containerRef.current = null;
-      setMounted(false);
+      setPortalContainer(null);
       onClose();
     });
 
@@ -94,12 +92,11 @@ export function WindowPortal({
         popup.close();
       }
       windowRef.current = null;
-      containerRef.current = null;
-      setMounted(false);
+      setPortalContainer(null);
     };
   }, [open, title, width, height, onClose]);
 
-  if (!mounted || !containerRef.current) return null;
+  if (!portalContainer) return null;
 
-  return createPortal(children, containerRef.current);
+  return createPortal(children, portalContainer);
 }

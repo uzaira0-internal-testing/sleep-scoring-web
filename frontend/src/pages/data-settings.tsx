@@ -497,9 +497,9 @@ export function DataSettingsPage() {
   };
 
   const handleApplyPreset = (preset: string) => {
-    const defaults = PRESET_DEFAULTS[preset] ?? PRESET_DEFAULTS.generic;
-    setEpochLengthSeconds(defaults.epochLengthSeconds);
-    setSkipRows(defaults.skipRows);
+    const defaults = PRESET_DEFAULTS[preset] ?? PRESET_DEFAULTS["generic"]!;
+    setEpochLengthSeconds(defaults!.epochLengthSeconds);
+    setSkipRows(defaults!.skipRows);
     setHasChanges(true);
   };
 
@@ -621,7 +621,7 @@ export function DataSettingsPage() {
       let totalMarkers = 0;
       let failed = 0;
       for (let fileIdx = 0; fileIdx < csvFiles.length; fileIdx++) {
-        const file = csvFiles[fileIdx];
+        const file = csvFiles[fileIdx]!;
         useSleepScoringStore.getState().setUploadProgress(
           `Uploading nonwear ${fileIdx + 1}/${csvFiles.length}: ${file.name}`
         );

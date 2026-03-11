@@ -102,7 +102,7 @@ describe("SleepScoringStore", () => {
 
       const state = useSleepScoringStore.getState();
       expect(state.availableFiles).toHaveLength(2);
-      expect(state.availableFiles[0].filename).toBe("file1.csv");
+      expect(state.availableFiles[0]!.filename).toBe("file1.csv");
     });
 
     it("should set available dates correctly", () => {
@@ -322,7 +322,7 @@ describe("SleepScoringStore", () => {
 
       const state = useSleepScoringStore.getState();
       expect(state.sleepMarkers).toHaveLength(1);
-      expect(state.sleepMarkers[0].markerType).toBe("NAP");
+      expect(state.sleepMarkers[0]!.markerType).toBe("NAP");
     });
 
     it("should allow nonwear marker creation when isNoSleep is true", () => {
@@ -338,8 +338,8 @@ describe("SleepScoringStore", () => {
 
       const state = useSleepScoringStore.getState();
       expect(state.nonwearMarkers).toHaveLength(1);
-      expect(state.nonwearMarkers[0].startTimestamp).toBe(1000);
-      expect(state.nonwearMarkers[0].endTimestamp).toBe(2000);
+      expect(state.nonwearMarkers[0]!.startTimestamp).toBe(1000);
+      expect(state.nonwearMarkers[0]!.endTimestamp).toBe(2000);
     });
   });
 

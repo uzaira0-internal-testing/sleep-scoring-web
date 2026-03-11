@@ -49,15 +49,15 @@ function parseTime(timeStr: string): string | null {
 
   // ISO or space-separated datetime → extract time part
   const dtMatch = s.match(/^\d{4}[-/]\d{2}[-/]\d{2}[T ]([\d:]+)/);
-  if (dtMatch) return dtMatch[1];
+  if (dtMatch) return dtMatch[1]!;
 
   // AM/PM → convert to 24h
   const ampmMatch = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
   if (ampmMatch) {
-    let h = parseInt(ampmMatch[1], 10);
-    const min = ampmMatch[2];
+    let h = parseInt(ampmMatch[1]!, 10);
+    const min = ampmMatch[2]!;
     const sec = ampmMatch[3] ?? "00";
-    const period = ampmMatch[4].toUpperCase();
+    const period = ampmMatch[4]!.toUpperCase();
     if (period === "PM" && h < 12) h += 12;
     if (period === "AM" && h === 12) h = 0;
     return `${String(h).padStart(2, "0")}:${min}:${sec}`;
@@ -106,7 +106,7 @@ export function parseNonwearCsv(
   }
 
   // Parse header (normalize spaces to underscores for alias matching)
-  const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim().replace(/\s+/g, "_"));
+  const headers = parseCsvLine(lines[0]!).map((h) => h.toLowerCase().trim().replace(/\s+/g, "_"));
   const dateCol = headers.findIndex((h) => DATE_ALIASES.has(h));
   const startCol = headers.findIndex((h) => START_TIME_ALIASES.has(h));
   const endCol = headers.findIndex((h) => END_TIME_ALIASES.has(h));
@@ -132,7 +132,7 @@ export function parseNonwearCsv(
   const totalRows = lines.length - 1;
 
   for (let i = 1; i < lines.length; i++) {
-    const cols = parseCsvLine(lines[i]);
+    const cols = parseCsvLine(lines[i]!);
     const dateRaw = cols[dateCol] ?? "";
     const startRaw = cols[startCol] ?? "";
     const endRaw = cols[endCol] ?? "";

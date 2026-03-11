@@ -22,7 +22,7 @@ export function loadActivityForMetrics(actDay: ActivityDay | undefined): {
   }
 
   const firstKey = Object.keys(actDay.algorithmResults)[0];
-  const algorithmResults = firstKey ? new Uint8Array(actDay.algorithmResults[firstKey]) : null;
+  const algorithmResults = firstKey ? new Uint8Array(actDay.algorithmResults[firstKey]!) : null;
 
   return { timestamps, algorithmResults };
 }

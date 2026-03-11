@@ -26,14 +26,14 @@ async function fetchWithRetry(
       // Don't retry client errors (4xx) — only server/network errors
       if (response.status < 500) return response;
       if (attempt < maxRetries) {
-        await new Promise((r) => setTimeout(r, retryDelays[attempt] ?? 5000));
+        await new Promise<void>((r) => { setTimeout(r, retryDelays[attempt] ?? 5000); });
         continue;
       }
       return response;
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries) {
-        await new Promise((r) => setTimeout(r, retryDelays[attempt] ?? 5000));
+        await new Promise<void>((r) => { setTimeout(r, retryDelays[attempt] ?? 5000); });
       }
     }
   }

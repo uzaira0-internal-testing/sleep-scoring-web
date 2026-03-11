@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useMemo } from "react";
 import { useSleepScoringStore } from "@/store";
 import { useCapabilitiesStore } from "@/store/capabilities-store";

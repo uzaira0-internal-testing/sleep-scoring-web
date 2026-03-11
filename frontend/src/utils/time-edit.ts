@@ -11,8 +11,8 @@ interface ResolveEditedTimeParams {
 function parseHHMM(timeStr: string): { hour: number; minute: number } | null {
   const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return null;
-  const hour = parseInt(match[1], 10);
-  const minute = parseInt(match[2], 10);
+  const hour = parseInt(match[1]!, 10);
+  const minute = parseInt(match[2]!, 10);
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
   return { hour, minute };
 }
@@ -75,10 +75,10 @@ export function resolveEditedTimeToTimestamp({
   if (otherBoundaryTimestamp !== null) {
     if (field === "onset") {
       const valid = candidates.filter((ts) => ts <= otherBoundaryTimestamp);
-      if (valid.length > 0) return valid[valid.length - 1];
+      if (valid.length > 0) return valid[valid.length - 1]!;
     } else {
       const valid = candidates.filter((ts) => ts >= otherBoundaryTimestamp);
-      if (valid.length > 0) return valid[0];
+      if (valid.length > 0) return valid[0]!;
     }
   }
 
@@ -86,5 +86,5 @@ export function resolveEditedTimeToTimestamp({
     return nearestToReference(candidates, referenceTimestamp);
   }
 
-  return candidates[0];
+  return candidates[0]!;
 }

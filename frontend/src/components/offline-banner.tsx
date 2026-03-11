@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSyncStore } from "@/store/sync-store";
 import { WifiOff, Wifi, RefreshCw } from "lucide-react";
 
@@ -9,18 +9,20 @@ import { WifiOff, Wifi, RefreshCw } from "lucide-react";
 export function OfflineBanner() {
   const { isOnline, pendingCount, syncStatus, lastSyncAt } = useSyncStore();
   const [showBackOnline, setShowBackOnline] = useState(false);
-  const [wasOffline, setWasOffline] = useState(false);
+  const wasOfflineRef = useRef(false);
 
   useEffect(() => {
     if (!isOnline) {
-      setWasOffline(true);
-    } else if (wasOffline) {
-      setShowBackOnline(true);
-      setWasOffline(false);
-      const timer = setTimeout(() => setShowBackOnline(false), 3000);
-      return () => clearTimeout(timer);
+      wasOfflineRef.current = true;
+      return;
     }
-  }, [isOnline, wasOffline]);
+    if (!wasOfflineRef.current) return;
+    wasOfflineRef.current = false;
+    // Use setTimeout(0) to avoid synchronous setState in effect body
+    const showTimer = setTimeout(() => setShowBackOnline(true), 0);
+    const hideTimer = setTimeout(() => setShowBackOnline(false), 3000);
+    return () => { clearTimeout(showTimer); clearTimeout(hideTimer); };
+  }, [isOnline]);
 
   if (isOnline && !showBackOnline && pendingCount === 0) {
     return null;

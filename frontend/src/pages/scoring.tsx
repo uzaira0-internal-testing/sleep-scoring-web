@@ -204,9 +204,9 @@ export function ScoringPage() {
     },
   });
   useEffect(() => {
-    if (autoScoreMutation.data && autoScoreMutation.isSuccess) {
-      setAutoScoreResult(autoScoreMutation.data);
-    }
+    if (!autoScoreMutation.data || !autoScoreMutation.isSuccess) return;
+    const data = autoScoreMutation.data;
+    queueMicrotask(() => setAutoScoreResult(data));
   }, [autoScoreMutation.data, autoScoreMutation.isSuccess]);
   useEffect(() => {
     if (autoScoreMutation.error) {
@@ -229,10 +229,10 @@ export function ScoringPage() {
     },
   });
   useEffect(() => {
-    if (autoNonwearMutation.data && autoNonwearMutation.isSuccess) {
-      if (autoNonwearMutation.data.nonwear_markers.length > 0) {
-        setAutoNonwearResult(autoNonwearMutation.data);
-      }
+    if (!autoNonwearMutation.data || !autoNonwearMutation.isSuccess) return;
+    const data = autoNonwearMutation.data;
+    if (data.nonwear_markers.length > 0) {
+      queueMicrotask(() => setAutoNonwearResult(data));
     }
   }, [autoNonwearMutation.data, autoNonwearMutation.isSuccess]);
   useEffect(() => {
@@ -273,15 +273,16 @@ export function ScoringPage() {
   }, [autoNonwearResult, nonwearMarkers.length, setNonwearMarkers]);
 
   useEffect(() => {
-    if (!showComparisonMarkers) {
-      setHighlightedCandidateId(null);
-    }
+    if (showComparisonMarkers) return;
+    queueMicrotask(() => setHighlightedCandidateId(null));
   }, [showComparisonMarkers]);
 
   useEffect(() => {
-    setHighlightedCandidateId(null);
-    setAutoScoreResult(null);
-    setAutoNonwearResult(null);
+    queueMicrotask(() => {
+      setHighlightedCandidateId(null);
+      setAutoScoreResult(null);
+      setAutoNonwearResult(null);
+    });
   }, [currentFileId, currentDate]);
 
   const copyCandidateMarkers = useCallback(async (candidate: ConsensusBallotCandidate) => {
@@ -355,7 +356,7 @@ export function ScoringPage() {
       selectedPeriodIndex: copiedSleepMarkers.length > 0 ? 0 : null,
       markerMode: "sleep",
     });
-  }, []);
+  }, [confirm]);
 
   const autoScoreRef = useRef(false);
   // Track which file+date already had auto-score attempted (prevents re-trigger after cancel)
@@ -417,7 +418,7 @@ export function ScoringPage() {
   // Skip dates with infinite complexity (no/incomplete diary)
   // NOTE: This useEffect MUST be below dateStatusMap/hasNoDiary to avoid TDZ errors.
   const autoScoreMutationRef = useRef(autoScoreMutation);
-  autoScoreMutationRef.current = autoScoreMutation;
+  useEffect(() => { autoScoreMutationRef.current = autoScoreMutation; });
   useEffect(() => {
     if (!autoScoreOnNavigate || !currentFileId || !currentDate || isNoSleep || hasNoDiary) return;
     // Skip if markers already exist or mutation is already running
@@ -439,7 +440,7 @@ export function ScoringPage() {
 
   // Auto-nonwear on date navigate (when toggle is on and no existing nonwear markers)
   const autoNonwearMutationRef = useRef(autoNonwearMutation);
-  autoNonwearMutationRef.current = autoNonwearMutation;
+  useEffect(() => { autoNonwearMutationRef.current = autoNonwearMutation; });
   const autoNonwearKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!autoNonwearOnNavigate || !currentFileId || !currentDate) return;

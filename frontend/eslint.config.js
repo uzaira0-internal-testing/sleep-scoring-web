@@ -19,5 +19,19 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Bug-catching rules
+      'no-constant-binary-expression': 'error',
+      'no-constructor-return': 'error',
+      'no-self-compare': 'error',
+      'no-template-curly-in-string': 'warn',
+      'no-unmodified-loop-condition': 'error',
+      'no-unreachable-loop': 'error',
+      'require-atomic-updates': 'warn',
+      'array-callback-return': 'error',
+      'no-await-in-loop': 'warn',
+      'no-promise-executor-return': 'error',
+      'eqeqeq': ['error', 'smart'],
+    },
   },
 ])

@@ -72,14 +72,20 @@ export function AnalysisPage() {
   const [localData, setLocalData] = useState<LocalAnalysisSummary | null>(null);
   const [isLoadingLocal, setIsLoadingLocal] = useState(true);
   useEffect(() => {
-    setIsLoadingLocal(true);
-    computeLocalAnalysis(username || "anonymous")
-      .then(setLocalData)
-      .catch((err) => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await computeLocalAnalysis(username || "anonymous");
+        if (!cancelled) setLocalData(data);
+      } catch (err) {
         console.error("Failed to compute local analysis:", err);
-        setLocalData(null);
-      })
-      .finally(() => setIsLoadingLocal(false));
+        if (!cancelled) setLocalData(null);
+      } finally {
+        if (!cancelled) setIsLoadingLocal(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
   }, [username]);
 
   // Merge server + local data with weighted means

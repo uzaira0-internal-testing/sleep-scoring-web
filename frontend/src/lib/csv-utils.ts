@@ -26,19 +26,19 @@ export function parseDate(dateStr: string): string | null {
   let m: RegExpMatchArray | null;
   // YYYY-MM-DD (1 or 2 digit month/day)
   m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  if (m) return `${m[1]}-${m[2]!.padStart(2, "0")}-${m[3]!.padStart(2, "0")}`;
   // MM/DD/YYYY (1 or 2 digit month/day)
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  if (m) return `${m[3]}-${m[1]!.padStart(2, "0")}-${m[2]!.padStart(2, "0")}`;
   // MM/DD/YY (1 or 2 digit month/day)
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
   if (m) {
-    const y = parseInt(m[3], 10);
-    return `${y >= 50 ? 1900 + y : 2000 + y}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+    const y = parseInt(m[3]!, 10);
+    return `${y >= 50 ? 1900 + y : 2000 + y}-${m[1]!.padStart(2, "0")}-${m[2]!.padStart(2, "0")}`;
   }
   // YYYY/MM/DD (1 or 2 digit month/day)
   m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  if (m) return `${m[1]}-${m[2]!.padStart(2, "0")}-${m[3]!.padStart(2, "0")}`;
   return null;
 }
 

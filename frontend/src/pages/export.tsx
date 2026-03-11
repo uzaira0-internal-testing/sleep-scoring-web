@@ -112,7 +112,7 @@ export function ExportPage() {
     let filename = "export.csv";
     if (disposition) {
       const match = disposition.match(/filename="(.+)"/);
-      if (match) filename = match[1];
+      if (match) filename = match[1]!;
     }
 
     // Backend returns error CSVs with this filename — skip download
@@ -239,7 +239,7 @@ export function ExportPage() {
         files.push({ csv: rowsToCsv(nonwearRows), filename: `nonwear_export_${dateStr}.csv` });
       }
       if (files.length === 1) {
-        downloadCsv(files[0].csv, files[0].filename);
+        downloadCsv(files[0]!.csv, files[0]!.filename);
       } else {
         downloadMultipleCsvs(files);
       }

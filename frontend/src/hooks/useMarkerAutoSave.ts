@@ -241,7 +241,7 @@ export function useMarkerAutoSave() {
         } catch (error) {
           lastError = error instanceof Error ? error.message : "Failed to save before navigation";
           if (attempt < MAX_RETRIES) {
-            await new Promise((resolve) => setTimeout(resolve, attempt * 300));
+            await new Promise<void>((resolve) => { setTimeout(resolve, attempt * 300); });
           }
         }
       }

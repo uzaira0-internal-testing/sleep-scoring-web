@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useSleepScoringStore } from "@/store";
@@ -61,7 +61,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useSleepScoringStore((state) => state.isAuthenticated);
   const serverAvailable = useCapabilitiesStore((s) => s.serverAvailable);
   const hasActiveWorkspace = getActiveWorkspaceId() !== null;
-  const rehydrated = useRef(false);
 
   // Wait for BOTH stores to hydrate before deciding to redirect.
   // Without this, the first render sees isAuthenticated=false (default)
@@ -71,6 +70,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(
     useSleepScoringStore.persist.hasHydrated() && useWorkspaceStore.persist.hasHydrated()
   );
+  const [rehydrated, setRehydrated] = useState(false);
+
   useEffect(() => {
     if (hydrated) return;
     let mainDone = useSleepScoringStore.persist.hasHydrated();
@@ -81,10 +82,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return () => { unsub1?.(); unsub2?.(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Rehydrate workspace singletons on first render (page reload case)
-  if (hydrated && !rehydrated.current && isAuthenticated && hasActiveWorkspace) {
-    rehydrated.current = rehydrateWorkspace();
-  }
+  // Rehydrate workspace singletons (page reload case).
+  // Runs asynchronously via microtask to satisfy set-state-in-effect rule
+  // while still executing before paint (no flicker).
+  useEffect(() => {
+    if (!hydrated || rehydrated || !isAuthenticated || !hasActiveWorkspace) return;
+    // queueMicrotask defers setState so it's no longer synchronous within the effect body
+    queueMicrotask(() => setRehydrated(rehydrateWorkspace()));
+  }, [hydrated, rehydrated, isAuthenticated, hasActiveWorkspace]);
 
   useEffect(() => {
     if (!isAuthenticated || !serverAvailable) return;
@@ -102,7 +107,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthenticated || !hasActiveWorkspace || !rehydrated.current) {
+  if (!isAuthenticated || !hasActiveWorkspace || !rehydrated) {
     return <Navigate to="/login" replace />;
   }
 

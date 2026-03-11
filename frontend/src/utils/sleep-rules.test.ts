@@ -32,22 +32,22 @@ describe("findMarkerIndexRange", () => {
   const ts = makeTimestamps(20); // indices 0..19
 
   it("should find full range when marker covers all timestamps", () => {
-    const result = findMarkerIndexRange(ts, ts[0], ts[19]);
+    const result = findMarkerIndexRange(ts, ts[0]!, ts[19]!);
     expect(result).toEqual({ startIdx: 0, endIdx: 19 });
   });
 
   it("should find subset range", () => {
-    const result = findMarkerIndexRange(ts, ts[5], ts[14]);
+    const result = findMarkerIndexRange(ts, ts[5]!, ts[14]!);
     expect(result).toEqual({ startIdx: 5, endIdx: 14 });
   });
 
   it("should return null when marker is entirely before timestamps", () => {
-    const result = findMarkerIndexRange(ts, ts[0] - 200, ts[0] - 100);
+    const result = findMarkerIndexRange(ts, ts[0]! - 200, ts[0]! - 100);
     expect(result).toBeNull();
   });
 
   it("should return null when marker is entirely after timestamps", () => {
-    const result = findMarkerIndexRange(ts, ts[19] + 100, ts[19] + 200);
+    const result = findMarkerIndexRange(ts, ts[19]! + 100, ts[19]! + 200);
     // startIdx found but endIdx is null because no timestamps <= markerEnd
     // Actually: all timestamps are <= markerEnd here, so endIdx = 19
     // But startIdx would be null since no timestamp >= markerStart
@@ -61,7 +61,7 @@ describe("findMarkerIndexRange", () => {
 
   it("should snap to nearest epoch when marker falls between timestamps", () => {
     // Marker start between ts[2] and ts[3], marker end between ts[7] and ts[8]
-    const result = findMarkerIndexRange(ts, ts[2] + 30, ts[7] + 30);
+    const result = findMarkerIndexRange(ts, ts[2]! + 30, ts[7]! + 30);
     // startIdx = 3 (first ts >= markerStart), endIdx = 7 (last ts <= markerEnd)
     expect(result).toEqual({ startIdx: 3, endIdx: 7 });
   });
@@ -281,7 +281,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 0, ...Array(11).fill(1), ...Array(6).fill(0)];
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!);
 
     expect(result.onsetIndex).toBe(3); // First of 3 consecutive sleep
     expect(result.offsetIndex).not.toBeNull();
@@ -292,7 +292,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0];
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!);
     expect(result.onsetIndex).toBe(3);
   });
 
@@ -307,7 +307,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0];
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!);
     expect(result.offsetIndex).toBe(13);
   });
 
@@ -316,7 +316,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = Array(20).fill(1);
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[5], ts[14]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[5]!, ts[14]!);
     // Onset should be at index 5 (first in range), not 0
     expect(result.onsetIndex).toBe(5);
   });
@@ -325,7 +325,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = Array(20).fill(0);
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!);
     expect(result.onsetIndex).toBeNull();
     expect(result.offsetIndex).toBeNull();
   });
@@ -341,7 +341,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!);
     expect(result.onsetIndex).toBe(2);
     // After onset (2) + onset_n (3) = search from 5, only 5,6,7 are sleep (3 epochs) - not enough for 5
     expect(result.offsetIndex).toBeNull();
@@ -352,7 +352,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0];
 
     // Marker starts at ts[2]+30 (between index 2 and 3), ends at ts[15]+30
-    const result = detectSleepOnsetOffset(scores, ts, ts[2] + 30, ts[15] + 30);
+    const result = detectSleepOnsetOffset(scores, ts, ts[2]! + 30, ts[15]! + 30);
     // startIdx = 3 (first ts >= markerStart), endIdx = 15
     expect(result.onsetIndex).toBe(3);
   });
@@ -361,7 +361,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0];
     const ts = makeTimestamps(10);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[9]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[9]!);
     expect(result.onsetIndex).toBeNull();
     expect(result.offsetIndex).toBeNull();
   });
@@ -370,7 +370,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 0, 1, 1, 0, 0, 0, 0, 0];
     const ts = makeTimestamps(10);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[9]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[9]!);
     expect(result.onsetIndex).toBeNull();
   });
 
@@ -378,7 +378,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0];
     const ts = makeTimestamps(10);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[9]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[9]!);
     expect(result.onsetIndex).toBe(3);
     // Need 5 consecutive after onset+3=6, but 6,7,8,9 are all wake
     expect(result.offsetIndex).toBeNull();
@@ -389,7 +389,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 1, 1, 1, 0, 0, 1, 1, 1, 0];
     const ts = makeTimestamps(10);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[9]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[9]!);
     expect(result.onsetIndex).toBe(1); // First run of 3
     expect(result.offsetIndex).toBeNull(); // No 5-consecutive after onset
   });
@@ -398,7 +398,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = Array(20).fill(1);
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!);
     expect(result.onsetIndex).toBe(0);
     // Last run of 5: starts at max valid position, anchored at end
     expect(result.offsetIndex).toBe(19);
@@ -409,7 +409,7 @@ describe("detectSleepOnsetOffset", () => {
     const ts = makeTimestamps(20);
 
     // onset_n=5, offset_n=7
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19], 5, 7);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!, 5, 7);
     expect(result.onsetIndex).toBe(1); // First 5 consecutive at 1
     // Search from 1+5=6, last 7 consecutive: 6..12, 7..13, 8..14 -> last end=14
     expect(result.offsetIndex).toBe(14);
@@ -420,7 +420,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0];
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!);
     // Onset at first 3-consecutive: index 2
     expect(result.onsetIndex).toBe(2);
     // Offset search from 2+3=5, runs of 5 consecutive sleep:
@@ -433,7 +433,7 @@ describe("detectSleepOnsetOffset", () => {
     const scores = [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0];
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19]);
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!);
     expect(result.onsetIndex).not.toBeNull();
     expect(result.offsetIndex).not.toBeNull();
     expect(result.onsetIndex!).toBeLessThan(result.offsetIndex!);
@@ -451,7 +451,7 @@ describe("detectSleepOnsetOffset (Tudor-Locke wake mode)", () => {
     const scores = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const ts = makeTimestamps(24);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[23], 5, 10, "wake");
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[23]!, 5, 10, "wake");
     expect(result.onsetIndex).toBe(2);
     // Wake run at 12..21 (10 consecutive), walk back from 11 → sleep at 11
     expect(result.offsetIndex).toBe(11);
@@ -462,7 +462,7 @@ describe("detectSleepOnsetOffset (Tudor-Locke wake mode)", () => {
     const scores = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
     const ts = makeTimestamps(20);
 
-    const result = detectSleepOnsetOffset(scores, ts, ts[0], ts[19], 5, 10, "wake");
+    const result = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[19]!, 5, 10, "wake");
     expect(result.onsetIndex).toBe(2);
     expect(result.offsetIndex).toBeNull();
   });
@@ -472,8 +472,8 @@ describe("detectSleepOnsetOffset (Tudor-Locke wake mode)", () => {
     const scores = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const ts = makeTimestamps(24);
 
-    const sleepResult = detectSleepOnsetOffset(scores, ts, ts[0], ts[23], 5, 10, "sleep");
-    const wakeResult = detectSleepOnsetOffset(scores, ts, ts[0], ts[23], 5, 10, "wake");
+    const sleepResult = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[23]!, 5, 10, "sleep");
+    const wakeResult = detectSleepOnsetOffset(scores, ts, ts[0]!, ts[23]!, 5, 10, "wake");
 
     // Both should find onset at 2
     expect(sleepResult.onsetIndex).toBe(2);

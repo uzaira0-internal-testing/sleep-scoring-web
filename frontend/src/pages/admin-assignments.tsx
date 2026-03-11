@@ -42,14 +42,14 @@ function findDuplicateGroups(usernames: string[]): Map<string, string[]> {
   const groups = new Map<string, string[]>();
   const lower = usernames.map((u) => u.toLowerCase());
   for (let i = 0; i < usernames.length; i++) {
-    const firstWord = lower[i].split(/\s+/)[0];
+    const firstWord = lower[i]!.split(/\s+/)[0]!;
     for (let j = i + 1; j < usernames.length; j++) {
-      const otherFirstWord = lower[j].split(/\s+/)[0];
-      if (firstWord === otherFirstWord || lower[i].startsWith(lower[j]) || lower[j].startsWith(lower[i])) {
+      const otherFirstWord = lower[j]!.split(/\s+/)[0]!;
+      if (firstWord === otherFirstWord || lower[i]!.startsWith(lower[j]!) || lower[j]!.startsWith(lower[i]!)) {
         const key = firstWord;
         const existing = groups.get(key) ?? [];
-        if (!existing.includes(usernames[i])) existing.push(usernames[i]);
-        if (!existing.includes(usernames[j])) existing.push(usernames[j]);
+        if (!existing.includes(usernames[i]!)) existing.push(usernames[i]!);
+        if (!existing.includes(usernames[j]!)) existing.push(usernames[j]!);
         groups.set(key, existing);
       }
     }

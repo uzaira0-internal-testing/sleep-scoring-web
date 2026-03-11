@@ -497,7 +497,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               if (isDirty && _flushSave) {
                 const saved = await Promise.race([
                   _flushSave(),
-                  new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10_000)),
+                  new Promise<boolean>((resolve) => { setTimeout(() => resolve(false), 10_000); }),
                 ]);
                 if (!saved) return;
               }
@@ -537,7 +537,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               if (pre.isDirty && pre._flushSave) {
                 const saved = await Promise.race([
                   pre._flushSave(),
-                  new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10_000)),
+                  new Promise<boolean>((resolve) => { setTimeout(() => resolve(false), 10_000); }),
                 ]);
                 if (!saved) return;
               }
@@ -631,7 +631,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           // Clamp to actual data range (both timestamp and timestamps[] are seconds)
           let ts = timestamp;
           if (timestamps.length > 0) {
-            ts = Math.max(timestamps[0], Math.min(timestamps[timestamps.length - 1], ts));
+            ts = Math.max(timestamps[0]!, Math.min(timestamps[timestamps.length - 1]!, ts));
           }
 
           if (creationMode === "idle") {
@@ -750,8 +750,8 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           const { timestamps } = get();
           const clamped = { ...updates };
           if (timestamps.length > 0) {
-            const minSec = timestamps[0];
-            const maxSec = timestamps[timestamps.length - 1];
+            const minSec = timestamps[0]!;
+            const maxSec = timestamps[timestamps.length - 1]!;
             if (clamped.onsetTimestamp !== undefined) clamped.onsetTimestamp = Math.max(minSec, Math.min(maxSec, clamped.onsetTimestamp));
             if (clamped.offsetTimestamp !== undefined) clamped.offsetTimestamp = Math.max(minSec, Math.min(maxSec, clamped.offsetTimestamp));
             if (clamped.startTimestamp !== undefined) clamped.startTimestamp = Math.max(minSec, Math.min(maxSec, clamped.startTimestamp));
@@ -888,7 +888,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
 
           const newIndex = markerHistoryIndex - 1;
           if (newIndex < 0) return;
-          const snapshot = markerHistory[newIndex];
+          const snapshot = markerHistory[newIndex]!;
           set({
             sleepMarkers: structuredClone(snapshot.sleepMarkers),
             nonwearMarkers: structuredClone(snapshot.nonwearMarkers),
@@ -905,7 +905,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           const { markerHistory, markerHistoryIndex } = get();
           const newIndex = markerHistoryIndex + 1;
           if (newIndex >= markerHistory.length) return;
-          const snapshot = markerHistory[newIndex];
+          const snapshot = markerHistory[newIndex]!;
           set({
             sleepMarkers: structuredClone(snapshot.sleepMarkers),
             nonwearMarkers: structuredClone(snapshot.nonwearMarkers),

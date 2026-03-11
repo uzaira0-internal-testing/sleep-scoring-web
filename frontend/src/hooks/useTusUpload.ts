@@ -86,7 +86,7 @@ export function useTusUpload() {
       chunkSize: 5 * 1024 * 1024, // 5MB chunks
       retryDelays: [0, 1000, 3000, 5000, 10000],
       removeFingerprintOnSuccess: true,
-      onBeforeRequest: (req: any) => {
+      onBeforeRequest: (req: { setHeader: (key: string, value: string) => void }) => {
         // Attach auth and metadata to each TUS request
         const state = useSleepScoringStore.getState();
         if (state.sitePassword) {
@@ -125,7 +125,7 @@ export function useTusUpload() {
     });
 
     // Upload success — start polling server processing
-    uppy.on("upload-success", (_file, _response) => {
+    uppy.on("upload-success", () => {
       setProgress((prev) => ({
         ...prev,
         phase: "processing",

@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend (TypeScript + ESLint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build WASM (stub for type declarations)
+        run: |
+          mkdir -p src/wasm/pkg
+          echo "export {};" > src/wasm/pkg/sleep_scoring_wasm.js
+
+      - name: TypeScript typecheck
+        run: bun run typecheck
+
+      - name: ESLint
+        run: bun run lint
+
+  backend:
+    name: Backend (ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff check
+        run: ruff check sleep_scoring_web/
+
+      - name: Ruff format check
+        run: ruff format --check sleep_scoring_web/

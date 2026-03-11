@@ -64,7 +64,7 @@ function parseTimeField(value: string): string | null {
   // HH:MM or HH:MM:SS → normalize to HH:MM
   if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(s)) {
     const parts = s.split(":");
-    return `${parts[0].padStart(2, "0")}:${parts[1]}`;
+    return `${parts[0]!.padStart(2, "0")}:${parts[1]}`;
   }
   return s;
 }
@@ -132,7 +132,7 @@ export function parseDiaryCsv(
   }
 
   // Normalize headers: lowercase, spaces → underscores
-  const rawHeaders = parseCsvLine(lines[0]);
+  const rawHeaders = parseCsvLine(lines[0]!);
   const headers = rawHeaders.map((h) => h.toLowerCase().replace(/\s+/g, "_"));
 
   // Find date and filename columns
@@ -166,7 +166,7 @@ export function parseDiaryCsv(
   const totalRows = lines.length - 1;
 
   for (let i = 1; i < lines.length; i++) {
-    const cols = parseCsvLine(lines[i]);
+    const cols = parseCsvLine(lines[i]!);
     const dateRaw = cols[dateCol] ?? "";
     const fnRaw = cols[filenameCol] ?? "";
 
@@ -197,7 +197,7 @@ export function parseDiaryCsv(
         (entry as Record<string, unknown>)[camelField] = parseIntField(raw);
       } else if (REASON_FIELDS.has(dbField)) {
         let val = isNullToken(raw) ? null : raw.trim();
-        if (val && NONWEAR_REASON_CODES[val]) val = NONWEAR_REASON_CODES[val];
+        if (val && NONWEAR_REASON_CODES[val]) val = NONWEAR_REASON_CODES[val]!;
         (entry as Record<string, unknown>)[camelField] = val;
       } else if (STR_FIELDS.has(dbField)) {
         (entry as Record<string, unknown>)[camelField] = isNullToken(raw) ? null : raw.trim();

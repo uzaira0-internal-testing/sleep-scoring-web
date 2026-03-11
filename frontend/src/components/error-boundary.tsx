@@ -17,7 +17,7 @@ interface State {
  * instead of a blank white screen.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, error: null, copied: false };
+  override state: State = { hasError: false, error: null, copied: false };
 
   // Instance property avoids setState + double render from componentDidCatch
   private _componentStack: string | null = null;
@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     this._componentStack = errorInfo.componentStack ?? null;
     appendErrorLog({
       message: error.message,
@@ -70,7 +70,7 @@ export class ErrorBoundary extends Component<Props, State> {
     );
   };
 
-  render(): ReactNode {
+  override render(): ReactNode {
     if (!this.state.hasError) {
       return this.props.children;
     }

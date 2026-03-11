@@ -31,7 +31,7 @@ describe("rowsToCsv", () => {
     }]);
     const lines = csv.split("\n");
     expect(lines).toHaveLength(2);
-    const values = lines[1].split(",");
+    const values = lines[1]!.split(",");
     expect(values[0]).toBe("test.csv");
     expect(values[1]).toBe("2026-01-15");
     expect(values[2]).toBe("0");
@@ -57,7 +57,7 @@ describe("rowsToCsv", () => {
       isNoSleep: true,
       notes: "",
     }]);
-    const values = csv.split("\n")[1].split(",");
+    const values = csv.split("\n")[1]!.split(",");
     expect(values[4]).toBe(""); // onset
     expect(values[5]).toBe(""); // offset
     expect(values[6]).toBe(""); // tst

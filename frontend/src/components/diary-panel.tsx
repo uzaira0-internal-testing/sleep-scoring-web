@@ -29,8 +29,8 @@ function parseTo24h(timeStr: string): [number, number] | null {
   const clean = s.replace(/[AP]M/g, "").trim();
   const parts = clean.split(":");
   if (parts.length < 2) return null;
-  let h = parseInt(parts[0], 10);
-  const m = parseInt(parts[1], 10);
+  let h = parseInt(parts[0]!, 10);
+  const m = parseInt(parts[1]!, 10);
   if (isNaN(h) || isNaN(m)) return null;
   if (isAM || isPM) {
     if (h === 12) h = isAM ? 0 : 12;
@@ -101,7 +101,7 @@ function useAmPmCorrections(entries: DiaryEntryResponse[] | undefined) {
       if (!onsetStr || !wakeStr) continue;
       const date = String(e.analysis_date);
 
-      let onsetTs = timeToTs(date, onsetStr, true);
+      const onsetTs = timeToTs(date, onsetStr, true);
       let wakeTs = timeToTs(date, wakeStr, false);
       if (wakeTs !== null && onsetTs !== null && wakeTs <= onsetTs) wakeTs += 86_400_000;
 
@@ -118,7 +118,7 @@ function useAmPmCorrections(entries: DiaryEntryResponse[] | undefined) {
 
       for (const att of attempts) {
         if (!att.oStr || !att.wStr) continue;
-        let aOnset = timeToTs(date, att.oStr, true);
+        const aOnset = timeToTs(date, att.oStr, true);
         let aWake = timeToTs(date, att.wStr, false);
         if (aWake !== null && aOnset !== null && aWake <= aOnset) aWake += 86_400_000;
         if (timesPlausible(aOnset, aWake, date)) {
@@ -263,8 +263,8 @@ export function DiaryPanel({ compact = false }: DiaryPanelProps) {
     const clean = s.replace(/[AP]M/g, "").trim();
     const parts = clean.split(":");
     if (parts.length < 2) return null;
-    let h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
+    let h = parseInt(parts[0]!, 10);
+    const m = parseInt(parts[1]!, 10);
     if (isNaN(h) || isNaN(m)) return null;
 
     if (isAM || isPM) {

@@ -7,7 +7,7 @@ import { useConfirmDialog, useAlertDialog } from "@/components/ui/confirm-dialog
 import { EditableList } from "@/components/ui/editable-list";
 import { Database, Cpu, Clock, Settings, FlaskConical, FileCode, TestTube, Info, Loader2, Save, RotateCcw, Users, CalendarDays, HelpCircle, Activity } from "lucide-react";
 import { useSleepScoringStore } from "@/store";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi } from "@/api/client";
 import { studySettingsQueryOptions, pipelineDiscoverQueryOptions } from "@/api/query-options";
@@ -62,7 +62,7 @@ export function StudySettingsPage() {
   // Display & detection axis preferences
   const [choiAxis, setChoiAxis] = useState("vector_magnitude");
   const [preferredActivityColumn, setPreferredActivityColumn] = useState("axis_y");
-  const [axesSynced, setAxesSynced] = useState(false);
+  const axesSyncedRef = useRef(false);
 
   // Load study-wide settings (shared across all users) - server only
   const { data: backendSettings, isLoading: isLoadingServer } = useQuery({
@@ -91,13 +91,19 @@ export function StudySettingsPage() {
   const [isLoadingLocal, setIsLoadingLocal] = useState(true);
   useEffect(() => {
     if (caps.server) return;
-    setIsLoadingLocal(true);
-    getLocalStudySettings()
-      .then((s) => setLocalSettings(s ?? null))
-      .catch((err) => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const s = await getLocalStudySettings();
+        if (!cancelled) setLocalSettings(s ?? null);
+      } catch (err) {
         console.error("Failed to load local study settings:", err);
-      })
-      .finally(() => setIsLoadingLocal(false));
+      } finally {
+        if (!cancelled) setIsLoadingLocal(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
   }, [caps.server]);
 
   // Sync local settings to store
@@ -184,7 +190,7 @@ export function StudySettingsPage() {
   const [idPattern, setIdPattern] = useState(DEFAULT_ID_PATTERN);
   const [timepointPattern, setTimepointPattern] = useState(DEFAULT_TIMEPOINT_PATTERN);
   const [groupPattern, setGroupPattern] = useState(DEFAULT_GROUP_PATTERN);
-  const [regexSynced, setRegexSynced] = useState(false);
+  const regexSyncedRef = useRef(false);
 
   // Phase 1: Valid groups/timepoints lists, defaults, and unknown value
   const [validGroups, setValidGroups] = useState<string[]>([]);
@@ -198,18 +204,19 @@ export function StudySettingsPage() {
 
   // Sync axis preferences from backend extra_settings on initial load
   useEffect(() => {
-    if (backendSettings?.extra_settings && !axesSynced) {
+    if (backendSettings?.extra_settings && !axesSyncedRef.current) {
+      axesSyncedRef.current = true;
       const extra = backendSettings.extra_settings;
       if (extra.choi_axis) setChoiAxis(extra.choi_axis as string);
       if (extra.preferred_activity_column) setPreferredActivityColumn(extra.preferred_activity_column as string);
       if (extra.nonwear_threshold != null) setNonwearThreshold(extra.nonwear_threshold as number);
-      setAxesSynced(true);
     }
-  }, [backendSettings, axesSynced]);
+  }, [backendSettings]);
 
   // Sync regex patterns and new fields from backend extra_settings on initial load
   useEffect(() => {
-    if (backendSettings?.extra_settings && !regexSynced) {
+    if (backendSettings?.extra_settings && !regexSyncedRef.current) {
+      regexSyncedRef.current = true;
       const extra = backendSettings.extra_settings;
       if (extra.id_pattern) setIdPattern(extra.id_pattern as string);
       if (extra.timepoint_pattern) setTimepointPattern(extra.timepoint_pattern as string);
@@ -219,9 +226,8 @@ export function StudySettingsPage() {
       if (extra.default_group) setDefaultGroup(extra.default_group as string);
       if (extra.default_timepoint) setDefaultTimepoint(extra.default_timepoint as string);
       if (extra.unknown_value) setUnknownValue(extra.unknown_value as string);
-      setRegexSynced(true);
     }
-  }, [backendSettings, regexSynced]);
+  }, [backendSettings]);
 
   // Save study-wide settings
   const handleSave = () => {
@@ -275,7 +281,7 @@ export function StudySettingsPage() {
           setDefaultGroup("");
           setDefaultTimepoint("");
           setUnknownValue("UNKNOWN");
-          setRegexSynced(false);
+          regexSyncedRef.current = false;
         },
       });
     }

@@ -173,8 +173,8 @@ export async function processLocalFile(
   const algorithmResultsByDate: Record<string, DayAlgorithmResults> = {};
 
   for (let i = 0; i < availableDates.length; i++) {
-    const date = availableDates[i];
-    const group = dateGroups[date];
+    const date = availableDates[i]!;
+    const group = dateGroups[date]!;
     const pct = 55 + (i / availableDates.length) * 30;
 
     onProgress?.({ phase: "scoring", percent: pct, message: `Scoring ${date}...` });
@@ -211,8 +211,8 @@ export async function processLocalFile(
   });
 
   for (const date of availableDates) {
-    const group = dateGroups[date];
-    const algoResults = algorithmResultsByDate[date];
+    const group = dateGroups[date]!;
+    const algoResults = algorithmResultsByDate[date]!;
 
     // .buffer is safe without .slice(0) — WASM worker uses Comlink.transfer() which
     // transfers ownership to the main thread, so these are already independent buffers.
@@ -263,7 +263,7 @@ function splitByDate(
   let cachedDayEnd = 0;
 
   for (let i = 0; i < timestamps.length; i++) {
-    const ts = timestamps[i];
+    const ts = timestamps[i]!;
 
     if (ts < cachedDayStart || ts >= cachedDayEnd) {
       const date = new Date(ts * 1000);
@@ -275,11 +275,11 @@ function splitByDate(
     if (!groups[cachedDateStr]) {
       groups[cachedDateStr] = { timestamps: [], axisY: [], vectorMagnitude: [], ...(hasExtra ? { choiAxis: [] } : {}) };
     }
-    const g = groups[cachedDateStr];
+    const g = groups[cachedDateStr]!;
     g.timestamps.push(ts);
-    g.axisY.push(axisY[i]);
-    g.vectorMagnitude.push(vectorMagnitude[i]);
-    if (hasExtra) g.choiAxis!.push(extraArray[i]);
+    g.axisY.push(axisY[i]!);
+    g.vectorMagnitude.push(vectorMagnitude[i]!);
+    if (hasExtra) g.choiAxis!.push(extraArray[i]!);
   }
 
   return groups;
