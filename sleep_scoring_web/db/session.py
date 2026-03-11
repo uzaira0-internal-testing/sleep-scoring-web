@@ -124,6 +124,35 @@ async def _apply_migrations() -> None:
             if not exists:
                 await conn.execute(text(ddl))
 
+        # Add unique constraint on audit_log (session_id, sequence) for dedup
+        # create_all() adds it for new tables; this handles existing tables
+        if settings.use_sqlite:
+            # SQLite: check if the unique index already exists
+            result = await conn.execute(text("PRAGMA index_list(audit_log)"))
+            index_names = [row[1] for row in result.fetchall()]
+            if "uq_audit_session_sequence" not in index_names:
+                try:
+                    await conn.execute(
+                        text("CREATE UNIQUE INDEX uq_audit_session_sequence ON audit_log (session_id, sequence)")
+                    )
+                except Exception:
+                    pass  # Table may not exist yet (create_all handles it)
+        else:
+            # PostgreSQL: add constraint if not exists
+            result = await conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.table_constraints "
+                    "WHERE constraint_name = 'uq_audit_session_sequence' AND table_name = 'audit_log'"
+                )
+            )
+            if result.fetchone() is None:
+                try:
+                    await conn.execute(
+                        text("ALTER TABLE audit_log ADD CONSTRAINT uq_audit_session_sequence UNIQUE (session_id, sequence)")
+                    )
+                except Exception:
+                    pass  # Table may not exist yet
+
         # Apply type migrations (INTEGER → FLOAT for GENEActiv g-force data)
         for table, column, new_type in type_migrations:
             if settings.use_sqlite:

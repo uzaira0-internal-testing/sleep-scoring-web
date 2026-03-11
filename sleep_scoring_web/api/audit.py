@@ -91,32 +91,58 @@ async def log_audit_events(
     """
     Append a batch of audit events for a file/date.
 
-    Events are inserted in a single transaction for efficiency.
-    The frontend buffers events and flushes periodically.
+    Idempotent: duplicate (session_id, sequence) pairs are skipped.
+    This handles the case where the client crashes after server receipt
+    but before deleting from IndexedDB, causing a re-send on next load.
     """
-    entries = [
-        AuditLogEntry(
-            file_id=request.file_id,
-            analysis_date=request.analysis_date,
-            username=username,
-            action=event.action,
-            client_timestamp=event.client_timestamp,
-            session_id=event.session_id,
-            sequence=event.sequence,
-            payload=event.payload,
+    # Collect unique keys from the incoming batch
+    incoming_keys = {(e.session_id, e.sequence) for e in request.events}
+
+    # Check which already exist in the database
+    existing_result = await db.execute(
+        sa_select(AuditLogEntry.session_id, AuditLogEntry.sequence).where(
+            AuditLogEntry.session_id.in_({k[0] for k in incoming_keys}),
         )
-        for event in request.events
-    ]
-    db.add_all(entries)
-    await db.commit()
+    )
+    existing_keys = {(row[0], row[1]) for row in existing_result.fetchall()}
+
+    # Only insert events that don't already exist
+    new_events = [e for e in request.events if (e.session_id, e.sequence) not in existing_keys]
+
+    if new_events:
+        entries = [
+            AuditLogEntry(
+                file_id=request.file_id,
+                analysis_date=request.analysis_date,
+                username=username,
+                action=event.action,
+                client_timestamp=event.client_timestamp,
+                session_id=event.session_id,
+                sequence=event.sequence,
+                payload=event.payload,
+            )
+            for event in new_events
+        ]
+        db.add_all(entries)
+        await db.commit()
+
+    skipped = len(request.events) - len(new_events)
+    if skipped > 0:
+        logger.debug(
+            "Skipped %d duplicate audit events for file=%d date=%s user=%s",
+            skipped,
+            request.file_id,
+            request.analysis_date,
+            username,
+        )
     logger.debug(
         "Logged %d audit events for file=%d date=%s user=%s",
-        len(entries),
+        len(new_events),
         request.file_id,
         request.analysis_date,
         username,
     )
-    return AuditBatchResponse(logged=len(entries))
+    return AuditBatchResponse(logged=len(new_events))
 
 
 @router.get("/{file_id}/{analysis_date}", response_model=list[AuditLogResponse])

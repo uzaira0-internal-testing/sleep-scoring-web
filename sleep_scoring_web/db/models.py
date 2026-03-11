@@ -497,7 +497,7 @@ class AuditLogEntry(Base):
 
     __table_args__ = (
         Index("ix_audit_log_file_date_user", "file_id", "analysis_date", "username"),
-        Index("ix_audit_log_session_seq", "session_id", "sequence"),
+        UniqueConstraint("session_id", "sequence", name="uq_audit_session_sequence"),
     )
 
 
