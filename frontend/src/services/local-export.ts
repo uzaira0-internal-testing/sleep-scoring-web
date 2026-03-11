@@ -79,7 +79,7 @@ export async function generateLocalExportRows(
           for (const sm of markers.sleepMarkers) {
             let metrics: ReturnType<typeof computePeriodMetrics> = null;
             if (algorithmResults && timestamps.length > 0 && sm.onsetTimestamp && sm.offsetTimestamp) {
-              metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp, sm.offsetTimestamp);
+              metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp / 1000, sm.offsetTimestamp / 1000);
             }
             sleepRows.push({
               filename: file.filename, studyDate: date, periodIndex: sm.markerIndex,
@@ -101,7 +101,7 @@ export async function generateLocalExportRows(
         for (const sm of markers.sleepMarkers) {
           let metrics: ReturnType<typeof computePeriodMetrics> = null;
           if (algorithmResults && timestamps.length > 0 && sm.onsetTimestamp && sm.offsetTimestamp) {
-            metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp, sm.offsetTimestamp);
+            metrics = computePeriodMetrics(algorithmResults, timestamps, sm.onsetTimestamp / 1000, sm.offsetTimestamp / 1000);
           }
 
           sleepRows.push({

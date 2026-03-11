@@ -102,6 +102,7 @@ export interface FileInfo {
   filename: string;
   source: "local" | "server";
   status?: string;
+  available_dates?: string[];
 }
 
 /**
@@ -392,7 +393,11 @@ function unpackActivityDay(
   day: ActivityDay,
   preferredAlgorithm?: string,
 ): UnpackedActivityDay {
-  const timestamps = Array.from(new Float64Array(day.timestamps));
+  const rawTimestamps = Array.from(new Float64Array(day.timestamps));
+  // WASM stores timestamps in milliseconds; the entire frontend (uPlot, markers, metrics)
+  // expects seconds. Detect and convert: if first timestamp > 1e12 it's ms.
+  const isMs = rawTimestamps.length > 0 && rawTimestamps[0] > 1e12;
+  const timestamps = isMs ? rawTimestamps.map((t) => t / 1000) : rawTimestamps;
   const axisY = Array.from(new Float64Array(day.axisY));
   const vectorMagnitude = Array.from(new Float64Array(day.vectorMagnitude));
 
@@ -419,6 +424,13 @@ function unpackActivityDay(
   return { timestamps, axisY, vectorMagnitude, sleepScores, nonwearResults };
 }
 
+/** Get the next calendar date as YYYY-MM-DD string. */
+function getNextDate(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * Local-first data source backed by IndexedDB + WASM.
  */
@@ -426,20 +438,36 @@ export class LocalDataSource implements DataSource {
   async loadActivityData(fileId: number, date: string, options?: { algorithm?: string; viewHours?: number }): Promise<ActivityData> {
     const day = await localDb.getActivityDay(fileId, date);
     if (!day) {
-      // Throw rather than silently returning empty data — callers (useQuery) handle
-      // the error and can show an appropriate message to the user.
       throw new Error(`No activity data found for fileId=${fileId} date=${date}. File may not be processed yet.`);
     }
 
     const unpacked = unpackActivityDay(day, options?.algorithm);
 
+    // For 48h view, append next day's data
+    if (options?.viewHours === 48) {
+      const nextDate = getNextDate(date);
+      const nextDay = await localDb.getActivityDay(fileId, nextDate);
+      if (nextDay) {
+        const nextUnpacked = unpackActivityDay(nextDay, options?.algorithm);
+        unpacked.timestamps.push(...nextUnpacked.timestamps);
+        unpacked.axisY.push(...nextUnpacked.axisY);
+        unpacked.vectorMagnitude.push(...nextUnpacked.vectorMagnitude);
+        if (unpacked.sleepScores.length > 0 && nextUnpacked.sleepScores.length > 0) {
+          unpacked.sleepScores.push(...nextUnpacked.sleepScores);
+        }
+        if (unpacked.nonwearResults && nextUnpacked.nonwearResults) {
+          unpacked.nonwearResults.push(...nextUnpacked.nonwearResults);
+        }
+      }
+    }
+
     // Compute view bounds from timestamp array
     const viewStart = unpacked.timestamps.length > 0 ? unpacked.timestamps[0] : null;
     const viewEnd = unpacked.timestamps.length > 0 ? unpacked.timestamps[unpacked.timestamps.length - 1] : null;
 
-    // Load sensor nonwear from IndexedDB
+    // Load sensor nonwear from IndexedDB (timestamps stored in seconds, convert to ms for markers)
     const sensorNonwearPeriods = (await localDb.getSensorNonwear(fileId, date)).map((p) => ({
-      startTimestamp: p.startTimestamp * 1000,
+      startTimestamp: p.startTimestamp * 1000,  // seconds → ms (marker convention)
       endTimestamp: p.endTimestamp * 1000,
     }));
 
@@ -488,6 +516,7 @@ export class LocalDataSource implements DataSource {
       id: f.id!,
       filename: f.filename,
       source: "local" as const,
+      available_dates: f.availableDates,
     }));
   }
 
@@ -639,9 +668,10 @@ export class LocalDataSource implements DataSource {
 
           if (markers && complexityPre >= 0) {
             // MarkerRecord.sleepMarkers uses camelCase (onsetTimestamp/offsetTimestamp)
+            // Markers are in ms, timestamps are in seconds — convert for consistency
             const sleepMarkerPairs: Array<[number, number]> = markers.sleepMarkers
               .filter((m) => m.onsetTimestamp != null && m.offsetTimestamp != null)
-              .map((m) => [m.onsetTimestamp!, m.offsetTimestamp!]);
+              .map((m) => [m.onsetTimestamp! / 1000, m.offsetTimestamp! / 1000]);
             const post = computePostComplexity(complexityPre, pre.features, sleepMarkerPairs, sleepScores, timestamps);
             complexityPost = post.score;
           }

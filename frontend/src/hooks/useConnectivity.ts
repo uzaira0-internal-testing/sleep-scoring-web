@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useSyncStore } from "@/store/sync-store";
 import { useSleepScoringStore } from "@/store";
 import { config } from "@/config";
+import { isTauri } from "@/lib/tauri";
 import { syncAll } from "@/services/sync";
 import * as localDb from "@/db";
 
@@ -53,6 +54,13 @@ export function useConnectivity(enabled: boolean = true) {
   }, [setSyncing, setSyncComplete, setSyncError]);
 
   const checkHealth = useCallback(async () => {
+    // In Tauri, /health hits the asset server which returns 200 HTML for all paths.
+    // This would falsely set isOnline=true. Skip health checks entirely in Tauri.
+    if (isTauri()) {
+      setOnline(false);
+      return;
+    }
+
     if (!navigator.onLine) {
       setOnline(false);
       return;
@@ -63,6 +71,12 @@ export function useConnectivity(enabled: boolean = true) {
         method: "GET",
         signal: AbortSignal.timeout(5000),
       });
+      // Guard: ensure response is actually from our backend, not an SPA fallback
+      const ct = response.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) {
+        setOnline(false);
+        return;
+      }
       const wasOnline = useSyncStore.getState().isOnline;
       setOnline(response.ok);
 

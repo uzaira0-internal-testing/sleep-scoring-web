@@ -88,6 +88,13 @@ export function isNullToken(v: string): boolean {
 // CSV line parser (handles quoted fields)
 // ---------------------------------------------------------------------------
 
+/**
+ * Strip UTF-8 BOM from the beginning of a string (common in Windows/Excel CSVs).
+ */
+export function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+}
+
 export function parseCsvLine(line: string): string[] {
   const result: string[] = [];
   let current = "";

@@ -13,7 +13,9 @@ export function loadActivityForMetrics(actDay: ActivityDay | undefined): {
 } {
   if (!actDay) return { timestamps: [], algorithmResults: null };
 
-  const timestamps = Array.from(new Float64Array(actDay.timestamps));
+  const rawTs = Array.from(new Float64Array(actDay.timestamps));
+  // Convert ms→seconds if needed (WASM stores ms, frontend expects seconds)
+  const timestamps = rawTs.length > 0 && rawTs[0] > 1e12 ? rawTs.map((t) => t / 1000) : rawTs;
 
   if (!actDay.algorithmResults || typeof actDay.algorithmResults !== "object") {
     console.warn(`[loadActivityForMetrics] Missing algorithmResults for activity day id=${actDay.id}`);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useSleepScoringStore } from "@/store";
 import { meApi } from "@/api/client";
@@ -13,6 +13,7 @@ import { AnalysisPage } from "@/pages/analysis";
 import { ExportPage } from "@/pages/export";
 import { AdminAssignmentsPage } from "@/pages/admin-assignments";
 import { config } from "@/config";
+import { isTauri } from "@/lib/tauri";
 import { getActiveWorkspaceId, useWorkspaceStore } from "@/store/workspace-store";
 import { switchDb, getDb } from "@/lib/workspace-db";
 import { switchApi } from "@/lib/workspace-api";
@@ -62,13 +63,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const hasActiveWorkspace = getActiveWorkspaceId() !== null;
   const rehydrated = useRef(false);
 
-  // Wait for Zustand persist hydration before deciding to redirect.
+  // Wait for BOTH stores to hydrate before deciding to redirect.
   // Without this, the first render sees isAuthenticated=false (default)
   // and redirects to /login before localStorage state is restored.
-  const [hydrated, setHydrated] = useState(useSleepScoringStore.persist.hasHydrated());
+  // The workspace store must also be hydrated so rehydrateWorkspace()
+  // can find the workspace record.
+  const [hydrated, setHydrated] = useState(
+    useSleepScoringStore.persist.hasHydrated() && useWorkspaceStore.persist.hasHydrated()
+  );
   useEffect(() => {
     if (hydrated) return;
-    return useSleepScoringStore.persist.onFinishHydration(() => setHydrated(true));
+    let mainDone = useSleepScoringStore.persist.hasHydrated();
+    let wsDone = useWorkspaceStore.persist.hasHydrated();
+    const check = () => { if (mainDone && wsDone) setHydrated(true); };
+    const unsub1 = mainDone ? undefined : useSleepScoringStore.persist.onFinishHydration(() => { mainDone = true; check(); });
+    const unsub2 = wsDone ? undefined : useWorkspaceStore.persist.onFinishHydration(() => { wsDone = true; check(); });
+    return () => { unsub1?.(); unsub2?.(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Rehydrate workspace singletons on first render (page reload case)
@@ -102,9 +112,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 /**
  * Main App component with routing
  */
+/**
+ * Use HashRouter in Tauri — the asset server always serves index.html for all paths,
+ * so BrowserRouter paths are lost on hard refresh (Ctrl+Shift+R). HashRouter persists
+ * the route in the URL hash fragment which survives refresh.
+ */
+const Router = isTauri() ? HashRouter : BrowserRouter;
+
 function App() {
   return (
-    <BrowserRouter basename={config.basePath}>
+    <Router basename={isTauri() ? undefined : config.basePath}>
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
@@ -132,7 +149,7 @@ function App() {
         {/* Catch-all redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
 

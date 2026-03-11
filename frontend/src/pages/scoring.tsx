@@ -561,13 +561,13 @@ export function ScoringPage() {
   const [consensusOnly, setConsensusOnly] = useState(false);
   const consensusCount = datesStatus?.filter((d) => d.needs_consensus).length ?? 0;
 
-  // Fetch scoring progress per file — server-only
-  const readyFiles = isLocal ? [] : (dsFiles ?? []).filter((f) => f.status === "ready");
+  // Fetch scoring progress per file (both server and local modes)
+  const readyFiles = (dsFiles ?? []).filter((f) => isLocal || f.status === "ready");
   const fileProgressQueries = useQueries({
     queries: readyFiles.map((f) => ({
-      queryKey: ["dates-status", f.id, username || "anonymous", "server"],
-      queryFn: () => dataSource.listDatesStatus(f.id, [], username || "anonymous"),
-      enabled: !!f.id && !isLocal,
+      queryKey: ["dates-status", f.id, username || "anonymous", isLocal ? "local" : "server"],
+      queryFn: () => dataSource.listDatesStatus(f.id, f.available_dates ?? [], username || "anonymous"),
+      enabled: !!f.id,
       staleTime: 30000,
     })),
   });
@@ -589,9 +589,9 @@ export function ScoringPage() {
     .sort((a, b) => a.filename.localeCompare(b.filename))
     .map((f) => ({
       value: String(f.id),
-      label: isLocal
-        ? f.filename
-        : `${f.filename} (${fileProgressMap.get(f.id) ?? "loading..."})`,
+      label: fileProgressMap.has(f.id)
+        ? `${f.filename} (${fileProgressMap.get(f.id)})`
+        : f.filename,
       disabled: !isLocal && f.status !== "ready",
     }));
 

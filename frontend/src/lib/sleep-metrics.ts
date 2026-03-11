@@ -76,23 +76,23 @@ export function countAwakenings(scores: Uint8Array | number[]): number {
  * Compute full sleep period metrics from algorithm results within a marker range.
  *
  * @param algorithmResults - Full-day algorithm results array (1=sleep, 0=wake)
- * @param timestamps - Full-day epoch timestamps in ms
- * @param onsetMs - Onset timestamp in ms
- * @param offsetMs - Offset timestamp in ms
+ * @param timestamps - Full-day epoch timestamps (must be in same units as onset/offset)
+ * @param onset - Onset timestamp
+ * @param offset - Offset timestamp
  * @param epochSeconds - Epoch duration in seconds (default 60)
  */
 export function computePeriodMetrics(
   algorithmResults: Uint8Array | number[],
   timestamps: number[],
-  onsetMs: number,
-  offsetMs: number,
+  onset: number,
+  offset: number,
   epochSeconds = 60,
 ): SleepPeriodMetrics | null {
   if (!algorithmResults || algorithmResults.length === 0 || timestamps.length === 0) return null;
-  if (onsetMs == null || offsetMs == null || onsetMs >= offsetMs) return null;
+  if (onset == null || offset == null || onset >= offset) return null;
 
   // Find indices for the period (reuse existing index range utility)
-  const range = findMarkerIndexRange(timestamps, onsetMs, offsetMs);
+  const range = findMarkerIndexRange(timestamps, onset, offset);
   if (!range || range.startIdx >= range.endIdx) return null;
 
   // Extract period scores

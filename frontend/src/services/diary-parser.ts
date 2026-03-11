@@ -13,6 +13,7 @@ import {
   buildFileLookup,
   isNullToken,
   parseCsvLine,
+  stripBom,
   DATE_ALIASES,
   FILENAME_ALIASES,
 } from "@/lib/csv-utils";
@@ -125,7 +126,7 @@ export function parseDiaryCsv(
   csvText: string,
   localFiles: FileRecord[],
 ): DiaryParseResult {
-  const lines = csvText.split(/\r?\n/).filter((l) => l.trim());
+  const lines = stripBom(csvText).split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) {
     return { matched: [], totalRows: 0, matchedRows: 0, unmatchedRows: 0, errors: ["CSV has no data rows"] };
   }

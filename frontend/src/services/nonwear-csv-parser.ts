@@ -15,6 +15,7 @@ import {
   buildFileLookup,
   isNullToken,
   parseCsvLine,
+  stripBom,
   DATE_ALIASES,
   FILENAME_ALIASES,
   PARTICIPANT_ID_ALIASES,
@@ -99,13 +100,13 @@ export function parseNonwearCsv(
   csvText: string,
   localFiles: FileRecord[],
 ): NonwearParseResult {
-  const lines = csvText.split(/\r?\n/).filter((l) => l.trim());
+  const lines = stripBom(csvText).split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) {
     return { matched: [], totalRows: 0, matchedRows: 0, unmatchedRows: 0, errors: ["CSV has no data rows"] };
   }
 
-  // Parse header
-  const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim());
+  // Parse header (normalize spaces to underscores for alias matching)
+  const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim().replace(/\s+/g, "_"));
   const dateCol = headers.findIndex((h) => DATE_ALIASES.has(h));
   const startCol = headers.findIndex((h) => START_TIME_ALIASES.has(h));
   const endCol = headers.findIndex((h) => END_TIME_ALIASES.has(h));
