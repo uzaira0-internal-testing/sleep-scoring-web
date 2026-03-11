@@ -229,6 +229,7 @@ venv-test/
 *.json
 !pyproject.toml
 !sleep_scoring_app/**/*.json
+!src-tauri/**/*.json
 !demo_data/
 !demo_data/**
 
