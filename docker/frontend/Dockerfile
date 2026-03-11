@@ -60,8 +60,12 @@ RUN addgroup -g 1001 -S appgroup && \
     touch /var/run/nginx.pid && \
     chown appuser:appgroup /var/run/nginx.pid
 
-# Copy built assets from builder stage
+# Copy built assets from builder stage and ensure directory is writable
+# (nginx base image creates /usr/share/nginx/html owned by root;
+#  appuser needs write access for docker-entrypoint.sh to create config.js
+#  and sed -i to inject <base> tag at runtime)
 COPY --from=builder --chown=appuser:appgroup /app/dist /usr/share/nginx/html
+RUN chown appuser:appgroup /usr/share/nginx/html
 
 # Install curl for healthcheck
 RUN apk add --no-cache curl
