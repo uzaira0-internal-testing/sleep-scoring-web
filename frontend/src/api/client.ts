@@ -67,6 +67,11 @@ export const authApi = {
     if (!response.ok) {
       throw new Error("Failed to get auth status");
     }
+    // Guard against non-JSON responses (e.g. Tauri asset server returning HTML)
+    const ct = response.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+      throw new Error("Auth status response is not JSON");
+    }
     return response.json() as Promise<{
       password_required: boolean;
     }>;

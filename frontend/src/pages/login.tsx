@@ -120,25 +120,14 @@ export function LoginPage() {
         return;
       }
 
-      // Tauri mode: show workspace picker if workspaces exist, otherwise probe
+      // Tauri mode: show workspace picker if workspaces exist, otherwise mode-picker.
+      // Don't probe relative URLs — Tauri's asset server returns 200 HTML for all
+      // paths (SPA fallback), which would false-positive as a reachable backend.
       if (hydratedWorkspaces.length > 0) {
         setPhase("workspace-picker");
-        return;
+      } else {
+        setPhase("mode-picker");
       }
-      // No workspaces — probe relative URL for co-hosted backend (Docker deployment)
-      authApi.getAuthStatus(undefined)
-        .then((status) => {
-          if (cancelled) return;
-          setLoginMode("server");
-          setAuthRequired(status.password_required);
-          setWantsServer(true);
-          setIsCreatingNew(true);
-          setPhase("login-form");
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setPhase("mode-picker");
-        });
     }
 
     // Check if persist has already hydrated (e.g. StrictMode second render)
@@ -184,7 +173,10 @@ export function LoginPage() {
     setWantsServer(!!ws.serverUrl);
     setIsCreatingNew(false);
     setPhase("login-form");
-    probeUrl(ws.serverUrl);
+    // Only probe if workspace has a server URL — local workspaces have no server to check.
+    if (ws.serverUrl) {
+      probeUrl(ws.serverUrl);
+    }
   }
 
   function handleChooseMode(server: boolean): void {

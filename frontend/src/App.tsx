@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { useSleepScoringStore } from "@/store";
 import { meApi } from "@/api/client";
 import { useCapabilitiesStore } from "@/store/capabilities-store";
@@ -38,8 +39,14 @@ function rehydrateWorkspace(): boolean {
 
   // Restore serverAvailable based on workspace type so DataSourceProvider
   // picks the correct mode immediately (before the async probe completes).
+  // Mark serverChecked=true for both cases to prevent probeServer() from
+  // re-running — in Tauri local mode there's no server to probe, and for
+  // server workspaces we optimistically set available (the probe will correct
+  // if the server went offline).
   if (ws.serverUrl) {
     useCapabilitiesStore.getState().setServerAvailable(true);
+  } else {
+    useCapabilitiesStore.getState().setServerAvailable(false);
   }
 
   return true;
@@ -55,8 +62,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const hasActiveWorkspace = getActiveWorkspaceId() !== null;
   const rehydrated = useRef(false);
 
+  // Wait for Zustand persist hydration before deciding to redirect.
+  // Without this, the first render sees isAuthenticated=false (default)
+  // and redirects to /login before localStorage state is restored.
+  const [hydrated, setHydrated] = useState(useSleepScoringStore.persist.hasHydrated());
+  useEffect(() => {
+    if (hydrated) return;
+    return useSleepScoringStore.persist.onFinishHydration(() => setHydrated(true));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Rehydrate workspace singletons on first render (page reload case)
-  if (!rehydrated.current && isAuthenticated && hasActiveWorkspace) {
+  if (hydrated && !rehydrated.current && isAuthenticated && hasActiveWorkspace) {
     rehydrated.current = rehydrateWorkspace();
   }
 
@@ -66,6 +82,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       .then((me) => useSleepScoringStore.getState().setIsAdmin(me.is_admin))
       .catch(() => { /* Backend unreachable — keep default isAdmin=false */ });
   }, [isAuthenticated, serverAvailable]);
+
+  // Show loading spinner until persist hydration completes
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated || !hasActiveWorkspace || !rehydrated.current) {
     return <Navigate to="/login" replace />;

@@ -17,6 +17,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       workbox: {
         globPatterns: ["**/*.{js,css,html,wasm,svg,png,ico}"],
+        // Only cache API responses when there's a real server behind them.
+        // In Tauri, /api/ paths return SPA HTML (asset protocol fallback),
+        // which must NOT be cached as API data.
         runtimeCaching: [
           {
             urlPattern: /\/api\//,
@@ -24,6 +27,7 @@ export default defineConfig({
             options: {
               cacheName: "api-cache",
               expiration: { maxEntries: 50, maxAgeSeconds: 300 },
+              cacheableResponse: { headers: { "content-type": "application/json" } },
             },
           },
         ],

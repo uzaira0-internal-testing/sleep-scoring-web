@@ -3,7 +3,8 @@
  */
 import { create } from "zustand";
 import { authApi } from "@/api/client";
-import { getActiveWorkspaceId } from "@/store/workspace-store";
+import { getActiveWorkspaceId, useWorkspaceStore } from "@/store/workspace-store";
+import { isTauri } from "@/lib/tauri";
 
 const CACHE_MS = 60_000;
 
@@ -31,9 +32,21 @@ export const useCapabilitiesStore = create<CapabilitiesState>((set, get) => ({
     if (Date.now() - lastSuccessAt < CACHE_MS) return;
 
     // Skip probe if no workspace is active
-    if (!getActiveWorkspaceId()) {
+    const wsId = getActiveWorkspaceId();
+    if (!wsId) {
       set({ serverAvailable: false, serverChecked: true });
       return;
+    }
+
+    // In Tauri with a local workspace (no serverUrl), there's no server to probe.
+    // The Tauri asset server returns 200 HTML for API paths (SPA fallback), which
+    // would cause a confusing JSON parse error. Skip the probe entirely.
+    if (isTauri()) {
+      const ws = useWorkspaceStore.getState().getWorkspace(wsId);
+      if (ws && !ws.serverUrl) {
+        set({ serverAvailable: false, serverChecked: true });
+        return;
+      }
     }
 
     try {

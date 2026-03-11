@@ -8,7 +8,10 @@ import { sha256Hex } from "@/lib/content-hash";
 
 /** Returns true when running inside a Tauri WebView. */
 export function isTauri(): boolean {
-  return "__TAURI__" in window;
+  // Tauri v2 sets window.__TAURI_INTERNALS__ (always) and window.isTauri (always).
+  // window.__TAURI__ is only set with withGlobalTauri=true in tauri.conf.json.
+  // Match the official @tauri-apps/api/core isTauri() check.
+  return !!(globalThis as Record<string, unknown>).isTauri;
 }
 
 /** Compute the full 64-char SHA-256 hex hash for group hash namespacing. */
