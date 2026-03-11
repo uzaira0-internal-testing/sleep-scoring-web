@@ -28,7 +28,7 @@ export function useMarkerLoad() {
       return dataSource.loadMarkers(currentFileId, currentDate, username || "anonymous");
     },
     enabled: !!currentFileId && !!currentDate,
-    staleTime: 0,
+    staleTime: 30_000,
     gcTime: 5 * 60 * 1000,
     // In server mode, poll for other users' changes every 30s.
     // Local mode doesn't need polling (single user, no remote changes).

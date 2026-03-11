@@ -29,6 +29,12 @@ pub fn detect(counts: &[f64]) -> Vec<u8> {
         return Vec::new();
     }
 
+    // Pre-compute nonzero flags for O(1) window queries via prefix sums
+    let mut prefix_nonzero = vec![0usize; n + 1];
+    for i in 0..n {
+        prefix_nonzero[i + 1] = prefix_nonzero[i] + if counts[i] > 0.0 { 1 } else { 0 };
+    }
+
     let mut periods: Vec<NonwearPeriod> = Vec::new();
     let mut i = 0;
 
@@ -49,7 +55,7 @@ pub fn detect(counts: &[f64]) -> Vec<u8> {
                 continue;
             }
 
-            // Check spike tolerance in surrounding window
+            // Check spike tolerance using prefix sum (O(1) per query)
             let window_start = if continuation >= WINDOW_SIZE {
                 continuation - WINDOW_SIZE
             } else {
@@ -57,10 +63,8 @@ pub fn detect(counts: &[f64]) -> Vec<u8> {
             };
             let window_end = (continuation + WINDOW_SIZE).min(n);
 
-            let nonzero_count = counts[window_start..window_end]
-                .iter()
-                .filter(|&&v| v > 0.0)
-                .count();
+            let nonzero_count =
+                prefix_nonzero[window_end] - prefix_nonzero[window_start];
 
             if nonzero_count > SPIKE_TOLERANCE {
                 break;
@@ -80,12 +84,11 @@ pub fn detect(counts: &[f64]) -> Vec<u8> {
     // Merge adjacent periods (within 1 minute / 1 index)
     let merged = merge_periods(periods);
 
-    // Convert to mask
+    // Convert to mask using slice fill (memset-optimized)
     let mut mask = vec![0u8; n];
     for period in &merged {
-        for idx in period.start_idx..=period.end_idx.min(n - 1) {
-            mask[idx] = 1;
-        }
+        let end = period.end_idx.min(n - 1);
+        mask[period.start_idx..=end].fill(1);
     }
 
     mask
@@ -96,6 +99,12 @@ fn merge_periods(mut periods: Vec<NonwearPeriod>) -> Vec<NonwearPeriod> {
         return periods;
     }
 
+    // Periods are expected sorted by start_idx (added in left-to-right scan order).
+    // Defensive sort in case a future refactor breaks insertion order (negligible cost on small vec).
+    debug_assert!(
+        periods.windows(2).all(|w| w[0].start_idx <= w[1].start_idx),
+        "merge_periods: input periods were not sorted by start_idx"
+    );
     periods.sort_by_key(|p| p.start_idx);
 
     let mut merged: Vec<NonwearPeriod> = Vec::new();

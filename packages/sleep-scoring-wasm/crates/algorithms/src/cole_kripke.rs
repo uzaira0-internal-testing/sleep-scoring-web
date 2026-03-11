@@ -28,20 +28,16 @@ pub fn score(activity: &[f64], use_actilife_scaling: bool) -> Vec<u8> {
         return Vec::new();
     }
 
-    // Apply scaling
-    let scaled: Vec<f64> = if use_actilife_scaling {
-        activity
-            .iter()
-            .map(|&v| (v / ACTILIFE_SCALE).min(ACTILIFE_CAP))
-            .collect()
+    // Single padded array: 4 zeros (lag) + scaled data + 2 zeros (lead)
+    let padded_len = 4 + n + 2;
+    let mut padded = vec![0.0_f64; padded_len];
+    if use_actilife_scaling {
+        for i in 0..n {
+            padded[4 + i] = (activity[i] / ACTILIFE_SCALE).min(ACTILIFE_CAP);
+        }
     } else {
-        activity.to_vec()
-    };
-
-    // Pad: 4 zeros at start (for lag), 2 zeros at end (for lead)
-    let mut padded = vec![0.0_f64; 4];
-    padded.extend_from_slice(&scaled);
-    padded.extend(vec![0.0_f64; 2]);
+        padded[4..4 + n].copy_from_slice(activity);
+    }
 
     let mut result = vec![0u8; n];
 

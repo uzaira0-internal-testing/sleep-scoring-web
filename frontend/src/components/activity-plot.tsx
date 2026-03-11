@@ -4,6 +4,7 @@ import "uplot/dist/uPlot.min.css";
 import { useQuery } from "@tanstack/react-query";
 import { useActivityData, useMarkers, useSleepScoringStore, useDates } from "@/store";
 import { useTheme } from "@/components/theme-provider";
+import { useDataSource } from "@/contexts/data-source-context";
 import { getApiBase } from "@/api/client";
 import type { ConsensusBallotResponse, MarkersWithMetricsResponse } from "@/api/types";
 import { detectSleepOnsetOffset } from "@/utils/sleep-rules";
@@ -27,6 +28,7 @@ interface ActivityPlotProps {
 }
 
 export function ActivityPlot({ showComparisonMarkers = false, highlightedCandidateId = null }: ActivityPlotProps) {
+  const { dataSource } = useDataSource();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<uPlot | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -72,29 +74,12 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     enabled: !!currentFileId && !!currentDate,
   });
 
-  // Fetch adjacent day markers for continuity display
+  // Fetch adjacent day markers for continuity display (via DataSource for local/server parity)
   const { data: adjacentMarkersData } = useQuery({
     queryKey: ["adjacent-markers", currentFileId, currentDate, username || "anonymous"],
-    queryFn: async () => {
-      if (!currentFileId || !currentDate) return null;
-      const response = await fetch(
-        `${getApiBase()}/markers/${currentFileId}/${currentDate}/adjacent`,
-        {
-          headers: {
-            ...(sitePassword ? { "X-Site-Password": sitePassword } : {}),
-            "X-Username": username || "anonymous",
-          },
-        }
-      );
-      if (!response.ok) return null;
-      return response.json() as Promise<{
-        previous_day_markers: Array<{ onset_timestamp: number | null; offset_timestamp: number | null; marker_index: number }>;
-        next_day_markers: Array<{ onset_timestamp: number | null; offset_timestamp: number | null; marker_index: number }>;
-        previous_date: string | null;
-        next_date: string | null;
-      }>;
-    },
+    queryFn: () => dataSource.loadAdjacentMarkers(currentFileId!, currentDate!, username || "anonymous"),
     enabled: !!currentFileId && !!currentDate,
+    staleTime: 30_000,
   });
 
   // Fetch consensus ballot candidates for overlay comparison.
@@ -116,7 +101,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     },
     enabled: showComparisonMarkers && !!currentFileId && !!currentDate,
     staleTime: 0,
-    refetchInterval: 2000,
+    refetchInterval: 10_000,
   });
   const {
     sleepMarkers,

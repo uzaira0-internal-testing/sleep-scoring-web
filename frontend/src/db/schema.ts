@@ -61,6 +61,7 @@ export interface MarkerRecord {
   sleepMarkers: SleepMarkerJson[];
   nonwearMarkers: NonwearMarkerJson[];
   isNoSleep: boolean;
+  needsConsensus: boolean;
   notes: string;
   contentHash: string; // SHA-256 for sync dedup
   syncStatus: "pending" | "synced" | "conflict";

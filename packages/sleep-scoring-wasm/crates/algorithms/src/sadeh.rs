@@ -32,17 +32,15 @@ pub fn score(activity: &[f64], threshold: f64) -> Vec<u8> {
         return Vec::new();
     }
 
-    // Cap activity at 300
-    let capped: Vec<f64> = activity.iter().map(|&v| v.min(ACTIVITY_CAP)).collect();
-
-    // Zero-pad 5 each side for sliding window
-    let mut padded = vec![0.0_f64; 5];
-    padded.extend_from_slice(&capped);
-    padded.extend(vec![0.0_f64; 5]);
+    // Single padded array: cap + zero-pad 5 each side
+    let padded_len = n + 10;
+    let mut padded = vec![0.0_f64; padded_len];
+    for i in 0..n {
+        padded[i + 5] = activity[i].min(ACTIVITY_CAP);
+    }
 
     // Pre-compute rolling SD (backward: current + 5 preceding, ddof=1)
-    // In padded array, original epoch i is at index i+5
-    // SD window = padded[i .. i+6] (indices i, i+1, i+2, i+3, i+4, i+5)
+    // SD window for original epoch i = padded[i..i+6]
     let rolling_sds: Vec<f64> = (0..n)
         .map(|i| {
             let window = &padded[i..i + 6];
@@ -68,8 +66,8 @@ pub fn score(activity: &[f64], threshold: f64) -> Vec<u8> {
         // SD: pre-computed backward rolling std
         let sd = rolling_sds[i];
 
-        // LG: ln(current_count + 1)
-        let lg = (capped[i] + 1.0).ln();
+        // LG: ln(current_count + 1) — use capped value from padded[i+5]
+        let lg = (padded[i + 5] + 1.0).ln();
 
         // PS formula
         let ps = COEFF_A - (COEFF_B * avg) - (COEFF_C * nats) - (COEFF_D * sd) - (COEFF_E * lg);

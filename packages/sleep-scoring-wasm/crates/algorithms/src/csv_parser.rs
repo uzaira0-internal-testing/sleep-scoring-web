@@ -22,7 +22,6 @@ pub fn is_geneactiv(content: &str) -> bool {
 /// Returns (data_start_line, has_header_row).
 pub fn find_geneactiv_data_start(content: &str) -> (usize, bool) {
     let ts_prefix_chars = |line: &str| -> bool {
-        // Check if line starts with a timestamp: YYYY-MM-DD HH:MM:SS
         let bytes = line.as_bytes();
         bytes.len() >= 19
             && bytes[0..4].iter().all(|b| b.is_ascii_digit())
@@ -31,20 +30,18 @@ pub fn find_geneactiv_data_start(content: &str) -> (usize, bool) {
             && bytes[10] == b' '
     };
 
-    let lines: Vec<&str> = content.lines().collect();
-
-    for (i, line) in lines.iter().enumerate() {
+    let mut prev_line: Option<&str> = None;
+    for (i, line) in content.lines().enumerate() {
         let stripped = line.trim();
         if stripped.is_empty() {
             continue;
         }
         if ts_prefix_chars(stripped) {
-            // Check if previous line is a header
-            let has_header = if i > 0 {
-                let prev = lines[i - 1].to_lowercase();
+            let has_header = if let Some(prev) = prev_line {
+                let prev_lower = prev.to_lowercase();
                 ["timestamp", "x", "y", "z", "time", "lux", "temp"]
                     .iter()
-                    .any(|kw| prev.contains(kw))
+                    .any(|kw| prev_lower.contains(kw))
             } else {
                 false
             };
@@ -53,6 +50,7 @@ pub fn find_geneactiv_data_start(content: &str) -> (usize, bool) {
         if i > 120 {
             break;
         }
+        prev_line = Some(line);
     }
     (100, false) // Default fallback
 }
@@ -65,7 +63,6 @@ pub fn detect_frequency(content: &str) -> u32 {
         }
         let lower = line.to_lowercase();
         if lower.contains("measurement frequency") || lower.contains("sample rate") {
-            // Extract number
             for part in line.split(|c: char| c == ',' || c == ':' || c == '\t') {
                 let trimmed = part.trim().trim_end_matches(" hz").trim_end_matches("hz");
                 if let Ok(freq) = trimmed.parse::<u32>() {
@@ -122,15 +119,59 @@ fn detect_columns(headers: &[&str]) -> ColumnMap {
     map
 }
 
+/// Extract multiple fields by index from a line in a single pass.
+/// `indices` must be sorted ascending. Returns fields in the order of `indices`.
+/// Uses a fixed-size array to avoid heap allocation.
+#[inline]
+fn extract_fields<'a, const N: usize>(
+    line: &'a str,
+    sep: char,
+    indices: &[usize; N],
+) -> [Option<&'a str>; N] {
+    let mut result = [None; N];
+    let mut target = 0; // which index in `indices` we're looking for next
+    for (col, field) in line.split(sep).enumerate() {
+        if target >= N {
+            break;
+        }
+        if col == indices[target] {
+            result[target] = Some(field.trim());
+            target += 1;
+            // Check for duplicate indices at the same column
+            while target < N && indices[target] == col {
+                result[target] = result[target - 1];
+                target += 1;
+            }
+        }
+    }
+    result
+}
+
+/// Count fields in a line without allocating.
+#[inline]
+fn count_fields(line: &str, sep: char) -> usize {
+    if line.is_empty() {
+        return 0;
+    }
+    line.split(sep).count()
+}
+
 /// Parse an ActiGraph-style CSV (with configurable header skip).
 pub fn parse_actigraph_csv(content: &str, skip_rows: usize) -> Result<CsvParseResult, String> {
-    let lines: Vec<&str> = content.lines().collect();
-    if lines.len() <= skip_rows {
-        return Err("File has fewer lines than skip_rows".into());
+    // Skip header rows by tracking byte offset
+    let mut byte_offset = 0usize;
+    for _ in 0..skip_rows {
+        match content[byte_offset..].find('\n') {
+            Some(pos) => byte_offset += pos + 1,
+            None => return Err("File has fewer lines than skip_rows".into()),
+        }
     }
 
-    // Header row is at skip_rows index
-    let header_line = lines[skip_rows];
+    let header_end = content[byte_offset..].find('\n')
+        .ok_or("File has fewer lines than skip_rows")?;
+    let header_line = &content[byte_offset..byte_offset + header_end];
+    byte_offset += header_end + 1;
+
     let sep = if header_line.contains('\t') { '\t' } else { ',' };
     let headers: Vec<&str> = header_line.split(sep).map(|s| s.trim()).collect();
     let col_map = detect_columns(&headers);
@@ -141,55 +182,115 @@ pub fn parse_actigraph_csv(content: &str, skip_rows: usize) -> Result<CsvParseRe
         .ok_or("No datetime/date column found")?;
     let axis_y_col = col_map.axis_y_col.ok_or("No axis_y/Axis1 column found")?;
 
-    let mut timestamps_ms = Vec::new();
-    let mut axis_y = Vec::new();
-    let mut axis_x = Vec::new();
-    let mut axis_z = Vec::new();
-    let mut vector_magnitude = Vec::new();
+    // Estimate row count for pre-allocation (count remaining newlines)
+    let remaining = &content[byte_offset..];
+    let est_rows = bytecount_newlines(remaining.as_bytes());
 
-    for line in &lines[skip_rows + 1..] {
+    let mut timestamps_ms = Vec::with_capacity(est_rows);
+    let mut axis_y = Vec::with_capacity(est_rows);
+    let mut axis_x = Vec::with_capacity(est_rows);
+    let mut axis_z = Vec::with_capacity(est_rows);
+    let mut vector_magnitude = Vec::with_capacity(est_rows);
+
+    let has_separate_time = col_map.time_col.is_some() && col_map.date_col.is_some();
+    let has_axis_x = col_map.axis_x_col.is_some();
+    let has_axis_z = col_map.axis_z_col.is_some();
+    let has_vm = col_map.vector_magnitude_col.is_some();
+
+    // Build sorted column index map for single-pass extraction per line.
+    // Each entry: (column_index, role). Sorted by column_index for sequential scan.
+    const ROLE_DATETIME: u8 = 0;
+    const ROLE_TIME: u8 = 1;
+    const ROLE_AXIS_Y: u8 = 2;
+    const ROLE_AXIS_X: u8 = 3;
+    const ROLE_AXIS_Z: u8 = 4;
+    const ROLE_VM: u8 = 5;
+
+    let mut col_roles: Vec<(usize, u8)> = Vec::with_capacity(6);
+    col_roles.push((datetime_col, ROLE_DATETIME));
+    if has_separate_time {
+        col_roles.push((col_map.time_col.unwrap(), ROLE_TIME));
+    }
+    col_roles.push((axis_y_col, ROLE_AXIS_Y));
+    if let Some(c) = col_map.axis_x_col { col_roles.push((c, ROLE_AXIS_X)); }
+    if let Some(c) = col_map.axis_z_col { col_roles.push((c, ROLE_AXIS_Z)); }
+    if let Some(c) = col_map.vector_magnitude_col { col_roles.push((c, ROLE_VM)); }
+    col_roles.sort_by_key(|&(idx, _)| idx);
+
+    let max_col = col_roles.last().map_or(0, |&(idx, _)| idx);
+
+    let mut ts_format = TimestampFormat::Unknown;
+    let mut ts_buf = String::with_capacity(32);
+
+    for line in remaining.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let fields: Vec<&str> = line.split(sep).map(|s| s.trim()).collect();
-        if fields.len() <= datetime_col || fields.len() <= axis_y_col {
-            continue;
+
+        // Single-pass field extraction: walk the split iterator once,
+        // picking up only the columns we need (in sorted order).
+        let mut extracted: [Option<&str>; 6] = [None; 6];
+        let mut target = 0;
+        for (col, field) in line.split(sep).enumerate() {
+            if target >= col_roles.len() { break; }
+            if col == col_roles[target].0 {
+                let role = col_roles[target].1 as usize;
+                extracted[role] = Some(field.trim());
+                target += 1;
+            }
+            if col >= max_col { break; }
         }
 
         // Parse timestamp
-        let ts_str = if let Some(time_col) = col_map.time_col {
-            if col_map.date_col.is_some() && time_col < fields.len() {
-                format!("{} {}", fields[datetime_col], fields[time_col])
-            } else {
-                fields[datetime_col].to_string()
-            }
+        let ts_ms = if has_separate_time {
+            let date_part = match extracted[ROLE_DATETIME as usize] {
+                Some(s) => s,
+                None => continue,
+            };
+            let time_part = match extracted[ROLE_TIME as usize] {
+                Some(s) => s,
+                None => continue,
+            };
+            ts_buf.clear();
+            ts_buf.push_str(date_part);
+            ts_buf.push(' ');
+            ts_buf.push_str(time_part);
+            parse_timestamp_ms_with_hint(&ts_buf, &mut ts_format)
         } else {
-            fields[datetime_col].to_string()
+            match extracted[ROLE_DATETIME as usize] {
+                Some(s) => parse_timestamp_ms_with_hint(s, &mut ts_format),
+                None => continue,
+            }
         };
 
-        let ts_ms = parse_timestamp_ms(&ts_str);
-        if ts_ms.is_none() {
-            continue;
-        }
-        timestamps_ms.push(ts_ms.unwrap());
+        let ts_ms = match ts_ms {
+            Some(v) => v,
+            None => continue,
+        };
 
-        // Parse axis values
-        axis_y.push(parse_f64(fields[axis_y_col]));
+        // Parse axis_y (required)
+        let y_str = match extracted[ROLE_AXIS_Y as usize] {
+            Some(s) => s,
+            None => continue,
+        };
 
-        if let Some(col) = col_map.axis_x_col {
-            if col < fields.len() {
-                axis_x.push(parse_f64(fields[col]));
+        timestamps_ms.push(ts_ms);
+        axis_y.push(parse_f64(y_str));
+
+        if has_axis_x {
+            if let Some(s) = extracted[ROLE_AXIS_X as usize] {
+                axis_x.push(parse_f64(s));
             }
         }
-        if let Some(col) = col_map.axis_z_col {
-            if col < fields.len() {
-                axis_z.push(parse_f64(fields[col]));
+        if has_axis_z {
+            if let Some(s) = extracted[ROLE_AXIS_Z as usize] {
+                axis_z.push(parse_f64(s));
             }
         }
-        if let Some(col) = col_map.vector_magnitude_col {
-            if col < fields.len() {
-                vector_magnitude.push(parse_f64(fields[col]));
+        if has_vm {
+            if let Some(s) = extracted[ROLE_VM as usize] {
+                vector_magnitude.push(parse_f64(s));
             }
         }
     }
@@ -229,55 +330,67 @@ pub fn parse_geneactiv_csv(content: &str) -> Result<CsvParseResult, String> {
     let (data_start, _has_header) = find_geneactiv_data_start(content);
     let freq = detect_frequency(content);
 
-    let lines: Vec<&str> = content.lines().collect();
-    let start = data_start;
-
-    if lines.len() <= start {
-        return Err("No data found in GENEActiv file".into());
+    // Skip to data start by tracking byte offset
+    let mut byte_offset = 0usize;
+    for _ in 0..data_start {
+        match content[byte_offset..].find('\n') {
+            Some(pos) => byte_offset += pos + 1,
+            None => return Err("No data found in GENEActiv file".into()),
+        }
     }
+    let remaining = &content[byte_offset..];
 
-    // Detect separator from first data line
-    let first_data = lines[start];
+    // Peek at first data line for separator and column count
+    let first_data: &str = match remaining.lines().next() {
+        Some(l) => l,
+        None => return Err("No data found in GENEActiv file".into()),
+    };
     let sep = if first_data.contains('\t') { '\t' } else { ',' };
-
-    // Count columns to determine format
-    let num_cols = first_data.split(sep).count();
+    let num_cols = count_fields(first_data, sep);
     let is_raw = num_cols <= 7;
 
-    let mut timestamps_ms = Vec::new();
-    let mut axis_x = Vec::new();
-    let mut axis_y = Vec::new();
-    let mut axis_z = Vec::new();
+    // Estimate rows for pre-allocation
+    let est_rows = bytecount_newlines(remaining.as_bytes());
 
-    for line in &lines[start..] {
+    let mut timestamps_ms = Vec::with_capacity(est_rows);
+    let mut axis_x = Vec::with_capacity(est_rows);
+    let mut axis_y = Vec::with_capacity(est_rows);
+    let mut axis_z = Vec::with_capacity(est_rows);
+
+    let mut ts_format = TimestampFormat::Unknown;
+    // Stack buffer for GENEActiv timestamp fixup (avoids heap allocation)
+    let mut ts_buf = String::with_capacity(32);
+
+    for line in remaining.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let fields: Vec<&str> = line.split(sep).map(|s| s.trim()).collect();
-        if fields.len() < 4 {
-            continue;
-        }
 
-        // Fix GENEActiv colon-millisecond: "2025-06-12 13:20:18:000" → "2025-06-12 13:20:18.000"
-        let ts_str = fix_geneactiv_timestamp(fields[0]);
+        // Extract first 4 fields in a single pass
+        let fields = extract_fields(line, sep, &[0, 1, 2, 3]);
+        let field0 = match fields[0] { Some(s) => s, None => continue };
+        let field1 = match fields[1] { Some(s) => s, None => continue };
+        let field2 = match fields[2] { Some(s) => s, None => continue };
+        let field3 = match fields[3] { Some(s) => s, None => continue };
 
-        if let Some(ts) = parse_timestamp_ms(&ts_str) {
+        // Fix GENEActiv colon-millisecond in-place using buffer
+        let ts_str = fix_geneactiv_timestamp_into(field0, &mut ts_buf);
+
+        if let Some(ts) = parse_timestamp_ms_with_hint(ts_str, &mut ts_format) {
             timestamps_ms.push(ts);
-            axis_x.push(parse_f64(fields[1]));
-            axis_y.push(parse_f64(fields[2]));
-            axis_z.push(parse_f64(fields[3]));
+            axis_x.push(parse_f64(field1));
+            axis_y.push(parse_f64(field2));
+            axis_z.push(parse_f64(field3));
         }
     }
 
-    let n = axis_y.len();
-    let vector_magnitude: Vec<f64> = (0..n)
-        .map(|i| {
-            let x = axis_x[i];
-            let y = axis_y[i];
-            let z = axis_z[i];
-            (x * x + y * y + z * z).sqrt()
-        })
+    // Compute vector magnitude inline during collection
+    let vector_magnitude: Vec<f64> = axis_x
+        .iter()
+        .zip(axis_y.iter())
+        .zip(axis_z.iter())
+        .map(|((&x, &y), &z)| (x * x + y * y + z * z).sqrt())
         .collect();
 
     Ok(CsvParseResult {
@@ -288,19 +401,43 @@ pub fn parse_geneactiv_csv(content: &str) -> Result<CsvParseResult, String> {
         vector_magnitude,
         is_raw,
         sample_frequency: freq,
-        header_rows_skipped: start as u32,
+        header_rows_skipped: data_start as u32,
     })
 }
 
-/// Fix GENEActiv colon-millisecond timestamps.
+/// Count newlines in a byte slice (fast estimate of row count).
+fn bytecount_newlines(bytes: &[u8]) -> usize {
+    bytes.iter().filter(|&&b| b == b'\n').count()
+}
+
+/// Fix GENEActiv colon-millisecond timestamps without heap allocation.
+/// Returns a &str borrowing from either the input or the buffer.
+fn fix_geneactiv_timestamp_into<'a>(s: &'a str, buf: &'a mut String) -> &'a str {
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+    if len >= 4
+        && bytes[len - 4] == b':'
+        && bytes[len - 3].is_ascii_digit()
+        && bytes[len - 2].is_ascii_digit()
+        && bytes[len - 1].is_ascii_digit()
+    {
+        buf.clear();
+        buf.push_str(&s[..len - 4]);
+        buf.push('.');
+        buf.push_str(&s[len - 3..]);
+        buf
+    } else {
+        s
+    }
+}
+
+/// Fix GENEActiv colon-millisecond timestamps (allocating version for tests).
+#[cfg(test)]
 fn fix_geneactiv_timestamp(s: &str) -> String {
-    // Replace last colon followed by 3 digits with period
     let bytes = s.as_bytes();
     if bytes.len() >= 4 {
         let len = bytes.len();
-        // Check if last 4 chars are :DDD
-        if len >= 4
-            && bytes[len - 4] == b':'
+        if bytes[len - 4] == b':'
             && bytes[len - 3].is_ascii_digit()
             && bytes[len - 2].is_ascii_digit()
             && bytes[len - 1].is_ascii_digit()
@@ -314,97 +451,145 @@ fn fix_geneactiv_timestamp(s: &str) -> String {
     s.to_string()
 }
 
+/// Detected timestamp format for skipping fallback attempts.
+#[derive(Clone, Copy, PartialEq)]
+enum TimestampFormat {
+    Unknown,
+    Iso,
+    Us,
+}
+
 /// Parse a timestamp string to milliseconds since Unix epoch.
-fn parse_timestamp_ms(s: &str) -> Option<f64> {
-    // Try common formats: "YYYY-MM-DD HH:MM:SS", "YYYY-MM-DD HH:MM:SS.fff"
-    // Also: "MM/DD/YYYY HH:MM:SS"
+/// Uses format hint to avoid trying both parsers on every row.
+fn parse_timestamp_ms_with_hint(s: &str, hint: &mut TimestampFormat) -> Option<f64> {
     let s = s.trim().trim_matches('"');
 
-    // Try ISO-like format first
+    match *hint {
+        TimestampFormat::Iso => return parse_iso_datetime(s),
+        TimestampFormat::Us => return parse_us_datetime(s),
+        TimestampFormat::Unknown => {}
+    }
+
     if let Some(ms) = parse_iso_datetime(s) {
+        *hint = TimestampFormat::Iso;
         return Some(ms);
     }
 
-    // Try US format: MM/DD/YYYY HH:MM:SS
     if let Some(ms) = parse_us_datetime(s) {
+        *hint = TimestampFormat::Us;
         return Some(ms);
     }
 
     None
 }
 
+/// Parse a timestamp string to milliseconds since Unix epoch (no hint).
+#[cfg(test)]
+fn parse_timestamp_ms(s: &str) -> Option<f64> {
+    let s = s.trim().trim_matches('"');
+    if let Some(ms) = parse_iso_datetime(s) {
+        return Some(ms);
+    }
+    parse_us_datetime(s)
+}
+
+/// Parse ISO datetime directly from bytes without intermediate allocations.
 fn parse_iso_datetime(s: &str) -> Option<f64> {
     // YYYY-MM-DD HH:MM:SS[.fff]
-    let parts: Vec<&str> = s.splitn(2, |c| c == ' ' || c == 'T').collect();
-    if parts.len() != 2 {
+    let bytes = s.as_bytes();
+    if bytes.len() < 19 {
         return None;
     }
 
-    let date_parts: Vec<&str> = parts[0].split('-').collect();
-    if date_parts.len() != 3 {
+    // Quick structural check
+    if bytes[4] != b'-' || bytes[7] != b'-' || (bytes[10] != b' ' && bytes[10] != b'T') {
         return None;
     }
 
-    let year: i64 = date_parts[0].parse().ok()?;
-    let month: i64 = date_parts[1].parse().ok()?;
-    let day: i64 = date_parts[2].parse().ok()?;
+    let year = parse_int_fast(&bytes[0..4])? as i64;
+    let month = parse_int_fast(&bytes[5..7])? as i64;
+    let day = parse_int_fast(&bytes[8..10])? as i64;
 
-    let (hour, min, sec, millis) = parse_time_parts(parts[1])?;
+    let (hour, min, sec, millis) = parse_time_from_bytes(&bytes[11..])?;
 
     let days = days_since_epoch(year, month, day)?;
-    let ms = days as f64 * 86400000.0
-        + hour as f64 * 3600000.0
-        + min as f64 * 60000.0
-        + sec as f64 * 1000.0
-        + millis;
-
-    Some(ms)
+    Some(
+        days as f64 * 86400000.0
+            + hour as f64 * 3600000.0
+            + min as f64 * 60000.0
+            + sec as f64 * 1000.0
+            + millis,
+    )
 }
 
 fn parse_us_datetime(s: &str) -> Option<f64> {
     // MM/DD/YYYY HH:MM:SS
-    let parts: Vec<&str> = s.splitn(2, ' ').collect();
-    if parts.len() != 2 {
+    let bytes = s.as_bytes();
+    if bytes.len() < 19 {
         return None;
     }
 
-    let date_parts: Vec<&str> = parts[0].split('/').collect();
-    if date_parts.len() != 3 {
+    // Find the space separating date and time
+    let space_pos = memchr_byte(b' ', bytes)?;
+    if space_pos < 8 {
         return None;
     }
 
-    let month: i64 = date_parts[0].parse().ok()?;
-    let day: i64 = date_parts[1].parse().ok()?;
-    let year: i64 = date_parts[2].parse().ok()?;
+    let date_part = &bytes[..space_pos];
+    // Find slashes
+    let slash1 = memchr_byte(b'/', date_part)?;
+    let slash2 = slash1 + 1 + memchr_byte(b'/', &date_part[slash1 + 1..])?;
 
-    let (hour, min, sec, millis) = parse_time_parts(parts[1])?;
+    let month = parse_int_fast(&date_part[..slash1])? as i64;
+    let day = parse_int_fast(&date_part[slash1 + 1..slash2])? as i64;
+    let year = parse_int_fast(&date_part[slash2 + 1..])? as i64;
+
+    let (hour, min, sec, millis) = parse_time_from_bytes(&bytes[space_pos + 1..])?;
 
     let days = days_since_epoch(year, month, day)?;
-    let ms = days as f64 * 86400000.0
-        + hour as f64 * 3600000.0
-        + min as f64 * 60000.0
-        + sec as f64 * 1000.0
-        + millis;
-
-    Some(ms)
+    Some(
+        days as f64 * 86400000.0
+            + hour as f64 * 3600000.0
+            + min as f64 * 60000.0
+            + sec as f64 * 1000.0
+            + millis,
+    )
 }
 
-fn parse_time_parts(s: &str) -> Option<(i64, i64, i64, f64)> {
-    // HH:MM:SS[.fff] or HH:MM:SS
-    let time_parts: Vec<&str> = s.split(':').collect();
-    if time_parts.len() < 3 {
+/// Parse time from bytes: HH:MM:SS[.fff]
+#[inline]
+fn parse_time_from_bytes(bytes: &[u8]) -> Option<(i64, i64, i64, f64)> {
+    if bytes.len() < 8 {
         return None;
     }
-    let hour: i64 = time_parts[0].parse().ok()?;
-    let min: i64 = time_parts[1].parse().ok()?;
+    if bytes[2] != b':' || bytes[5] != b':' {
+        return None;
+    }
+
+    let hour = parse_int_fast(&bytes[0..2])? as i64;
+    let min = parse_int_fast(&bytes[3..5])? as i64;
 
     // Seconds may have fractional part
-    let sec_parts: Vec<&str> = time_parts[2].split('.').collect();
-    let sec: i64 = sec_parts[0].parse().ok()?;
-    let millis: f64 = if sec_parts.len() > 1 {
-        let frac = sec_parts[1];
-        let frac_val: f64 = frac.parse().ok()?;
-        frac_val / 10.0_f64.powi(frac.len() as i32) * 1000.0
+    let sec_start = 6;
+    let mut sec_end = sec_start;
+    while sec_end < bytes.len() && bytes[sec_end].is_ascii_digit() {
+        sec_end += 1;
+    }
+    let sec = parse_int_fast(&bytes[sec_start..sec_end])? as i64;
+
+    let millis = if sec_end < bytes.len() && bytes[sec_end] == b'.' {
+        let frac_start = sec_end + 1;
+        let mut frac_end = frac_start;
+        while frac_end < bytes.len() && bytes[frac_end].is_ascii_digit() {
+            frac_end += 1;
+        }
+        if frac_end > frac_start {
+            let frac_val = parse_int_fast(&bytes[frac_start..frac_end])? as f64;
+            let frac_len = (frac_end - frac_start) as i32;
+            frac_val / 10.0_f64.powi(frac_len) * 1000.0
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
@@ -412,23 +597,43 @@ fn parse_time_parts(s: &str) -> Option<(i64, i64, i64, f64)> {
     Some((hour, min, sec, millis))
 }
 
+/// Fast integer parsing from ASCII bytes (no allocation, no error string).
+#[inline]
+fn parse_int_fast(bytes: &[u8]) -> Option<u32> {
+    let mut result: u32 = 0;
+    for &b in bytes {
+        if !b.is_ascii_digit() {
+            return None;
+        }
+        result = result * 10 + (b - b'0') as u32;
+    }
+    if bytes.is_empty() {
+        return None;
+    }
+    Some(result)
+}
+
+/// Find first occurrence of a byte in a slice.
+#[inline]
+fn memchr_byte(needle: u8, haystack: &[u8]) -> Option<usize> {
+    haystack.iter().position(|&b| b == needle)
+}
+
 /// Days since Unix epoch (1970-01-01).
 fn days_since_epoch(year: i64, month: i64, day: i64) -> Option<i64> {
-    // Simple algorithm for converting date to days since epoch
     if month < 1 || month > 12 || day < 1 || day > 31 {
         return None;
     }
-    // Adjust for months
     let (y, m) = if month <= 2 {
         (year - 1, month + 12)
     } else {
         (year, month)
     };
-
     let days = 365 * y + y / 4 - y / 100 + y / 400 + (153 * (m - 3) + 2) / 5 + day - 719469;
     Some(days)
 }
 
+#[inline]
 fn parse_f64(s: &str) -> f64 {
     s.trim().trim_matches('"').parse::<f64>().unwrap_or(0.0)
 }
@@ -440,7 +645,6 @@ mod tests {
     #[test]
     fn test_parse_iso_datetime() {
         let ms = parse_timestamp_ms("2024-01-01 00:00:00").unwrap();
-        // 2024-01-01 = day 19723 since epoch
         assert!((ms - 1704067200000.0).abs() < 1000.0);
     }
 

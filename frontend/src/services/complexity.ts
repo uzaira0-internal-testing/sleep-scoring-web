@@ -20,10 +20,16 @@ function linearPenalty(value: number, low: number, high: number, maxPenalty: num
 function nightWindowIndices(
   timestamps: number[],
   analysisDate: string,
+  nightStartHour: number = 21,
+  nightEndHour: number = 9,
 ): [number, number] {
   const d = new Date(analysisDate + "T00:00:00Z");
-  const nightStartTs = d.getTime() / 1000 + 21 * 3600; // 21:00 UTC
-  const nightEndTs = nightStartTs + 12 * 3600;           // 09:00 next day
+  const nightStartTs = d.getTime() / 1000 + nightStartHour * 3600;
+  // Calculate duration: if end < start, it wraps past midnight
+  const durationHours = nightEndHour <= nightStartHour
+    ? (24 - nightStartHour + nightEndHour)
+    : (nightEndHour - nightStartHour);
+  const nightEndTs = nightStartTs + durationHours * 3600;
 
   let startIdx = 0;
   let endIdx = timestamps.length;
@@ -402,6 +408,8 @@ export function computePreComplexity(opts: {
   analysisDate: string;
   sensorNonwearPeriods?: Array<[number, number]>;
   diaryNonwearTimes?: Array<[string, string]>;
+  nightStartHour?: number;
+  nightEndHour?: number;
 }): ComplexityResult {
   const features: Record<string, unknown> = {};
 
@@ -442,7 +450,7 @@ export function computePreComplexity(opts: {
   }
 
   let totalPenalty = 0;
-  const [nightStart, nightEnd] = nightWindowIndices(opts.timestamps, opts.analysisDate);
+  const [nightStart, nightEnd] = nightWindowIndices(opts.timestamps, opts.analysisDate, opts.nightStartHour, opts.nightEndHour);
   const nightHours = Math.max((nightEnd - nightStart) / 60, 1);
 
   // 1. Transition density (-25 max)

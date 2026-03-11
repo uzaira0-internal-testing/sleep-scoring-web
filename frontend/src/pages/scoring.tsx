@@ -33,6 +33,7 @@ import {
 } from "@/constants/options";
 import { useDataSource } from "@/contexts/data-source-context";
 import type { FileInfo, ActivityData, AutoScoreResult, AutoNonwearResult } from "@/services/data-source";
+import { getLocalStudySettings } from "@/db";
 
 /**
  * Main scoring page with activity plot and marker controls
@@ -161,13 +162,21 @@ export function ScoringPage() {
     queryFn: () => dataSource.listFiles(),
   });
 
-  // Study settings (for auto-nonwear threshold) — server-only
+  // Study settings (for auto-nonwear threshold)
   const { data: studySettings } = useQuery({
     ...studySettingsQueryOptions(),
     queryFn: settingsApi.getStudySettings,
     enabled: !isLocal,
   });
-  const nonwearThreshold = (studySettings?.extra_settings as Record<string, unknown>)?.nonwear_threshold as number | undefined;
+  // Local study settings from IndexedDB
+  const { data: localStudySettings } = useQuery({
+    queryKey: ["local-study-settings"],
+    queryFn: getLocalStudySettings,
+    enabled: isLocal,
+  });
+  const nonwearThreshold = isLocal
+    ? (localStudySettings?.extraSettings?.nonwear_threshold as number | undefined)
+    : (studySettings?.extra_settings as Record<string, unknown>)?.nonwear_threshold as number | undefined;
 
   // Update available files when dsFiles changes
   useEffect(() => {
@@ -705,19 +714,17 @@ export function ScoringPage() {
             No Sleep
           </Button>
 
-          {!isLocal && (
-            <Button
-              variant={needsConsensus ? "default" : "outline"}
-              size="sm"
-              className={`h-7 text-xs px-2 shrink-0 ${needsConsensus ? "bg-orange-600 hover:bg-orange-700" : ""}`}
-              onClick={() => setNeedsConsensus(!needsConsensus)}
-              title={needsConsensus ? "Remove consensus flag" : "Flag for consensus review"}
-              disabled={!currentFileId || !currentDate}
-            >
-              <Users className="h-3.5 w-3.5 mr-1" />
-              Consensus
-            </Button>
-          )}
+          <Button
+            variant={needsConsensus ? "default" : "outline"}
+            size="sm"
+            className={`h-7 text-xs px-2 shrink-0 ${needsConsensus ? "bg-orange-600 hover:bg-orange-700" : ""}`}
+            onClick={() => setNeedsConsensus(!needsConsensus)}
+            title={needsConsensus ? "Remove consensus flag" : "Flag for consensus review"}
+            disabled={!currentFileId || !currentDate}
+          >
+            <Users className="h-3.5 w-3.5 mr-1" />
+            Consensus
+          </Button>
 
           <input
             type="text"

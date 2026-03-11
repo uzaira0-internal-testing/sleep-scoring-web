@@ -53,10 +53,15 @@ pub fn epoch_raw_data(
         // Epoch timestamp = first sample timestamp
         epoch_timestamps.push(timestamps_ms[start]);
 
-        // Sum of absolute values per axis
-        let sum_x: f64 = axis_x[start..end].iter().map(|v| v.abs()).sum();
-        let sum_y: f64 = axis_y[start..end].iter().map(|v| v.abs()).sum();
-        let sum_z: f64 = axis_z[start..end].iter().map(|v| v.abs()).sum();
+        // Single-pass: accumulate all three axes simultaneously
+        let mut sum_x = 0.0_f64;
+        let mut sum_y = 0.0_f64;
+        let mut sum_z = 0.0_f64;
+        for j in start..end {
+            sum_x += axis_x[j].abs();
+            sum_y += axis_y[j].abs();
+            sum_z += axis_z[j].abs();
+        }
 
         epoch_x.push(sum_x);
         epoch_y.push(sum_y);

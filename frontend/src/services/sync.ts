@@ -51,12 +51,12 @@ async function pushMarkers(
   let pushed = 0;
   const errors: string[] = [];
 
-  // Pre-fetch all needed file records to avoid N+1 reads
+  // Batch-fetch all needed file records in a single IndexedDB query
   const fileIds = [...new Set(pending.map((m) => m.fileId))];
   const fileMap = new Map<number, localDb.FileRecord>();
-  for (const id of fileIds) {
-    const f = await localDb.getFileById(id);
-    if (f) fileMap.set(id, f);
+  const fileRecords = await localDb.getFilesByIds(fileIds);
+  for (const f of fileRecords) {
+    if (f) fileMap.set(f.id!, f);
   }
 
   for (const marker of pending) {
@@ -79,6 +79,7 @@ async function pushMarkers(
         marker_index: m.markerIndex,
       })),
       is_no_sleep: marker.isNoSleep,
+      needs_consensus: marker.needsConsensus,
       notes: marker.notes,
     };
 
@@ -170,8 +171,10 @@ async function pullMarkers(
           notes: data.notes ?? "",
         });
 
-        // Skip if content is the same
-        if (localMarker?.contentHash === remoteHash) continue;
+        // Skip if content and metadata are the same
+        const remoteNeedsConsensus = data.needs_consensus ?? false;
+        if (localMarker?.contentHash === remoteHash
+            && localMarker?.needsConsensus === remoteNeedsConsensus) continue;
 
         // Atomic check+save: re-verify not pending inside transaction
         const db = getDb();
@@ -190,6 +193,7 @@ async function pullMarkers(
             sleepMarkers,
             nonwearMarkers,
             isNoSleep: data.is_no_sleep ?? false,
+            needsConsensus: data.needs_consensus ?? false,
             notes: data.notes ?? "",
             contentHash: remoteHash,
             syncStatus: "synced" as const,

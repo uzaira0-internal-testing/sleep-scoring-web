@@ -40,6 +40,13 @@ export async function getFileById(id: number): Promise<FileRecord | undefined> {
 }
 
 /**
+ * Batch-fetch file records by IDs (single IndexedDB query).
+ */
+export async function getFilesByIds(ids: number[]): Promise<(FileRecord | undefined)[]> {
+  return getDb().files.bulkGet(ids);
+}
+
+/**
  * Delete a file record and all associated data.
  */
 export async function deleteFileRecord(fileId: number): Promise<void> {
@@ -90,6 +97,7 @@ export async function saveMarkers(
   nonwearMarkers: NonwearMarkerJson[],
   isNoSleep: boolean,
   notes: string,
+  needsConsensus: boolean = false,
 ): Promise<void> {
   const db = getDb();
   const contentHash = await computeMarkerHash({ sleepMarkers, nonwearMarkers, isNoSleep, notes });
@@ -106,6 +114,7 @@ export async function saveMarkers(
     sleepMarkers,
     nonwearMarkers,
     isNoSleep,
+    needsConsensus,
     notes,
     contentHash,
     syncStatus: "pending",

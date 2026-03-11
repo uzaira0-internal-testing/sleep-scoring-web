@@ -54,6 +54,15 @@ export interface ProcessingProgress {
   message: string;
 }
 
+/** Per-day algorithm results produced during local processing. */
+interface DayAlgorithmResults {
+  sadeh_1994_actilife: Uint8Array;
+  sadeh_1994_original: Uint8Array;
+  cole_kripke_1992_actilife: Uint8Array;
+  cole_kripke_1992_original: Uint8Array;
+  nonwear: Uint8Array;
+}
+
 /**
  * Process a locally-opened file through the full pipeline:
  * 1. Read file (chunked)
@@ -68,6 +77,7 @@ export async function processLocalFile(
   devicePreset: string,
   skipRows: number,
   onProgress?: (progress: ProcessingProgress) => void,
+  choiAxis: string = "vector_magnitude",
 ): Promise<{ fileId: number; availableDates: string[] }> {
   const wasmApi = getWasmApi();
 
@@ -100,7 +110,9 @@ export async function processLocalFile(
   }
 
   let timestamps = parseResult.timestamps_ms;
+  let axisX = parseResult.axis_x;
   let axisY = parseResult.axis_y;
+  let axisZ = parseResult.axis_z;
   let vectorMagnitude = parseResult.vector_magnitude;
 
   // Step 3: Epoch if raw data
@@ -109,9 +121,9 @@ export async function processLocalFile(
     const epochResult = await withTimeout(
       wasmApi.epochRawData(
         new Float64Array(timestamps),
-        new Float64Array(parseResult.axis_x),
+        new Float64Array(axisX),
         new Float64Array(axisY),
-        new Float64Array(parseResult.axis_z),
+        new Float64Array(axisZ),
         parseResult.sample_frequency,
       ),
       WASM_TIMEOUT_MS,
@@ -119,17 +131,33 @@ export async function processLocalFile(
     ) as EpochResult;
 
     timestamps = epochResult.timestamps_ms;
+    axisX = epochResult.axis_x;
     axisY = epochResult.axis_y;
+    axisZ = epochResult.axis_z;
     vectorMagnitude = epochResult.vector_magnitude;
   }
 
-  // Step 4: Split into per-date arrays
+  // Select the axis to use for Choi nonwear detection
+  const choiData: Record<string, number[]> = {
+    vector_magnitude: vectorMagnitude,
+    axis_y: axisY,
+    axis_x: axisX,
+    axis_z: axisZ,
+  };
+  const choiAxisData = choiData[choiAxis];
+  if (!choiAxisData) {
+    console.warn(`[local-processing] Unknown choiAxis "${choiAxis}", falling back to vector_magnitude`);
+  }
+  const selectedChoiData = choiAxisData ?? vectorMagnitude;
+
+  // Step 4: Split into per-date arrays (extra array for Choi axis if it differs)
   onProgress?.({ phase: "scoring", percent: 55, message: "Running sleep algorithms..." });
-  const dateGroups = splitByDate(timestamps, axisY, vectorMagnitude);
+  const extraChoiArray = choiAxis !== "vector_magnitude" ? selectedChoiData : undefined;
+  const dateGroups = splitByDate(timestamps, axisY, vectorMagnitude, extraChoiArray);
   const availableDates = Object.keys(dateGroups).sort();
 
-  // Step 5: Run algorithms on each day
-  const algorithmResultsByDate: Record<string, { sadeh: Uint8Array; coleKripke: Uint8Array; nonwear: Uint8Array }> = {};
+  // Step 5: Run ALL algorithm variants on each day
+  const algorithmResultsByDate: Record<string, DayAlgorithmResults> = {};
 
   for (let i = 0; i < availableDates.length; i++) {
     const date = availableDates[i];
@@ -139,15 +167,21 @@ export async function processLocalFile(
     onProgress?.({ phase: "scoring", percent: pct, message: `Scoring ${date}...` });
 
     const activityF64 = new Float64Array(group.axisY);
-    const vmF64 = new Float64Array(group.vectorMagnitude);
-
-    const [sadeh, coleKripke, nonwear] = await Promise.all([
-      withTimeout(wasmApi.scoreSadeh(activityF64, -4.0), WASM_TIMEOUT_MS, `scoreSadeh(${date})`),
-      withTimeout(wasmApi.scoreColeKripke(activityF64, true), WASM_TIMEOUT_MS, `scoreColeKripke(${date})`),
-      withTimeout(wasmApi.detectNonwear(vmF64), WASM_TIMEOUT_MS, `detectNonwear(${date})`),
+    const [sadehActilife, sadehOriginal, ckActilife, ckOriginal, nonwear] = await Promise.all([
+      withTimeout(wasmApi.scoreSadeh(activityF64, -4.0), WASM_TIMEOUT_MS, `scoreSadeh_actilife(${date})`),
+      withTimeout(wasmApi.scoreSadeh(activityF64, 0.0), WASM_TIMEOUT_MS, `scoreSadeh_original(${date})`),
+      withTimeout(wasmApi.scoreColeKripke(activityF64, true), WASM_TIMEOUT_MS, `scoreColeKripke_actilife(${date})`),
+      withTimeout(wasmApi.scoreColeKripke(activityF64, false), WASM_TIMEOUT_MS, `scoreColeKripke_original(${date})`),
+      withTimeout(wasmApi.detectNonwear(new Float64Array(group.choiAxis ?? group.vectorMagnitude)), WASM_TIMEOUT_MS, `detectNonwear(${date})`),
     ]);
 
-    algorithmResultsByDate[date] = { sadeh, coleKripke, nonwear };
+    algorithmResultsByDate[date] = {
+      sadeh_1994_actilife: sadehActilife,
+      sadeh_1994_original: sadehOriginal,
+      cole_kripke_1992_actilife: ckActilife,
+      cole_kripke_1992_original: ckOriginal,
+      nonwear,
+    };
   }
 
   // Step 6: Store in IndexedDB
@@ -167,6 +201,8 @@ export async function processLocalFile(
     const group = dateGroups[date];
     const algoResults = algorithmResultsByDate[date];
 
+    // .buffer is safe without .slice(0) — WASM worker uses Comlink.transfer() which
+    // transfers ownership to the main thread, so these are already independent buffers.
     await localDb.saveActivityDay({
       fileId,
       date,
@@ -174,10 +210,12 @@ export async function processLocalFile(
       axisY: new Float64Array(group.axisY).buffer,
       vectorMagnitude: new Float64Array(group.vectorMagnitude).buffer,
       algorithmResults: {
-        sadeh_actilife: algoResults.sadeh.buffer.slice(0),
-        cole_kripke_actilife: algoResults.coleKripke.buffer.slice(0),
+        sadeh_1994_actilife: algoResults.sadeh_1994_actilife.buffer,
+        sadeh_1994_original: algoResults.sadeh_1994_original.buffer,
+        cole_kripke_1992_actilife: algoResults.cole_kripke_1992_actilife.buffer,
+        cole_kripke_1992_original: algoResults.cole_kripke_1992_original.buffer,
       },
-      nonwearResults: algoResults.nonwear.buffer.slice(0),
+      nonwearResults: algoResults.nonwear.buffer,
     });
   }
 
@@ -186,26 +224,49 @@ export async function processLocalFile(
   return { fileId, availableDates };
 }
 
+interface DateGroup {
+  timestamps: number[];
+  axisY: number[];
+  vectorMagnitude: number[];
+  choiAxis?: number[];
+}
+
 /**
  * Split epoch data into per-date groups.
+ * Optionally splits an extra array (e.g. Choi axis data) in the same pass.
  */
 function splitByDate(
   timestamps: number[],
   axisY: number[],
   vectorMagnitude: number[],
-): Record<string, { timestamps: number[]; axisY: number[]; vectorMagnitude: number[] }> {
-  const groups: Record<string, { timestamps: number[]; axisY: number[]; vectorMagnitude: number[] }> = {};
+  extraArray?: number[],
+): Record<string, DateGroup> {
+  const groups: Record<string, DateGroup> = {};
+  const hasExtra = extraArray != null;
+
+  // Cache: only create Date object when day boundary crossed
+  let cachedDateStr = "";
+  let cachedDayStart = 0;
+  let cachedDayEnd = 0;
 
   for (let i = 0; i < timestamps.length; i++) {
-    const date = new Date(timestamps[i]);
-    const dateStr = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+    const ts = timestamps[i];
 
-    if (!groups[dateStr]) {
-      groups[dateStr] = { timestamps: [], axisY: [], vectorMagnitude: [] };
+    if (ts < cachedDayStart || ts >= cachedDayEnd) {
+      const date = new Date(ts);
+      cachedDateStr = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+      cachedDayStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+      cachedDayEnd = cachedDayStart + 86400000;
     }
-    groups[dateStr].timestamps.push(timestamps[i]);
-    groups[dateStr].axisY.push(axisY[i]);
-    groups[dateStr].vectorMagnitude.push(vectorMagnitude[i]);
+
+    if (!groups[cachedDateStr]) {
+      groups[cachedDateStr] = { timestamps: [], axisY: [], vectorMagnitude: [], ...(hasExtra ? { choiAxis: [] } : {}) };
+    }
+    const g = groups[cachedDateStr];
+    g.timestamps.push(ts);
+    g.axisY.push(axisY[i]);
+    g.vectorMagnitude.push(vectorMagnitude[i]);
+    if (hasExtra) g.choiAxis!.push(extraArray[i]);
   }
 
   return groups;

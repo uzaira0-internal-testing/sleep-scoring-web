@@ -140,6 +140,16 @@ export interface AutoNonwearOptions {
 }
 
 /**
+ * Adjacent day markers for continuity display on the activity plot.
+ */
+export interface AdjacentMarkersData {
+  previous_day_markers: Array<{ onset_timestamp: number | null; offset_timestamp: number | null; marker_index: number }>;
+  next_day_markers: Array<{ onset_timestamp: number | null; offset_timestamp: number | null; marker_index: number }>;
+  previous_date: string | null;
+  next_date: string | null;
+}
+
+/**
  * Data source interface for dual-mode operation.
  * Mode is per-file: FileRecord.source determines which DataSource handles it.
  */
@@ -154,6 +164,7 @@ export interface DataSource {
   autoScore(fileId: number, date: string, options: AutoScoreOptions): Promise<AutoScoreResult>;
   autoNonwear(fileId: number, date: string, options: AutoNonwearOptions): Promise<AutoNonwearResult>;
   listDatesStatus(fileId: number, dates: string[], username: string): Promise<DateStatus[]>;
+  loadAdjacentMarkers(fileId: number, date: string, username: string): Promise<AdjacentMarkersData | null>;
 }
 
 /**
@@ -218,6 +229,7 @@ export class ServerDataSource implements DataSource {
         markerIndex: m.marker_index as number,
       })),
       isNoSleep: data.is_no_sleep ?? false,
+      needsConsensus: data.needs_consensus ?? false,
       notes: data.notes ?? "",
     };
   }
@@ -346,6 +358,16 @@ export class ServerDataSource implements DataSource {
     };
   }
 
+  async loadAdjacentMarkers(fileId: number, date: string, username: string): Promise<AdjacentMarkersData | null> {
+    const response = await fetch(
+      `${getApiBase()}/markers/${fileId}/${date}/adjacent`,
+      { headers: { ...this.getHeaders(), "X-Username": username || "anonymous" } },
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`Failed to load adjacent markers: ${response.status}`);
+    return response.json() as Promise<AdjacentMarkersData>;
+  }
+
   private getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
     if (this.sitePassword) headers["X-Site-Password"] = this.sitePassword;
@@ -443,6 +465,7 @@ export class LocalDataSource implements DataSource {
       nonwearMarkers: record.nonwearMarkers,
       isNoSleep: record.isNoSleep,
       notes: record.notes,
+      needsConsensus: record.needsConsensus ?? false,
     };
   }
 
@@ -455,6 +478,7 @@ export class LocalDataSource implements DataSource {
       data.nonwearMarkers as NonwearMarkerJson[],
       data.isNoSleep,
       data.notes,
+      data.needsConsensus ?? false,
     );
   }
 
@@ -550,12 +574,13 @@ export class LocalDataSource implements DataSource {
   }
 
   async listDatesStatus(fileId: number, dates: string[], username: string): Promise<DateStatus[]> {
-    // Bulk-load all data for the file (4 queries total instead of 5 per date)
-    const [markersMap, daysMap, diaryEntries, sensorNonwearAll] = await Promise.all([
+    // Bulk-load all data for the file (5 queries total instead of N per date)
+    const [markersMap, daysMap, diaryEntries, sensorNonwearAll, studySettings] = await Promise.all([
       localDb.getAllMarkersForFile(fileId, username),
       localDb.getAllActivityDaysForFile(fileId),
       localDb.getDiaryEntries(fileId),
       localDb.getSensorNonwearForFile(fileId),
+      localDb.getLocalStudySettings(),
     ]);
 
     // Index diary and sensor nonwear by date for O(1) lookup
@@ -566,6 +591,14 @@ export class LocalDataSource implements DataSource {
       if (!sensorByDate.has(key)) sensorByDate.set(key, []);
       sensorByDate.get(key)!.push([p.startTimestamp, p.endTimestamp]);
     }
+
+    // Parse night hours from study settings (default 21:00-09:00)
+    const rawStart = studySettings?.nightStartHour
+      ? parseInt(studySettings.nightStartHour.split(":")[0], 10) : 21;
+    const nightStartHour = Number.isNaN(rawStart) ? (console.warn(`[data-source] Invalid nightStartHour "${studySettings?.nightStartHour}", using default 21`), 21) : rawStart;
+    const rawEnd = studySettings?.nightEndHour
+      ? parseInt(studySettings.nightEndHour.split(":")[0], 10) : 9;
+    const nightEndHour = Number.isNaN(rawEnd) ? (console.warn(`[data-source] Invalid nightEndHour "${studySettings?.nightEndHour}", using default 9`), 9) : rawEnd;
 
     return dates.map((date) => {
       const markers = markersMap.get(date);
@@ -599,6 +632,8 @@ export class LocalDataSource implements DataSource {
             analysisDate: date,
             sensorNonwearPeriods,
             diaryNonwearTimes: diaryNonwearTimes.length > 0 ? diaryNonwearTimes : undefined,
+            nightStartHour,
+            nightEndHour,
           });
           complexityPre = pre.score;
 
@@ -617,12 +652,41 @@ export class LocalDataSource implements DataSource {
         date,
         has_markers: !!markers,
         is_no_sleep: markers?.isNoSleep ?? false,
-        needs_consensus: false,
+        needs_consensus: markers?.needsConsensus ?? false,
         has_auto_score: false,
         complexity_pre: complexityPre,
         complexity_post: complexityPost,
       };
     });
+  }
+
+  async loadAdjacentMarkers(fileId: number, date: string, username: string): Promise<AdjacentMarkersData | null> {
+    // Get all dates for this file to find previous/next
+    const allDates = await localDb.getAvailableDates(fileId);
+    const idx = allDates.indexOf(date);
+    if (idx < 0) return null;
+
+    const prevDate = idx > 0 ? allDates[idx - 1] : null;
+    const nextDate = idx < allDates.length - 1 ? allDates[idx + 1] : null;
+
+    const [prevMarkers, nextMarkers] = await Promise.all([
+      prevDate ? localDb.getMarkers(fileId, prevDate, username) : null,
+      nextDate ? localDb.getMarkers(fileId, nextDate, username) : null,
+    ]);
+
+    const mapMarkers = (record: localDb.MarkerRecord | null | undefined) =>
+      (record?.sleepMarkers ?? []).map((m) => ({
+        onset_timestamp: m.onsetTimestamp,
+        offset_timestamp: m.offsetTimestamp,
+        marker_index: m.markerIndex,
+      }));
+
+    return {
+      previous_day_markers: mapMarkers(prevMarkers),
+      next_day_markers: mapMarkers(nextMarkers),
+      previous_date: prevDate,
+      next_date: nextDate,
+    };
   }
 }
 

@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { processLocalFile, type ProcessingProgress } from "@/services/local-processing";
 import { useSleepScoringStore } from "@/store";
+import { getLocalStudySettings } from "@/db";
 
 /** Progress that includes batch info for multi-file operations. */
 export interface BatchProgress extends ProcessingProgress {
@@ -91,6 +92,9 @@ async function processFiles(
   const state = useSleepScoringStore.getState();
   const devicePreset = state.devicePreset || "actigraph";
   const skipRows = state.skipRows ?? 10;
+  // Load Choi axis preference from local study settings
+  const localSettings = await getLocalStudySettings();
+  const choiAxis = (localSettings?.extraSettings?.choi_axis as string) ?? "vector_magnitude";
   const results: Array<{ fileId: number; availableDates: string[] }> = [];
 
   for (let i = 0; i < files.length; i++) {
@@ -108,7 +112,7 @@ async function processFiles(
     };
 
     onProgress({ phase: "reading", percent: 0, message: "Starting..." });
-    const result = await processLocalFile(file, devicePreset, skipRows, onProgress);
+    const result = await processLocalFile(file, devicePreset, skipRows, onProgress, choiAxis);
     results.push(result);
   }
 
