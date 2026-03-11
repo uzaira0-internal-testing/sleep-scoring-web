@@ -6,13 +6,15 @@ Used for ML training data, reproducibility, and session replay.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Query
 from fastapi_logging import get_logger
 from pydantic import BaseModel, Field
 from sqlalchemy import func as sa_func
 from sqlalchemy import select as sa_select
+from sqlalchemy import tuple_
+from sqlalchemy.exc import IntegrityError
 
 from sleep_scoring_web.db.models import AuditLogEntry
 
@@ -38,7 +40,7 @@ class AuditEvent(BaseModel):
     client_timestamp: float = Field(description="Unix seconds when the action occurred")
     session_id: str = Field(max_length=36)
     sequence: int = Field(ge=0)
-    payload: dict | None = None
+    payload: dict[str, Any] | None = None
 
 
 class AuditBatchRequest(BaseModel):
@@ -98,10 +100,10 @@ async def log_audit_events(
     # Collect unique keys from the incoming batch
     incoming_keys = {(e.session_id, e.sequence) for e in request.events}
 
-    # Check which already exist in the database
+    # Check which already exist — filter on exact (session_id, sequence) pairs
     existing_result = await db.execute(
         sa_select(AuditLogEntry.session_id, AuditLogEntry.sequence).where(
-            AuditLogEntry.session_id.in_({k[0] for k in incoming_keys}),
+            tuple_(AuditLogEntry.session_id, AuditLogEntry.sequence).in_(incoming_keys),
         )
     )
     existing_keys = {(row[0], row[1]) for row in existing_result.fetchall()}
@@ -109,32 +111,44 @@ async def log_audit_events(
     # Only insert events that don't already exist
     new_events = [e for e in request.events if (e.session_id, e.sequence) not in existing_keys]
 
-    if new_events:
-        entries = [
-            AuditLogEntry(
-                file_id=request.file_id,
-                analysis_date=request.analysis_date,
-                username=username,
-                action=event.action,
-                client_timestamp=event.client_timestamp,
-                session_id=event.session_id,
-                sequence=event.sequence,
-                payload=event.payload,
-            )
-            for event in new_events
-        ]
-        db.add_all(entries)
-        await db.commit()
-
-    skipped = len(request.events) - len(new_events)
-    if skipped > 0:
+    if not new_events:
         logger.debug(
-            "Skipped %d duplicate audit events for file=%d date=%s user=%s",
-            skipped,
+            "All %d events already logged for file=%d date=%s user=%s",
+            len(request.events),
             request.file_id,
             request.analysis_date,
             username,
         )
+        return AuditBatchResponse(logged=0)
+
+    entries = [
+        AuditLogEntry(
+            file_id=request.file_id,
+            analysis_date=request.analysis_date,
+            username=username,
+            action=event.action,
+            client_timestamp=event.client_timestamp,
+            session_id=event.session_id,
+            sequence=event.sequence,
+            payload=event.payload,
+        )
+        for event in new_events
+    ]
+
+    try:
+        db.add_all(entries)
+        await db.commit()
+    except IntegrityError:
+        # Concurrent flush from another tab — events already persisted
+        await db.rollback()
+        logger.debug(
+            "Concurrent flush dedup for file=%d date=%s user=%s",
+            request.file_id,
+            request.analysis_date,
+            username,
+        )
+        return AuditBatchResponse(logged=0)
+
     logger.debug(
         "Logged %d audit events for file=%d date=%s user=%s",
         len(new_events),

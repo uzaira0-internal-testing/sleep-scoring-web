@@ -36,18 +36,6 @@ import { getDb } from "@/lib/workspace-db";
 import { useCapabilitiesStore } from "@/store/capabilities-store";
 
 // ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface AuditEvent {
-  action: string;
-  clientTimestamp: number; // Unix seconds
-  sessionId: string;
-  sequence: number;
-  payload?: Record<string, unknown>;
-}
-
-// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -121,6 +109,7 @@ class AuditLogService {
   log(action: string, payload?: Record<string, unknown>): void {
     if (this.fileId == null || this.analysisDate == null) return;
 
+    const seq = this.sequence++;
     const record: Omit<AuditLogRecord, "id"> = {
       fileId: this.fileId,
       analysisDate: this.analysisDate,
@@ -128,21 +117,26 @@ class AuditLogService {
       action,
       clientTimestamp: Date.now() / 1000,
       sessionId: this.sessionId,
-      sequence: this.sequence++,
+      sequence: seq,
+      ...(payload !== undefined ? { payload } : {}),
     };
-    if (payload !== undefined) {
-      (record as AuditLogRecord).payload = payload;
-    }
 
-    // Write to IndexedDB — this is the durable commit point
+    // Write to IndexedDB — this is the durable commit point.
+    // On failure, roll back the sequence counter so no gaps appear.
+    let db;
     try {
-      const db = getDb();
-      void db.auditLog.add(record as AuditLogRecord);
+      db = getDb();
     } catch {
-      // DB not initialized yet — drop the event (startup race)
-      console.warn("[AuditLog] IndexedDB not ready, event dropped:", action);
+      // DB not initialized yet — event lost (startup race)
+      console.warn("[AuditLog] IndexedDB not ready, event lost:", action);
       return;
     }
+
+    db.auditLog.add(record as AuditLogRecord).catch((err: unknown) => {
+      // Event is lost — sequence gap is unavoidable since later events may
+      // have already used subsequent sequence numbers. Log at error level.
+      console.error("[AuditLog] IndexedDB write failed, event lost:", action, err);
+    });
 
     this.scheduleFlush();
   }
@@ -202,13 +196,13 @@ class AuditLogService {
       // Send each group to the server
       for (const group of Array.from(groups.values())) {
         const first = group[0]!;
-        const ok = await this.sendBatch(first.fileId, first.analysisDate, group);
-        if (ok) {
-          // Delete from IndexedDB only after confirmed server receipt
+        const result = await this.sendBatch(first.fileId, first.analysisDate, group);
+        if (result === "ok" || result === "drop") {
+          // Delete from IndexedDB after confirmed receipt OR permanent rejection
           const ids = group.map((e) => e.id!);
           await db.auditLog.bulkDelete(ids);
         }
-        // On failure, events stay in IndexedDB for next flush cycle
+        // "retry" — events stay in IndexedDB for next flush cycle
       }
     } catch (err) {
       console.warn("[AuditLog] Flush error:", err);
@@ -218,14 +212,16 @@ class AuditLogService {
   }
 
   /**
-   * Send a batch of events to the server API. Returns true on success.
+   * Send a batch of events to the server API.
+   * Returns "ok" on success, "drop" on permanent rejection (4xx),
+   * or "retry" on transient failure (network/5xx).
    */
   private async sendBatch(
     fileId: number,
     analysisDate: string,
     events: AuditLogRecord[],
-  ): Promise<boolean> {
-    if (events.length === 0) return true;
+  ): Promise<"ok" | "retry" | "drop"> {
+    if (events.length === 0) return "ok";
 
     try {
       const base = getWorkspaceApiBase();
@@ -244,10 +240,16 @@ class AuditLogService {
           })),
         }),
       });
-      return true;
+      return "ok";
     } catch (err) {
+      // Permanent rejection (4xx) — drop the batch to avoid infinite retry
+      const msg = err instanceof Error ? err.message : "";
+      if (/\b4\d{2}\b/.test(msg)) {
+        console.error("[AuditLog] Permanent rejection, dropping batch:", msg);
+        return "drop";
+      }
       console.warn("[AuditLog] Server send failed, will retry:", err);
-      return false;
+      return "retry";
     }
   }
 }
