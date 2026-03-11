@@ -2,6 +2,7 @@
  * Shared helpers for extracting typed arrays from IndexedDB ActivityDay records.
  */
 import type { ActivityDay } from "@/db";
+import { isMilliseconds } from "@/utils/timestamps";
 
 /**
  * Extract timestamps and first algorithm results from an ActivityDay record.
@@ -13,9 +14,11 @@ export function loadActivityForMetrics(actDay: ActivityDay | undefined): {
 } {
   if (!actDay) return { timestamps: [], algorithmResults: null };
 
-  const rawTs = Array.from(new Float64Array(actDay.timestamps));
-  // Convert ms→seconds if needed (WASM stores ms, frontend expects seconds)
-  const timestamps = rawTs.length > 0 && rawTs[0] > 1e12 ? rawTs.map((t) => t / 1000) : rawTs;
+  // WASM stores timestamps in ms; frontend expects seconds. Single-pass convert.
+  const rawF64 = new Float64Array(actDay.timestamps);
+  const timestamps = rawF64.length > 0 && isMilliseconds(rawF64[0])
+    ? Array.from(rawF64, (t) => t / 1000)
+    : Array.from(rawF64);
 
   if (!actDay.algorithmResults || typeof actDay.algorithmResults !== "object") {
     console.warn(`[loadActivityForMetrics] Missing algorithmResults for activity day id=${actDay.id}`);

@@ -1,6 +1,6 @@
 import type { MarkerType, DateStatus } from "@/api/types";
 import { getApiBase, fetchWithAuth } from "@/api/client";
-import { toMilliseconds, toSeconds } from "@/utils/timestamps";
+import { toMilliseconds, toSeconds, isMilliseconds } from "@/utils/timestamps";
 import * as localDb from "@/db";
 import type { SleepMarkerJson, NonwearMarkerJson, ActivityDay } from "@/db/schema";
 import { runAutoScoring, placeNonwearMarkers } from "@/services/marker-placement";
@@ -393,11 +393,11 @@ function unpackActivityDay(
   day: ActivityDay,
   preferredAlgorithm?: string,
 ): UnpackedActivityDay {
-  const rawTimestamps = Array.from(new Float64Array(day.timestamps));
-  // WASM stores timestamps in milliseconds; the entire frontend (uPlot, markers, metrics)
-  // expects seconds. Detect and convert: if first timestamp > 1e12 it's ms.
-  const isMs = rawTimestamps.length > 0 && rawTimestamps[0] > 1e12;
-  const timestamps = isMs ? rawTimestamps.map((t) => t / 1000) : rawTimestamps;
+  // WASM stores timestamps in ms; frontend expects seconds. Single-pass convert.
+  const rawF64 = new Float64Array(day.timestamps);
+  const timestamps = rawF64.length > 0 && isMilliseconds(rawF64[0])
+    ? Array.from(rawF64, (t) => t / 1000)
+    : Array.from(rawF64);
   const axisY = Array.from(new Float64Array(day.axisY));
   const vectorMagnitude = Array.from(new Float64Array(day.vectorMagnitude));
 
@@ -449,14 +449,21 @@ export class LocalDataSource implements DataSource {
       const nextDay = await localDb.getActivityDay(fileId, nextDate);
       if (nextDay) {
         const nextUnpacked = unpackActivityDay(nextDay, options?.algorithm);
+        // Capture lengths before merging timestamps
+        const day1Len = unpacked.timestamps.length;
+        const day2Len = nextUnpacked.timestamps.length;
         unpacked.timestamps.push(...nextUnpacked.timestamps);
         unpacked.axisY.push(...nextUnpacked.axisY);
         unpacked.vectorMagnitude.push(...nextUnpacked.vectorMagnitude);
-        if (unpacked.sleepScores.length > 0 && nextUnpacked.sleepScores.length > 0) {
-          unpacked.sleepScores.push(...nextUnpacked.sleepScores);
+        // Pad with zeros if one day has scores/nonwear and the other doesn't,
+        // so arrays stay aligned with timestamps across the full 48h span.
+        if (unpacked.sleepScores.length > 0 || nextUnpacked.sleepScores.length > 0) {
+          if (unpacked.sleepScores.length === 0) unpacked.sleepScores = new Array(day1Len).fill(0);
+          unpacked.sleepScores.push(...(nextUnpacked.sleepScores.length > 0 ? nextUnpacked.sleepScores : new Array(day2Len).fill(0)));
         }
-        if (unpacked.nonwearResults && nextUnpacked.nonwearResults) {
-          unpacked.nonwearResults.push(...nextUnpacked.nonwearResults);
+        if (unpacked.nonwearResults || nextUnpacked.nonwearResults) {
+          if (!unpacked.nonwearResults) unpacked.nonwearResults = new Array(day1Len).fill(0);
+          unpacked.nonwearResults.push(...(nextUnpacked.nonwearResults ?? new Array(day2Len).fill(0)));
         }
       }
     }
