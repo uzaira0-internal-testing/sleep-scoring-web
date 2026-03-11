@@ -698,8 +698,9 @@ export class LocalDataSource implements DataSource {
   }
 
   async loadAdjacentMarkers(fileId: number, date: string, username: string): Promise<AdjacentMarkersData | null> {
-    // Get all dates for this file to find previous/next
-    const allDates = await localDb.getAvailableDates(fileId);
+    // Get dates from FileRecord (avoids loading full ActivityDay records)
+    const file = await localDb.getFileById(fileId);
+    const allDates = file?.availableDates?.slice().sort() ?? [];
     const idx = allDates.indexOf(date);
     if (idx < 0) return null;
 
@@ -711,10 +712,11 @@ export class LocalDataSource implements DataSource {
       nextDate ? localDb.getMarkers(fileId, nextDate, username) : null,
     ]);
 
+    // Server API returns timestamps in seconds; local markers are in ms → convert
     const mapMarkers = (record: localDb.MarkerRecord | null | undefined) =>
       (record?.sleepMarkers ?? []).map((m) => ({
-        onset_timestamp: m.onsetTimestamp,
-        offset_timestamp: m.offsetTimestamp,
+        onset_timestamp: m.onsetTimestamp != null ? m.onsetTimestamp / 1000 : null,
+        offset_timestamp: m.offsetTimestamp != null ? m.offsetTimestamp / 1000 : null,
         marker_index: m.markerIndex,
       }));
 

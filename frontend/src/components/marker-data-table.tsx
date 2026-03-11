@@ -5,6 +5,58 @@ import { fetchWithAuth, getApiBase } from "@/api/client";
 import { hexToRgba } from "@/lib/color-themes";
 import { Maximize2, Home } from "lucide-react";
 import type { OnsetOffsetDataPoint, OnsetOffsetTableResponse } from "@/api/types";
+import * as localDb from "@/db";
+import { isMilliseconds } from "@/utils/timestamps";
+
+/** Build table data from local IndexedDB activity data around a marker timestamp. */
+async function buildLocalTableData(
+  fileId: number,
+  date: string,
+  onsetTs: number | null,
+  offsetTs: number | null,
+  windowMinutes: number,
+): Promise<OnsetOffsetTableResponse | null> {
+  const day = await localDb.getActivityDay(fileId, date);
+  if (!day) return null;
+
+  const rawF64 = new Float64Array(day.timestamps);
+  const tsSec = rawF64.length > 0 && isMilliseconds(rawF64[0])
+    ? Array.from(rawF64, (t) => t / 1000)
+    : Array.from(rawF64);
+  const axisY = Array.from(new Float64Array(day.axisY));
+  const vm = Array.from(new Float64Array(day.vectorMagnitude));
+  const algoKey = Object.keys(day.algorithmResults)[0];
+  const algoResults = algoKey ? new Uint8Array(day.algorithmResults[algoKey]) : null;
+  const nwResults = day.nonwearResults ? new Uint8Array(day.nonwearResults) : null;
+
+  const buildWindow = (centerTs: number | null): OnsetOffsetDataPoint[] => {
+    if (centerTs == null || tsSec.length === 0) return [];
+    const centerSec = centerTs / 1000; // ms → seconds
+    const halfWindow = windowMinutes * 60 / 2;
+    const points: OnsetOffsetDataPoint[] = [];
+    for (let i = 0; i < tsSec.length; i++) {
+      if (tsSec[i] >= centerSec - halfWindow && tsSec[i] <= centerSec + halfWindow) {
+        const d = new Date(tsSec[i] * 1000);
+        points.push({
+          timestamp: tsSec[i],
+          datetime_str: `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`,
+          axis_y: Math.round(axisY[i] ?? 0),
+          vector_magnitude: Math.round(vm[i] ?? 0),
+          algorithm_result: algoResults ? algoResults[i] ?? null : null,
+          choi_result: nwResults ? nwResults[i] ?? null : null,
+          is_nonwear: nwResults ? nwResults[i] === 1 : false,
+        });
+      }
+    }
+    return points;
+  };
+
+  return {
+    onset_data: buildWindow(onsetTs),
+    offset_data: buildWindow(offsetTs),
+    period_index: 1,
+  };
+}
 
 interface MarkerDataTableProps {
   type: "onset" | "offset";
@@ -56,11 +108,19 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
   // movements don't create a new cache key on every mousemove tick (reduces flicker)
   const quantize = (ts: number | null) => ts !== null ? Math.round(ts / 300000) : null;
 
+  const isLocal = useSleepScoringStore((state) => state.currentFileSource === "local");
+
   const { data: tableData, isLoading } = useQuery({
-    queryKey: ["marker-table", currentFileId, currentDate, selectedPeriodIndex, type, quantize(onsetTs), quantize(offsetTs)],
+    queryKey: ["marker-table", currentFileId, currentDate, selectedPeriodIndex, type, quantize(onsetTs), quantize(offsetTs), isLocal ? "local" : "server"],
     queryFn: async () => {
       if (!currentFileId || !currentDate || selectedPeriodIndex === null) return null;
-      // Pass marker timestamps as query params so table works before markers are saved
+
+      // Local mode: build table data directly from IndexedDB
+      if (isLocal) {
+        return buildLocalTableData(currentFileId, currentDate, onsetTs, offsetTs, 100);
+      }
+
+      // Server mode: fetch from backend API
       const params = new URLSearchParams({ window_minutes: "100" });
       if (onsetTs !== null) params.set("onset_ts", String(onsetTs / 1000)); // Convert ms to seconds
       if (offsetTs !== null) params.set("offset_ts", String(offsetTs / 1000));
@@ -72,7 +132,7 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
         return null;
       }
     },
-    enabled: isAuthenticated && !!currentFileId && !!currentDate && selectedPeriodIndex !== null && onsetTs !== null && offsetTs !== null,
+    enabled: (isLocal || isAuthenticated) && !!currentFileId && !!currentDate && selectedPeriodIndex !== null && onsetTs !== null && offsetTs !== null,
     staleTime: 30000,
     placeholderData: keepPreviousData,
   });

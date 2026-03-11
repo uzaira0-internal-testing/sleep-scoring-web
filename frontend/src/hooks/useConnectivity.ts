@@ -91,6 +91,8 @@ export function useConnectivity(enabled: boolean = true) {
 
   useEffect(() => {
     if (!enabled) return;
+    // In Tauri, there's no backend server — skip all connectivity infrastructure
+    if (isTauri()) return;
 
     const handleOnline = () => {
       checkHealth();

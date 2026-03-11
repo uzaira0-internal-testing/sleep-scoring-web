@@ -1,6 +1,7 @@
 import { getWasmApi, terminateWasmWorker } from "@/workers";
 import { readFileAsText, type ChunkReadProgress } from "@/lib/chunked-reader";
 import { computeFileHash } from "@/lib/content-hash";
+import { stripBom } from "@/lib/csv-utils";
 import * as localDb from "@/db";
 
 /** Result from WASM CSV parsing (matches Rust CsvParseResult via serde) */
@@ -98,15 +99,18 @@ export async function processLocalFile(
   // Step 2: Parse CSV
   onProgress?.({ phase: "parsing", percent: 30, message: "Parsing CSV..." });
 
+  // Strip BOM before any parsing (Windows/Excel CSVs may have UTF-8 BOM)
+  const cleanContent = stripBom(content);
+
   // Quick first-line check for GENEActiv format (avoids sending entire string to WASM)
-  const firstLine = content.slice(0, content.indexOf("\n")).trim().toLowerCase();
+  const firstLine = cleanContent.slice(0, cleanContent.indexOf("\n")).trim().toLowerCase();
   const isGeneactiv = firstLine.includes("geneactiv") || devicePreset === "geneactiv";
 
   let parseResult: CsvParseResult;
   if (isGeneactiv) {
-    parseResult = await withTimeout(wasmApi.parseGeneactivCsv(content), WASM_TIMEOUT_MS, "parseGeneactivCsv") as CsvParseResult;
+    parseResult = await withTimeout(wasmApi.parseGeneactivCsv(cleanContent), WASM_TIMEOUT_MS, "parseGeneactivCsv") as CsvParseResult;
   } else {
-    parseResult = await withTimeout(wasmApi.parseActigraphCsv(content, skipRows), WASM_TIMEOUT_MS, "parseActigraphCsv") as CsvParseResult;
+    parseResult = await withTimeout(wasmApi.parseActigraphCsv(cleanContent, skipRows), WASM_TIMEOUT_MS, "parseActigraphCsv") as CsvParseResult;
   }
 
   let timestamps = parseResult.timestamps_ms;
