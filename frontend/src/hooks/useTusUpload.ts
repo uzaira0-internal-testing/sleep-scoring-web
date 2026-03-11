@@ -61,14 +61,14 @@ export function useTusUpload() {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
       uppyRef.current?.cancelAll();
-      uppyRef.current?.close();
+      uppyRef.current?.destroy();
     };
   }, []);
 
   const getUppy = useCallback(() => {
     if (uppyRef.current) return uppyRef.current;
 
-    const { sitePassword, username, devicePreset, skipRows } = useSleepScoringStore.getState();
+    const { sitePassword, username } = useSleepScoringStore.getState();
 
     const uppy = new Uppy({
       restrictions: {
@@ -138,7 +138,7 @@ export function useTusUpload() {
     });
 
     // Upload error
-    uppy.on("upload-error", (file, error) => {
+    uppy.on("upload-error", (_file, error) => {
       setProgress((prev) => ({
         ...prev,
         phase: "error",

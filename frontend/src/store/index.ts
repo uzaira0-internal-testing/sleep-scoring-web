@@ -1047,7 +1047,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           skipRows: state.skipRows,
           // Color theme
           colorTheme: state.colorTheme,
-        }),
+        }) as unknown as SleepScoringState,
       }
     ),
     { name: "SleepScoringStore" }

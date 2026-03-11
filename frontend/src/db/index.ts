@@ -16,7 +16,7 @@ export async function saveFileRecord(record: Omit<FileRecord, "id">): Promise<nu
       await db.files.update(existing.id, record);
       return existing.id;
     }
-    return db.files.add(record as FileRecord);
+    return db.files.add({ ...record } as FileRecord) as Promise<number>;
   });
 }
 
@@ -69,7 +69,7 @@ export async function saveActivityDay(day: Omit<ActivityDay, "id">): Promise<num
   const db = getDb();
   return db.transaction("rw", db.activityDays, async () => {
     await db.activityDays.where("[fileId+date]").equals([day.fileId, day.date]).delete();
-    return db.activityDays.add(day as ActivityDay);
+    return db.activityDays.add({ ...day } as ActivityDay) as Promise<number>;
   });
 }
 

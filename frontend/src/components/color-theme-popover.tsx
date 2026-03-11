@@ -6,7 +6,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useColorTheme } from "@/store";
-import { COLOR_PRESETS, PRESET_LABELS } from "@/lib/color-themes";
+import { PRESET_LABELS } from "@/lib/color-themes";
 
 const COLOR_FIELDS: Array<{ key: string; label: string }> = [
   { key: "onset", label: "Onset" },

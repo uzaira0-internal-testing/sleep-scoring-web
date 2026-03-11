@@ -2,7 +2,7 @@
  * Backward-compatibility migration from pre-workspace layout.
  * Runs once on first load when no workspace registry exists.
  */
-import { useWorkspaceStore, setActiveWorkspaceId, type WorkspaceEntry } from "@/store/workspace-store";
+import { useWorkspaceStore, type WorkspaceEntry } from "@/store/workspace-store";
 
 const MIGRATION_DONE_KEY = "sleep-scoring-workspace-migration-done";
 

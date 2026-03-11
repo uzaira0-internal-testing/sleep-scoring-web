@@ -80,7 +80,6 @@ describe("rowsToCsv", () => {
       isNoSleep: false,
       notes: "",
     }]);
-    const firstField = csv.split("\n")[1].split(",")[0];
     // The escaped field starts with a quote
     expect(csv.split("\n")[1]).toContain('"file,with,commas.csv"');
   });

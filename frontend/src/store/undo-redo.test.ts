@@ -12,7 +12,6 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { useSleepScoringStore } from "./index";
-import { MARKER_TYPES } from "../api/types";
 
 describe("Undo/Redo System", () => {
   beforeEach(() => {
@@ -171,7 +170,7 @@ describe("Undo/Redo System", () => {
     });
 
     it("should push snapshot when deleting markers", () => {
-      const { addSleepMarker, deleteMarker } = useSleepScoringStore.getState();
+      const { addSleepMarker } = useSleepScoringStore.getState();
       addSleepMarker(1000, 2000);
 
       const historyBefore = useSleepScoringStore.getState().markerHistory.length;

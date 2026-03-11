@@ -9,20 +9,24 @@
  */
 import type Uppy from "@uppy/core";
 import { BasePlugin, type PluginOpts } from "@uppy/core";
+import type { Meta } from "@uppy/utils";
 
 interface GzipCompressorOpts extends PluginOpts {
   /** Minimum file size (bytes) to compress. Smaller files are passed through. */
   minSize?: number;
 }
 
-export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts> {
-  static override readonly VERSION = "1.0.0";
-  override readonly id = "GzipCompressor";
-  override readonly type = "preprocessor";
+// Use Record<string, never> for Body to match Uppy's default type parameter
+type DefaultBody = Record<string, never>;
+
+export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts, Meta, DefaultBody> {
+  static VERSION = "1.0.0";
+  id = "GzipCompressor";
+  type = "preprocessor";
 
   private readonly minSize: number;
 
-  constructor(uppy: Uppy, opts?: GzipCompressorOpts) {
+  constructor(uppy: Uppy<Meta, DefaultBody>, opts?: GzipCompressorOpts) {
     super(uppy, opts ?? {});
     this.minSize = opts?.minSize ?? 1024; // 1KB minimum
   }
@@ -57,7 +61,7 @@ export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts> {
       });
 
       try {
-        const blob = file.data instanceof Blob ? file.data : new Blob([file.data]);
+        const blob = file.data instanceof Blob ? file.data : new Blob([file.data as BlobPart]);
         const compressedBlob = await this.compressBlob(blob);
 
         const compressionRatio = ((1 - compressedBlob.size / originalSize) * 100).toFixed(1);

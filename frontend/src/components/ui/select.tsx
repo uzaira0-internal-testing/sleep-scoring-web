@@ -3,7 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
-  options: Array<{
+  options: ReadonlyArray<{
     value: string;
     label: string;
     disabled?: boolean;

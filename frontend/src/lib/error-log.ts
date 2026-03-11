@@ -3,8 +3,8 @@ const MAX_ENTRIES = 20;
 
 interface ErrorLogEntry {
   message: string;
-  stack?: string;
-  componentStack?: string;
+  stack?: string | undefined;
+  componentStack?: string | undefined;
   timestamp: string;
   url: string;
 }

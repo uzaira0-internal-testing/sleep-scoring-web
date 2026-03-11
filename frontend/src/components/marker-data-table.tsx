@@ -84,8 +84,8 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
 
   const targetTimestamp = currentMarker
     ? isSleepMode
-      ? type === "onset" ? currentMarker.onsetTimestamp : currentMarker.offsetTimestamp
-      : type === "onset" ? currentMarker.startTimestamp : currentMarker.endTimestamp
+      ? type === "onset" ? (currentMarker as { onsetTimestamp: number | null }).onsetTimestamp : (currentMarker as { offsetTimestamp: number | null }).offsetTimestamp
+      : type === "onset" ? (currentMarker as { startTimestamp: number | null }).startTimestamp : (currentMarker as { endTimestamp: number | null }).endTimestamp
     : null;
 
   // Get marker timestamps to pass as query params (avoids requiring DB save first)
@@ -170,13 +170,11 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
     }
   }, [selectedPeriodIndex, isSleepMode, type, updateMarker]);
 
-  const accentColor = isSleepMode ? "sleep" : "nonwear";
-
   // Empty / Loading states
   if (selectedPeriodIndex === null) {
     return (
       <div className="h-full flex flex-col">
-        <TableHeader title={title} accentColor={accentColor} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
+        <TableHeader title={title} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
         <div className="flex-1 flex items-center justify-center p-4">
           <p className="text-xs text-muted-foreground text-center">
             {isSleepMode ? "Select a sleep marker" : "Select a nonwear marker"}
@@ -189,7 +187,7 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
   if (isLoading) {
     return (
       <div className="h-full flex flex-col">
-        <TableHeader title={title} accentColor={accentColor} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
+        <TableHeader title={title} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
         <div className="flex-1 flex items-center justify-center">
           <p className="text-xs text-muted-foreground">Loading...</p>
         </div>
@@ -200,7 +198,7 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
   if (!data || data.length === 0) {
     return (
       <div className="h-full flex flex-col">
-        <TableHeader title={title} accentColor={accentColor} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
+        <TableHeader title={title} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
         <div className="flex-1 flex items-center justify-center p-4">
           <p className="text-xs text-muted-foreground">No data available</p>
         </div>
@@ -210,7 +208,7 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <TableHeader title={title} accentColor={accentColor} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
+      <TableHeader title={title} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
       <div ref={tableRef} className="flex-1 overflow-auto">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-background/95 backdrop-blur-sm border-b z-10">
@@ -276,13 +274,11 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
 /** Table header with title, go-to-marker button, and popout button */
 function TableHeader({
   title,
-  accentColor,
   onOpenPopout,
   onScrollToMarker,
 }: {
   title: string;
-  accentColor: string;
-  onOpenPopout?: () => void;
+  onOpenPopout?: (() => void) | undefined;
   onScrollToMarker?: () => void;
 }) {
   return (

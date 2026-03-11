@@ -160,7 +160,7 @@ function Td({
   className?: string;
   clickable?: boolean;
   onClick?: () => void;
-  title?: string;
+  title?: string | undefined;
   compact?: boolean;
 }) {
   return (

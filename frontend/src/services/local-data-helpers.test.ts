@@ -43,7 +43,7 @@ describe("loadActivityForMetrics", () => {
     const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
     const actDay = makeActivityDay();
     // Force undefined algorithmResults
-    (actDay as Record<string, unknown>).algorithmResults = undefined;
+    (actDay as unknown as Record<string, unknown>).algorithmResults = undefined;
 
     const result = loadActivityForMetrics(actDay);
     expect(result.algorithmResults).toBeNull();
@@ -55,7 +55,7 @@ describe("loadActivityForMetrics", () => {
   test("warns and returns null for non-object algorithmResults", () => {
     const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
     const actDay = makeActivityDay();
-    (actDay as Record<string, unknown>).algorithmResults = "invalid";
+    (actDay as unknown as Record<string, unknown>).algorithmResults = "invalid";
 
     const result = loadActivityForMetrics(actDay);
     expect(result.algorithmResults).toBeNull();

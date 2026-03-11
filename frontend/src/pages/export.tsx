@@ -13,40 +13,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSleepScoringStore } from "@/store";
-import { fetchWithAuth, getApiBase } from "@/api/client";
+import { getApiBase } from "@/api/client";
 import { useAppCapabilities } from "@/hooks/useAppCapabilities";
 import { getLocalFiles, type FileRecord } from "@/db";
 import { generateLocalExportRows, rowsToCsv, downloadCsv, downloadBlob, downloadMultipleCsvs } from "@/services/local-export";
 import { filesQueryOptions, exportColumnsQueryOptions } from "@/api/query-options";
 
-interface ExportColumnInfo {
-  name: string;
-  category: string;
-  description: string | null;
-  data_type: string;
-  is_default: boolean;
-}
-
 interface ExportColumnCategory {
   name: string;
   columns: string[];
-}
-
-interface ExportColumnsResponse {
-  columns: ExportColumnInfo[];
-  categories: ExportColumnCategory[];
-}
-
-interface FileInfo {
-  id: number;
-  filename: string;
-  participant_id: string | null;
-  status: string;
-}
-
-interface FileListResponse {
-  items: FileInfo[];
-  total: number;
 }
 
 interface ExportRequest {

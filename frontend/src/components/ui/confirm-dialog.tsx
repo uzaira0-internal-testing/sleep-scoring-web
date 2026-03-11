@@ -6,11 +6,11 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   title: string;
-  description?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
+  description?: string | undefined;
+  confirmLabel?: string | undefined;
+  cancelLabel?: string | undefined;
   /** "destructive" makes the confirm button red */
-  variant?: "default" | "destructive";
+  variant?: "default" | "destructive" | undefined;
 }
 
 /**
@@ -80,7 +80,7 @@ export function AlertDialog({
   open: boolean;
   onClose: () => void;
   title: string;
-  description?: string;
+  description?: string | undefined;
 }) {
   if (!open) return null;
 

@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from "react";
-import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
 import { Panel, Group, Separator, useDefaultLayout } from "react-resizable-panels";
 import { ChevronLeft, ChevronRight, Loader2, Moon, Watch, Trash2, FileText, X, Ban, Check, CircleDot, GripVertical, GripHorizontal, Wand2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import { ColorThemePopover } from "@/components/color-theme-popover";
 import { useKeyboardShortcuts, useMarkerAutoSave, useMarkerLoad, useColorThemeSync } from "@/hooks";
 import { getApiBase, fetchWithAuth, settingsApi } from "@/api/client";
 import { studySettingsQueryOptions } from "@/api/query-options";
-import { MARKER_TYPES, type FileListResponse, type ActivityDataResponse, type DateStatus, type ConsensusBallotCandidate } from "@/api/types";
+import { MARKER_TYPES, type DateStatus, type ConsensusBallotCandidate } from "@/api/types";
 import { formatTime, formatDuration } from "@/utils/formatters";
 import { resolveEditedTimeToTimestamp } from "@/utils/time-edit";
 import {
@@ -32,7 +32,7 @@ import {
   VIEW_MODE_OPTIONS,
 } from "@/constants/options";
 import { useDataSource } from "@/contexts/data-source-context";
-import type { FileInfo, ActivityData, AutoScoreResult, AutoNonwearResult } from "@/services/data-source";
+import type { AutoScoreResult, AutoNonwearResult } from "@/services/data-source";
 import { getLocalStudySettings } from "@/db";
 
 /**
@@ -40,7 +40,6 @@ import { getLocalStudySettings } from "@/db";
  * Includes integrated file selection dropdown
  */
 export function ScoringPage() {
-  const queryClient = useQueryClient();
   const [onsetPopoutOpen, setOnsetPopoutOpen] = useState(false);
   const [offsetPopoutOpen, setOffsetPopoutOpen] = useState(false);
   const [colorLegendOpen, setColorLegendOpen] = useState(false);
@@ -83,7 +82,7 @@ export function ScoringPage() {
   useColorThemeSync();
 
   // DataSource DI — routes all data operations through local or server
-  const { dataSource, isLocal, serverAvailable } = useDataSource();
+  const { dataSource, isLocal } = useDataSource();
 
   // Use individual selectors to avoid object recreation
   const currentFileId = useSleepScoringStore((state) => state.currentFileId);
@@ -94,7 +93,6 @@ export function ScoringPage() {
   const viewModeHours = useSleepScoringStore((state) => state.viewModeHours);
   const currentAlgorithm = useSleepScoringStore((state) => state.currentAlgorithm);
   const setPreferredDisplayColumn = useSleepScoringStore((state) => state.setPreferredDisplayColumn);
-  const setCurrentAlgorithm = useSleepScoringStore((state) => state.setCurrentAlgorithm);
   const setViewModeHours = useSleepScoringStore((state) => state.setViewModeHours);
   const showAdjacentMarkers = useSleepScoringStore((state) => state.showAdjacentMarkers);
   const setShowAdjacentMarkers = useSleepScoringStore((state) => state.setShowAdjacentMarkers);
@@ -103,9 +101,7 @@ export function ScoringPage() {
   const autoScoreOnNavigate = useSleepScoringStore((state) => state.autoScoreOnNavigate);
   const setAutoScoreOnNavigate = useSleepScoringStore((state) => state.setAutoScoreOnNavigate);
   const autoNonwearOnNavigate = useSleepScoringStore((state) => state.autoNonwearOnNavigate);
-  const setAutoNonwearOnNavigate = useSleepScoringStore((state) => state.setAutoNonwearOnNavigate);
   const sleepDetectionRule = useSleepScoringStore((state) => state.sleepDetectionRule);
-  const setSleepDetectionRule = useSleepScoringStore((state) => state.setSleepDetectionRule);
   // Sidebar panels (sleep markers, nonwear, metrics) are hidden by default
   const username = useSleepScoringStore((state) => state.username);
 
@@ -127,7 +123,6 @@ export function ScoringPage() {
   const setAvailableDates = useSleepScoringStore((state) => state.setAvailableDates);
   const setActivityData = useSleepScoringStore((state) => state.setActivityData);
   const navigateDate = useSleepScoringStore((state) => state.navigateDate);
-  const setCurrentDateIndex = useSleepScoringStore((state) => state.setCurrentDateIndex);
   const setCurrentFile = useSleepScoringStore((state) => state.setCurrentFile);
   const setAvailableFiles = useSleepScoringStore((state) => state.setAvailableFiles);
 
@@ -143,15 +138,11 @@ export function ScoringPage() {
     isNoSleep,
     needsConsensus,
     setMarkerMode,
-    setSelectedPeriod,
-    deleteMarker,
     cancelMarkerCreation,
     updateMarker,
     notes,
-    setIsNoSleep,
     setNeedsConsensus,
     setNotes,
-    addSleepMarker,
     setSleepMarkers,
     setNonwearMarkers,
   } = useMarkers();
@@ -251,27 +242,6 @@ export function ScoringPage() {
   }, [autoNonwearMutation.error, alert]);
 
   // Normalize saved auto-score payload (single marker list) into dialog shape.
-  const normalizeSavedAutoScore = useCallback((result: {
-    sleep_markers: Array<Record<string, unknown>>;
-    notes: string | null;
-  }) => {
-    const all = (result.sleep_markers || []).map((m, i) => ({
-      onset_timestamp: Number(m.onset_timestamp),
-      offset_timestamp: Number(m.offset_timestamp),
-      marker_type: ((m.marker_type as string) === "NAP" ? "NAP" : "MAIN_SLEEP"),
-      marker_index: m.marker_index != null ? Number(m.marker_index) : i + 1,
-    }));
-
-    const sleep_markers = all.filter((m) => m.marker_type !== "NAP");
-    const nap_markers = all.filter((m) => m.marker_type === "NAP");
-    const notes = (result.notes || "")
-      .split(";")
-      .map((n) => n.trim())
-      .filter((n) => n.length > 0);
-
-    return { sleep_markers, nap_markers, notes };
-  }, []);
-
   // Apply auto-scored markers (only if no existing markers)
   const applyAutoScore = useCallback(() => {
     if (!autoScoreResult) return;
@@ -442,8 +412,6 @@ export function ScoringPage() {
   // Block auto-score in ALL these cases.
   const currentDateStatus = currentDate ? dateStatusMap.get(currentDate) : undefined;
   const hasNoDiary = !currentDateStatus || currentDateStatus.complexity_pre === -1;
-  const hasAutoScore = currentDateStatus?.has_auto_score ?? false;
-  const userHasNoMarkers = sleepMarkers.length === 0 && !isNoSleep;
 
   // Auto-score on date navigate (when toggle is on and no existing markers)
   // Skip dates with infinite complexity (no/incomplete diary)
@@ -558,8 +526,8 @@ export function ScoringPage() {
   const canGoNext = currentDateIndex < availableDates.length - 1;
 
   // Consensus-only filter toggle
-  const [consensusOnly, setConsensusOnly] = useState(false);
-  const consensusCount = datesStatus?.filter((d) => d.needs_consensus).length ?? 0;
+  const [consensusOnly, _setConsensusOnly] = useState(false);
+  void _setConsensusOnly;
 
   // Fetch scoring progress per file (both server and local modes)
   const readyFiles = (dsFiles ?? []).filter((f) => isLocal || f.status === "ready");

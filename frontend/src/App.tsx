@@ -121,7 +121,7 @@ const Router = isTauri() ? HashRouter : BrowserRouter;
 
 function App() {
   return (
-    <Router basename={isTauri() ? undefined : config.basePath}>
+    <Router {...(isTauri() ? {} : { basename: config.basePath })}>
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />

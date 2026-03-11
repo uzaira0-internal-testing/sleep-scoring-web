@@ -17,7 +17,8 @@ const PORT = parseInt(process.env.PORT || "5173");
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8500";
 
 // Track connected WebSocket clients for live reload
-const clients = new Set<WebSocket>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const clients = new Set<any>();
 
 // Path alias plugin for @/ -> src/
 // Also handles directory imports by resolving to index.ts
@@ -202,10 +203,11 @@ async function startServer() {
       if (pathname.startsWith("/api")) {
         const backendUrl = `${BACKEND_URL}${pathname}${url.search}`;
         try {
+          const hasBody = req.method !== "GET" && req.method !== "HEAD";
           const backendRes = await fetch(backendUrl, {
             method: req.method,
             headers: req.headers,
-            body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+            ...(hasBody ? { body: req.body ?? null } : {}),
           });
           return new Response(backendRes.body, {
             status: backendRes.status,

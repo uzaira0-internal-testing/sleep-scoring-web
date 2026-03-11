@@ -144,7 +144,7 @@ function findValidOffsetNearBounded(
   const maxIdx = Math.min(center + maxForwardEpochs, epochs.length - 1);
 
   const validOffsets: number[] = [];
-  for (const [start, end, len] of findSleepRuns(epochs)) {
+  for (const [, end, len] of findSleepRuns(epochs)) {
     if (len >= minEpochs && end <= maxIdx) validOffsets.push(end);
   }
   if (validOffsets.length === 0) return null;
@@ -295,32 +295,6 @@ function placeNaps(
   }
 
   return naps;
-}
-
-function placeWithoutDiary(
-  epochs: EpochData[],
-  config: PlacementConfig,
-): [number, number] | null {
-  const runs = findSleepRuns(epochs);
-  if (runs.length === 0) return null;
-
-  const minOffsetEpochs = Math.max(1, (config.offsetMinConsecutiveMinutes * 60) / config.epochLengthSeconds);
-  let best: [number, number] | null = null;
-  let bestDuration = 0;
-
-  for (const [onsetStart, , onsetLen] of runs) {
-    if (onsetLen < config.onsetMinConsecutiveSleep) continue;
-    for (const [, offsetEnd, offsetLen] of runs) {
-      if (offsetLen < minOffsetEpochs) continue;
-      if (offsetEnd < onsetStart) continue;
-      const duration = offsetEnd - onsetStart + 1;
-      if (duration > bestDuration) {
-        bestDuration = duration;
-        best = [onsetStart, offsetEnd];
-      }
-    }
-  }
-  return best;
 }
 
 // =============================================================================

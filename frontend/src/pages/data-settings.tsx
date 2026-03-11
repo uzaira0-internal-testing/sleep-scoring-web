@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Database, FileText, Trash2, RefreshCw, Info, Loader2, Save, Check, Columns, Activity, Upload, Book, CircleOff, X, AlertTriangle, FolderOpen } from "lucide-react";
+import { Database, FileText, Trash2, RefreshCw, Info, Loader2, Save, Check, Columns, Upload, Book, CircleOff, X, AlertTriangle, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog, useAlertDialog } from "@/components/ui/confirm-dialog";
 import { useSleepScoringStore } from "@/store";
@@ -20,19 +20,6 @@ import { parseNonwearCsv } from "@/services/nonwear-csv-parser";
 import { parseDiaryCsv } from "@/services/diary-parser";
 import { studySettingsQueryOptions, filesQueryOptions, autoScoreBatchStatusQueryOptions } from "@/api/query-options";
 
-const ACTIVITY_COLUMN_OPTIONS = [
-  { value: "axis_y", label: "Y-Axis (default)" },
-  { value: "axis_x", label: "X-Axis" },
-  { value: "axis_z", label: "Z-Axis" },
-  { value: "vector_magnitude", label: "Vector Magnitude" },
-];
-
-const CHOI_AXIS_OPTIONS = [
-  { value: "vector_magnitude", label: "Vector Magnitude (default)" },
-  { value: "axis_y", label: "Y-Axis" },
-  { value: "axis_x", label: "X-Axis" },
-  { value: "axis_z", label: "Z-Axis" },
-];
 
 const DEVICE_PRESET_OPTIONS = [
   { value: "actigraph", label: "ActiGraph (ActiLife CSV Export)" },
@@ -297,7 +284,7 @@ export function DataSettingsPage() {
   const queryClient = useQueryClient();
   const isAuthenticated = useSleepScoringStore((state) => state.isAuthenticated);
   const caps = useAppCapabilities();
-  const { openLocalFile, openLocalFiles, openLocalFolder, isProcessing, progress: localProgress } = useLocalFile();
+  const { openLocalFiles, openLocalFolder, isProcessing, progress: localProgress } = useLocalFile();
   const [localFiles, setLocalFiles] = useState<FileRecord[]>([]);
   const { confirm, confirmDialog } = useConfirmDialog();
   const { alert, alertDialog } = useAlertDialog();
@@ -782,7 +769,7 @@ export function DataSettingsPage() {
             </Button>
           </div>
 
-          {localProgress && <LocalProcessingProgress progress={localProgress} />}
+          {localProgress && <LocalProcessingProgress progress={localProgress} isProcessing={isProcessing} />}
 
           {/* Local files list */}
           {localFiles.length > 0 && (
@@ -851,11 +838,10 @@ export function DataSettingsPage() {
             onChange={handleActivityUpload}
             className="hidden"
           />
-          {/* @ts-expect-error webkitdirectory is a non-standard attribute */}
           <input
             ref={activityFolderRef}
             type="file"
-            webkitdirectory=""
+            {...{ webkitdirectory: "" } as React.InputHTMLAttributes<HTMLInputElement>}
             onChange={handleActivityUpload}
             className="hidden"
           />
@@ -1041,11 +1027,10 @@ export function DataSettingsPage() {
             onChange={handleNonwearUpload}
             className="hidden"
           />
-          {/* @ts-expect-error webkitdirectory is a non-standard attribute */}
           <input
             ref={nonwearFolderRef}
             type="file"
-            webkitdirectory=""
+            {...{ webkitdirectory: "" } as React.InputHTMLAttributes<HTMLInputElement>}
             onChange={handleNonwearUpload}
             className="hidden"
           />

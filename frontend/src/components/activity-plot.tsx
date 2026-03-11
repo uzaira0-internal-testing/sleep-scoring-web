@@ -110,10 +110,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     selectedPeriodIndex,
     creationMode,
     pendingOnsetTimestamp,
-    handlePlotClick,
-    setSelectedPeriod,
-    updateMarker,
-    cancelMarkerCreation,
   } = useMarkers();
 
   // Helper to read current marker state inside uPlot plugin callbacks.
@@ -292,7 +288,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const { selected: nwStartSel, unselected: nwStartUnsel } = markerColorPair(colorTheme.nonwear);
       const startColor = isSelected ? nwStartSel : nwStartUnsel;
       // End line is slightly different shade — darken further
-      const { selected: nwEndSel, unselected: nwEndUnsel } = markerColorPair(
+      const { unselected: nwEndUnsel } = markerColorPair(
         markerColorPair(colorTheme.nonwear).unselected
       );
       const endColor = isSelected ? nwStartUnsel : nwEndUnsel;
@@ -1256,7 +1252,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           const ts = u.data[0][idx];
           const val = u.data[1][idx];
           
-          if (ts === undefined || val === undefined) {
+          if (ts == null || val == null) {
             tooltip.style.display = 'none';
             return;
           }

@@ -4,6 +4,8 @@
  * Configures happy-dom for DOM testing and extends matchers.
  */
 
+/// <reference types="bun-types" />
+import { afterEach } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import "@testing-library/jest-dom";
 

@@ -36,8 +36,8 @@ export async function computeMarkerHash(data: {
     const val = data[key as keyof typeof data];
     if (Array.isArray(val)) {
       sorted[key] = [...val].sort((a, b) => {
-        const ar = a as Record<string, unknown>;
-        const br = b as Record<string, unknown>;
+        const ar = a as unknown as Record<string, unknown>;
+        const br = b as unknown as Record<string, unknown>;
         const idxDiff = ((ar.markerIndex as number) ?? 0) - ((br.markerIndex as number) ?? 0);
         if (idxDiff !== 0) return idxDiff;
         // Tiebreaker: first timestamp field found (onsetTimestamp or startTimestamp)

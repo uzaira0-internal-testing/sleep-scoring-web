@@ -40,14 +40,20 @@ export type ActivityDataResponse = components["schemas"]["ActivityDataResponse"]
 /** File metadata */
 export type FileInfo = components["schemas"]["FileInfo"];
 
-/** File list response */
-export type FileListResponse = components["schemas"]["FileListResponse"];
+/** File list response (not in generated schema — defined manually) */
+export interface FileListResponse {
+  items: FileInfo[];
+  total: number;
+}
 
 /** File upload response */
 export type FileUploadResponse = components["schemas"]["FileUploadResponse"];
 
-/** User info */
-export type UserRead = components["schemas"]["UserRead"];
+/** User info (not in generated schema — defined manually) */
+export interface UserRead {
+  username: string;
+  is_admin: boolean;
+}
 
 /** User settings response */
 export type UserSettingsResponse = components["schemas"]["UserSettingsResponse"];
@@ -64,8 +70,11 @@ export type DiaryEntryCreate = components["schemas"]["DiaryEntryCreate"];
 /** Diary upload response */
 export type DiaryUploadResponse = components["schemas"]["DiaryUploadResponse"];
 
-/** JWT token response */
-export type Token = components["schemas"]["Token"];
+/** JWT token response (not in generated schema — defined manually) */
+export interface Token {
+  access_token: string;
+  token_type: string;
+}
 
 /** Data point for onset/offset tables */
 export type OnsetOffsetDataPoint = components["schemas"]["OnsetOffsetDataPoint"];

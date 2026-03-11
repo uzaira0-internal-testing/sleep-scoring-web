@@ -219,16 +219,16 @@ export async function processLocalFile(
     await localDb.saveActivityDay({
       fileId,
       date,
-      timestamps: new Float64Array(group.timestamps).buffer,
-      axisY: new Float64Array(group.axisY).buffer,
-      vectorMagnitude: new Float64Array(group.vectorMagnitude).buffer,
+      timestamps: new Float64Array(group.timestamps).buffer as ArrayBuffer,
+      axisY: new Float64Array(group.axisY).buffer as ArrayBuffer,
+      vectorMagnitude: new Float64Array(group.vectorMagnitude).buffer as ArrayBuffer,
       algorithmResults: {
-        sadeh_1994_actilife: algoResults.sadeh_1994_actilife.buffer,
-        sadeh_1994_original: algoResults.sadeh_1994_original.buffer,
-        cole_kripke_1992_actilife: algoResults.cole_kripke_1992_actilife.buffer,
-        cole_kripke_1992_original: algoResults.cole_kripke_1992_original.buffer,
+        sadeh_1994_actilife: algoResults.sadeh_1994_actilife.buffer as ArrayBuffer,
+        sadeh_1994_original: algoResults.sadeh_1994_original.buffer as ArrayBuffer,
+        cole_kripke_1992_actilife: algoResults.cole_kripke_1992_actilife.buffer as ArrayBuffer,
+        cole_kripke_1992_original: algoResults.cole_kripke_1992_original.buffer as ArrayBuffer,
       },
-      nonwearResults: algoResults.nonwear.buffer,
+      nonwearResults: algoResults.nonwear.buffer as ArrayBuffer,
     });
   }
 

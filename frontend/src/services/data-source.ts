@@ -170,10 +170,16 @@ export interface DataSource {
  * Server-backed data source (existing behavior).
  */
 export class ServerDataSource implements DataSource {
+  private sitePassword: string | null;
+  private username: string;
+
   constructor(
-    private sitePassword: string | null,
-    private username: string,
-  ) {}
+    sitePassword: string | null,
+    username: string,
+  ) {
+    this.sitePassword = sitePassword;
+    this.username = username;
+  }
 
   async loadActivityData(fileId: number, date: string, options?: { algorithm?: string; viewHours?: number }): Promise<ActivityData> {
     const params = new URLSearchParams();
@@ -660,7 +666,7 @@ export class LocalDataSource implements DataSource {
             diaryNapCount: napCount,
             analysisDate: date,
             sensorNonwearPeriods,
-            diaryNonwearTimes: diaryNonwearTimes.length > 0 ? diaryNonwearTimes : undefined,
+            ...(diaryNonwearTimes.length > 0 ? { diaryNonwearTimes } : {}),
             nightStartHour,
             nightEndHour,
           });

@@ -36,8 +36,8 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
     : nonwearMarkers[selectedPeriodIndex ?? -1];
   const targetTimestamp = currentMarker
     ? markerMode === "sleep"
-      ? highlightType === "onset" ? currentMarker.onsetTimestamp : currentMarker.offsetTimestamp
-      : highlightType === "onset" ? currentMarker.startTimestamp : currentMarker.endTimestamp
+      ? highlightType === "onset" ? (currentMarker as { onsetTimestamp: number | null }).onsetTimestamp : (currentMarker as { offsetTimestamp: number | null }).offsetTimestamp
+      : highlightType === "onset" ? (currentMarker as { startTimestamp: number | null }).startTimestamp : (currentMarker as { endTimestamp: number | null }).endTimestamp
     : null;
 
   // Fetch full table data from API

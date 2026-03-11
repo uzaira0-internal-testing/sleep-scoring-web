@@ -3,14 +3,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Users, Search, X, Plus, Trash2, AlertTriangle, Loader2, FileText, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useConfirmDialog, ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { assignmentApi, filesApi } from "@/api/client";
 import { assignmentProgressQueryOptions, unassignedFilesQueryOptions } from "@/api/query-options";
 import { useSleepScoringStore } from "@/store";
 import { cn } from "@/lib/utils";
-import type { AssignmentProgress, UserFileProgress } from "@/api/types";
+import type { AssignmentProgress } from "@/api/types";
 
 // =============================================================================
 // Progress Bar
@@ -159,7 +159,7 @@ function UserListPanel({
               <span className="text-sm font-medium truncate flex items-center gap-1.5">
                 {user.username}
                 {isDuplicate(user.username) && (
-                  <AlertTriangle className="h-3 w-3 text-amber-500 flex-none" title="Possible duplicate username" />
+                  <span title="Possible duplicate username"><AlertTriangle className="h-3 w-3 text-amber-500 flex-none" /></span>
                 )}
               </span>
               <span className="text-xs text-muted-foreground flex-none">{user.total_files} files</span>
@@ -188,7 +188,7 @@ function UserDetailPanel({
 }) {
   const [fileFilter, setFileFilter] = useState("");
   const queryClient = useQueryClient();
-  const confirm = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const removeFileMutation = useMutation({
     mutationFn: ({ fileId }: { fileId: number }) =>
@@ -304,7 +304,7 @@ function UserDetailPanel({
         )}
       </div>
 
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   );
 }
@@ -433,7 +433,7 @@ function AssignFilesDialog({
                   />
                   <span className="truncate">{f.filename}</span>
                   {alreadyAssigned && (
-                    <CheckCircle2 className="h-3 w-3 text-green-500 flex-none ml-auto" title="Already assigned" />
+                    <span title="Already assigned"><CheckCircle2 className="h-3 w-3 text-green-500 flex-none ml-auto" /></span>
                   )}
                 </label>
               );
