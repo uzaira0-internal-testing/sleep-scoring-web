@@ -97,8 +97,9 @@ async def get_onset_offset_data(
     if onset_timestamp is None or offset_timestamp is None:
         return OnsetOffsetTableResponse(onset_data=[], offset_data=[], period_index=period_index)
 
-    # Get data around onset (use UTC to match stored timestamps)
-    onset_dt = datetime.fromtimestamp(onset_timestamp, tz=timezone.utc)
+    # Get data around onset — strip tzinfo because raw_activity_data uses
+    # "timestamp without time zone" and asyncpg rejects tz-aware comparisons.
+    onset_dt = datetime.fromtimestamp(onset_timestamp, tz=timezone.utc).replace(tzinfo=None)
     onset_start = onset_dt - timedelta(minutes=window_minutes)
     onset_end = onset_dt + timedelta(minutes=window_minutes)
 
@@ -115,8 +116,8 @@ async def get_onset_offset_data(
     )
     onset_rows = onset_result.scalars().all()
 
-    # Get data around offset (use UTC to match stored timestamps)
-    offset_dt = datetime.fromtimestamp(offset_timestamp, tz=timezone.utc)
+    # Get data around offset — strip tzinfo (see onset comment above)
+    offset_dt = datetime.fromtimestamp(offset_timestamp, tz=timezone.utc).replace(tzinfo=None)
     offset_start = offset_dt - timedelta(minutes=window_minutes)
     offset_end = offset_dt + timedelta(minutes=window_minutes)
 
