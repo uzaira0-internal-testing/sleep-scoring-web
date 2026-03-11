@@ -276,7 +276,7 @@ export function DiaryPanel({ compact = false }: DiaryPanelProps) {
   }, []);
 
   /**
-   * Convert a diary time string to a UTC timestamp in milliseconds.
+   * Convert a diary time string to a UTC timestamp in seconds.
    * Bed/onset times >= 12 are evening of analysis date, < 12 are next day.
    * Wake/offset times < 18 are next day after analysis date.
    */
@@ -294,7 +294,7 @@ export function DiaryPanel({ compact = false }: DiaryPanelProps) {
         if (hours < 18) dateObj.setUTCDate(dateObj.getUTCDate() + 1);
       }
       dateObj.setUTCHours(hours, minutes, 0, 0);
-      return dateObj.getTime();
+      return dateObj.getTime() / 1000;
     },
     [parseTimeTo24h]
   );
