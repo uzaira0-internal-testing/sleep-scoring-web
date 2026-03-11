@@ -32,6 +32,7 @@ import {
   VIEW_MODE_OPTIONS,
 } from "@/constants/options";
 import { useDataSource } from "@/contexts/data-source-context";
+import { auditLog } from "@/services/audit-log";
 import type { AutoScoreResult, AutoNonwearResult } from "@/services/data-source";
 import { getLocalStudySettings } from "@/db";
 
@@ -253,6 +254,12 @@ export function ScoringPage() {
       markerIndex: i + 1,
       markerType: m.marker_type as "MAIN_SLEEP" | "NAP",
     }));
+    auditLog.log("auto_score_applied", {
+      algorithm: currentAlgorithm,
+      sleepCount: autoScoreResult.sleep_markers.length,
+      napCount: autoScoreResult.nap_markers.length,
+      markers: newMarkers,
+    });
     setSleepMarkers(newMarkers);
     if (newMarkers.length > 0) {
       useSleepScoringStore.setState({ selectedPeriodIndex: 0, markerMode: "sleep" });
@@ -268,6 +275,10 @@ export function ScoringPage() {
       endTimestamp: m.end_timestamp,
       markerIndex: i + 1,
     }));
+    auditLog.log("auto_nonwear_applied", {
+      count: newMarkers.length,
+      markers: newMarkers,
+    });
     setNonwearMarkers(newMarkers);
     setAutoNonwearResult(null);
   }, [autoNonwearResult, nonwearMarkers.length, setNonwearMarkers]);

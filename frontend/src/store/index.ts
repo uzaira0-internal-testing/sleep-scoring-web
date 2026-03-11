@@ -7,6 +7,7 @@ import { queryClient } from "@/query-client";
 import { saveUserPreferences, restoreUserPreferences } from "@/lib/user-state";
 import { type ColorTheme, DEFAULT_COLOR_THEME, COLOR_PRESETS } from "@/lib/color-themes";
 import { getActiveWorkspaceId } from "@/store/workspace-store";
+import { auditLog } from "@/services/audit-log";
 
 /**
  * User authentication state (site password model)
@@ -261,6 +262,7 @@ interface SleepScoringState
 
   // Drag transaction (atomic undo for drags)
   _isDragTransaction: boolean;
+  _dragSnapshotForAudit: { sleepMarkers: SleepScoringState["sleepMarkers"]; nonwearMarkers: SleepScoringState["nonwearMarkers"] } | null;
   beginDragTransaction: () => void;
   commitDragTransaction: () => void;
 
@@ -357,6 +359,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         markerHistory: [],
         markerHistoryIndex: -1,
         _isDragTransaction: false,
+        _dragSnapshotForAudit: null,
 
         // Initial preferences
         preferredDisplayColumn: "axis_y",
@@ -456,7 +459,9 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         },
 
         // File actions
-        setCurrentFile: (fileId, filename, source) =>
+        setCurrentFile: (fileId, filename, source) => {
+          // Update audit log context when file changes
+          auditLog.setContext(fileId, get().availableDates[0] ?? null);
           set({
             currentFileId: fileId,
             currentFilename: filename,
@@ -471,7 +476,8 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             nonwearResults: null,
             viewStart: null,
             viewEnd: null,
-          }),
+          });
+        },
 
         setAvailableFiles: (files) => set({ availableFiles: files }),
 
@@ -501,6 +507,11 @@ export const useSleepScoringStore = create<SleepScoringState>()(
                 ]);
                 if (!saved) return;
               }
+
+              // Log session end for previous date, update context for new date
+              auditLog.log("session_end");
+              const newDate = get().availableDates[index] ?? null;
+              auditLog.setContext(get().currentFileId, newDate);
 
               // Clear marker state when switching dates (same as navigateDate)
               set({
@@ -546,6 +557,11 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               const post = get();
               const newIndex = post.currentDateIndex + direction;
               if (newIndex < 0 || newIndex >= post.availableDates.length) return;
+
+              // Log session end for previous date, update context for new date
+              auditLog.log("session_end");
+              const newDate = post.availableDates[newIndex] ?? null;
+              auditLog.setContext(post.currentFileId, newDate);
 
               // Clear all marker state so the new date starts fresh.
               // Without this, old markers persist during the API fetch window,
@@ -673,6 +689,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
                 pendingOnsetTimestamp: null,
                 selectedPeriodIndex: newArrayIndex, // Array index (0-based) for UI selection
               });
+              auditLog.log("marker_placed", { category: "sleep", markerType, periodIndex: newArrayIndex, onsetTimestamp: onset, offsetTimestamp: offset });
             } else {
               // Nonwear marker
               const newArrayIndex = nonwearMarkers.length;
@@ -688,6 +705,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
                 pendingOnsetTimestamp: null,
                 selectedPeriodIndex: newArrayIndex, // Array index (0-based) for UI selection
               });
+              auditLog.log("marker_placed", { category: "nonwear", periodIndex: newArrayIndex, startTimestamp: onset, endTimestamp: offset });
             }
           }
         },
@@ -745,6 +763,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         updateMarker: (category, index, updates) => {
           if (!get()._isDragTransaction) {
             get().pushMarkerSnapshot();
+            auditLog.log("marker_adjusted", { category, periodIndex: index, updates });
           }
           // Clamp timestamp fields to actual data range (both timestamps and markers are seconds)
           const { timestamps } = get();
@@ -773,6 +792,8 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         },
 
         deleteMarker: (category, index) => {
+          const before = category === "sleep" ? get().sleepMarkers[index] : get().nonwearMarkers[index];
+          auditLog.log("marker_deleted", { category, periodIndex: index, before });
           get().pushMarkerSnapshot();
           if (category === "sleep") {
             const { sleepMarkers } = get();
@@ -790,6 +811,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         },
 
         setIsNoSleep: (isNoSleep) => {
+          auditLog.log("no_sleep_toggled", { value: isNoSleep });
           get().pushMarkerSnapshot();
           if (isNoSleep) {
             // When marking as "no sleep", only clear MAIN_SLEEP markers; preserve NAPs
@@ -809,11 +831,13 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         },
 
         setNeedsConsensus: (needsConsensus) => {
+          auditLog.log("consensus_toggled", { value: needsConsensus });
           get().pushMarkerSnapshot();
           set({ needsConsensus, isDirty: true });
         },
 
         setNotes: (notes) => {
+          auditLog.log("notes_changed", { length: notes.length });
           get().pushMarkerSnapshot();
           set({ notes, isDirty: true });
         },
@@ -821,7 +845,10 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         // Save status actions
         setSaving: (saving) => set({ isSaving: saving }),
         setSaveError: (error) => set({ saveError: error }),
-        markSaved: () => set({ isDirty: false, isSaving: false, lastSavedAt: Date.now() }),
+        markSaved: () => {
+          auditLog.log("markers_saved", { sleepCount: get().sleepMarkers.length, nonwearCount: get().nonwearMarkers.length });
+          set({ isDirty: false, isSaving: false, lastSavedAt: Date.now() });
+        },
         _flushSave: null,
         registerFlushSave: (fn) => set({ _flushSave: fn }),
 
@@ -848,6 +875,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         },
 
         undo: () => {
+          auditLog.log("undo");
           const { markerHistory, markerHistoryIndex, sleepMarkers, nonwearMarkers, isNoSleep, needsConsensus, notes, selectedPeriodIndex } = get();
           if (markerHistoryIndex < 0) return;
 
@@ -902,6 +930,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         },
 
         redo: () => {
+          auditLog.log("redo");
           const { markerHistory, markerHistoryIndex } = get();
           const newIndex = markerHistoryIndex + 1;
           if (newIndex >= markerHistory.length) return;
@@ -930,14 +959,20 @@ export const useSleepScoringStore = create<SleepScoringState>()(
 
         beginDragTransaction: () => {
           get().pushMarkerSnapshot();
-          set({ _isDragTransaction: true });
+          set({ _isDragTransaction: true, _dragSnapshotForAudit: structuredClone({ sleepMarkers: get().sleepMarkers, nonwearMarkers: get().nonwearMarkers }) });
         },
 
         commitDragTransaction: () => {
-          set({ _isDragTransaction: false });
+          const before = get()._dragSnapshotForAudit;
+          const after = { sleepMarkers: get().sleepMarkers, nonwearMarkers: get().nonwearMarkers };
+          if (before && JSON.stringify(before) !== JSON.stringify(after)) {
+            auditLog.log("marker_moved", { before, after });
+          }
+          set({ _isDragTransaction: false, _dragSnapshotForAudit: null });
         },
 
         clearAllMarkers: () => {
+          auditLog.log("markers_cleared", { sleepCount: get().sleepMarkers.length, nonwearCount: get().nonwearMarkers.length });
           get().pushMarkerSnapshot();
           set({
             sleepMarkers: [],

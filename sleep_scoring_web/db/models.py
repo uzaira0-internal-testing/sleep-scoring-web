@@ -459,6 +459,48 @@ class UserSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class AuditLogEntry(Base):
+    """
+    Append-only audit log tracking every user action per file/date.
+
+    Designed for ML training data and reproducibility: given the activity data
+    and diary, replay exactly what the researcher did to produce the final markers.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    file_id: Mapped[int] = mapped_column(Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
+    analysis_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    username: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Action classification
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Client-side timestamp (when the user actually performed the action)
+    client_timestamp: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Server receipt timestamp
+    server_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Session tracking (groups actions from one scoring session)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+
+    # Ordering within a session (monotonically increasing)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Flexible JSON payload — action-specific data (before/after state, metadata)
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # Relationships
+    file: Mapped[File] = relationship("File")
+
+    __table_args__ = (
+        Index("ix_audit_log_file_date_user", "file_id", "analysis_date", "username"),
+        Index("ix_audit_log_session_seq", "session_id", "sequence"),
+    )
+
+
 class FileAssignment(Base):
     """Admin-assigned file → user mapping for scoring workflow."""
 

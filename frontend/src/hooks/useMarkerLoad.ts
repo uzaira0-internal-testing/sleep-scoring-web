@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSleepScoringStore, useDates } from "@/store";
 import { useDataSource } from "@/contexts/data-source-context";
 import type { MarkerData } from "@/services/data-source";
+import { auditLog } from "@/services/audit-log";
 
 /**
  * Hook to load markers when file/date changes.
@@ -84,6 +85,17 @@ export function useMarkerLoad() {
 
     if (sleepChanged) _loadSleepMarkersFromServer(apiSleepMarkers);
     if (nonwearChanged) _loadNonwearMarkersFromServer(apiNonwearMarkers);
+
+    // Log session start with initial marker state
+    if (sleepChanged || nonwearChanged) {
+      auditLog.setContext(current.currentFileId, current.availableDates[current.currentDateIndex] ?? null);
+      auditLog.log("session_start", {
+        sleepMarkers: apiSleepMarkers,
+        nonwearMarkers: apiNonwearMarkers,
+        isNoSleep: data.isNoSleep ?? false,
+        needsConsensus: data.needsConsensus ?? false,
+      });
+    }
 
     // Auto-select the first sleep marker when loading existing markers
     if (sleepChanged && apiSleepMarkers.length > 0 && current.selectedPeriodIndex === null) {

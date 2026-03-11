@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import secrets
 from contextlib import asynccontextmanager
+from datetime import UTC
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException, status
@@ -54,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Cleanup stale uploads (UPLOADING status older than 24h → FAILED)
     try:
         async with async_session_maker() as db:
-            cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=24)
+            cutoff = datetime.now(tz=UTC) - timedelta(hours=24)
             result = await db.execute(
                 sa_select(FileModel).where(
                     FileModel.status == FileStatus.UPLOADING,
@@ -179,8 +180,19 @@ async def root() -> dict[str, str]:
 
 
 # Include routers
-from sleep_scoring_web.api import activity, analysis, consensus, diary, export, files, markers
-from sleep_scoring_web.api import markers_autoscore, markers_import, markers_tables
+from sleep_scoring_web.api import (
+    activity,
+    analysis,
+    audit,
+    consensus,
+    diary,
+    export,
+    files,
+    markers,
+    markers_autoscore,
+    markers_import,
+    markers_tables,
+)
 from sleep_scoring_web.api import settings as settings_router
 from sleep_scoring_web.api.tus import router as tus_status_router
 from sleep_scoring_web.api.tus import tus_router
@@ -238,6 +250,7 @@ app.include_router(analysis.router, prefix=f"{settings.api_prefix}", tags=["anal
 app.include_router(diary.router, prefix=f"{settings.api_prefix}", tags=["diary"])
 app.include_router(settings_router.router, prefix=f"{settings.api_prefix}", tags=["settings"])
 app.include_router(consensus.router, prefix=f"{settings.api_prefix}", tags=["consensus"])
+app.include_router(audit.router, prefix=f"{settings.api_prefix}/audit", tags=["audit"])
 app.include_router(tus_router, prefix=f"{settings.api_prefix}/tus", tags=["tus"])
 app.include_router(tus_status_router, prefix=f"{settings.api_prefix}", tags=["tus"])
 
