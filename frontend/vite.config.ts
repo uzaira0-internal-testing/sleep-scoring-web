@@ -43,7 +43,7 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    sourcemap: "hidden",
+    sourcemap: process.env.TAURI_ENV_DEBUG ? true : "hidden",
     target: "esnext",
   },
   optimizeDeps: {
