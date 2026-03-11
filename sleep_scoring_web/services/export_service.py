@@ -10,7 +10,7 @@ import csv
 import io
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, select
@@ -372,8 +372,8 @@ class ExportService:
             metrics = metrics_lookup.get((marker.file_id, marker.analysis_date, marker.period_index))
 
             # Convert timestamps to datetime
-            onset_dt = datetime.utcfromtimestamp(marker.start_timestamp) if marker.start_timestamp else None
-            offset_dt = datetime.utcfromtimestamp(marker.end_timestamp) if marker.end_timestamp else None
+            onset_dt = datetime.fromtimestamp(marker.start_timestamp, tz=timezone.utc) if marker.start_timestamp else None
+            offset_dt = datetime.fromtimestamp(marker.end_timestamp, tz=timezone.utc) if marker.end_timestamp else None
 
             row = {
                 # File Info
@@ -458,8 +458,8 @@ class ExportService:
 
             ann = ann_lookup.get((nw.file_id, nw.analysis_date))
 
-            onset_dt = datetime.utcfromtimestamp(nw.start_timestamp) if nw.start_timestamp else None
-            offset_dt = datetime.utcfromtimestamp(nw.end_timestamp) if nw.end_timestamp else None
+            onset_dt = datetime.fromtimestamp(nw.start_timestamp, tz=timezone.utc) if nw.start_timestamp else None
+            offset_dt = datetime.fromtimestamp(nw.end_timestamp, tz=timezone.utc) if nw.end_timestamp else None
 
             nonwear_rows.append({
                 "Filename": file.filename,

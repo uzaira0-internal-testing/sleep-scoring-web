@@ -549,13 +549,19 @@ export function computePreComplexity(opts: {
   totalPenalty += Math.abs(bcPenalty);
 
   // 9. Candidate ambiguity (-15 max)
-  const oh = parseTimeTo24h(opts.diaryOnsetTime)!;
+  const oh = parseTimeTo24h(opts.diaryOnsetTime);
+  const wh = parseTimeTo24h(opts.diaryWakeTime);
+  if (!oh || !wh) {
+    // Malformed diary times — skip candidate ambiguity penalty
+    features.candidate_ambiguity_penalty = 0;
+    features.total_penalty = Math.round(-totalPenalty * 10) / 10;
+    return { score: Math.max(0, Math.round(100 - totalPenalty)), features };
+  }
   const onsetD = new Date(opts.analysisDate + "T00:00:00Z");
   if (oh[0] < 12) onsetD.setUTCDate(onsetD.getUTCDate() + 1);
   onsetD.setUTCHours(oh[0], oh[1], 0, 0);
   const diaryOnsetTs = onsetD.getTime() / 1000;
 
-  const wh = parseTimeTo24h(opts.diaryWakeTime)!;
   const wakeD = new Date(opts.analysisDate + "T00:00:00Z");
   if (wh[0] < 12) wakeD.setUTCDate(wakeD.getUTCDate() + 1);
   wakeD.setUTCHours(wh[0], wh[1], 0, 0);

@@ -307,10 +307,11 @@ export function ExportPage() {
   };
 
   // Redirect if not logged in
-  if (!isAuthenticated) {
-    navigate("/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!isAuthenticated) navigate("/login");
+  }, [isAuthenticated, navigate]);
+
+  if (!isAuthenticated) return null;
 
   const isLoading = filesLoading || columnsLoading;
 

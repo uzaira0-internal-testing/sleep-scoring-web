@@ -47,7 +47,7 @@ export const authApi = {
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
       throw new Error(error.detail || "Invalid password");
     }
 

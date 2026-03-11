@@ -13,6 +13,12 @@ export function getWasmApi(): Remote<WasmWorkerApi> {
     _worker = new Worker(new URL("./wasm-worker.ts", import.meta.url), {
       type: "module",
     });
+    _worker.addEventListener("error", () => {
+      // Worker crashed (e.g. WASM OOM) — terminate and allow recreation on next call
+      _worker?.terminate();
+      _worker = null;
+      _api = null;
+    });
     _api = wrap<WasmWorkerApi>(_worker);
   }
   return _api;

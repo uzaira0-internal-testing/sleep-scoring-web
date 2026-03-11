@@ -3,8 +3,8 @@ export type TimeEditField = "onset" | "offset";
 interface ResolveEditedTimeParams {
   timeStr: string;
   currentDate: string | null;
-  referenceTimestampMs: number | null;
-  otherBoundaryTimestampMs: number | null;
+  referenceTimestamp: number | null;
+  otherBoundaryTimestamp: number | null;
   field: TimeEditField;
 }
 
@@ -17,7 +17,7 @@ function parseHHMM(timeStr: string): { hour: number; minute: number } | null {
   return { hour, minute };
 }
 
-function toUtcTimestamp(baseDate: Date, hour: number, minute: number, dayOffset: number): number {
+function toUtcTimestampSeconds(baseDate: Date, hour: number, minute: number, dayOffset: number): number {
   return Date.UTC(
     baseDate.getUTCFullYear(),
     baseDate.getUTCMonth(),
@@ -26,17 +26,17 @@ function toUtcTimestamp(baseDate: Date, hour: number, minute: number, dayOffset:
     minute,
     0,
     0
-  );
+  ) / 1000;
 }
 
-function nearestToReference(candidates: number[], referenceTimestampMs: number): number {
+function nearestToReference(candidates: number[], reference: number): number {
   return candidates.reduce((best, candidate) => (
-    Math.abs(candidate - referenceTimestampMs) < Math.abs(best - referenceTimestampMs) ? candidate : best
+    Math.abs(candidate - reference) < Math.abs(best - reference) ? candidate : best
   ));
 }
 
 /**
- * Resolve a typed HH:MM value to a concrete UTC timestamp in ms.
+ * Resolve a typed HH:MM value to a concrete UTC timestamp in seconds.
  *
  * In 48h view the same clock time appears on two dates, so we generate nearby
  * date candidates and choose the one that preserves marker ordering:
@@ -46,8 +46,8 @@ function nearestToReference(candidates: number[], referenceTimestampMs: number):
 export function resolveEditedTimeToTimestamp({
   timeStr,
   currentDate,
-  referenceTimestampMs,
-  otherBoundaryTimestampMs,
+  referenceTimestamp,
+  otherBoundaryTimestamp,
   field,
 }: ResolveEditedTimeParams): number | null {
   const parsed = parseHHMM(timeStr);
@@ -58,34 +58,33 @@ export function resolveEditedTimeToTimestamp({
   if (currentDate) {
     const scoringDate = new Date(`${currentDate}T00:00:00Z`);
     for (const dayOffset of [-1, 0, 1]) {
-      candidateSet.add(toUtcTimestamp(scoringDate, parsed.hour, parsed.minute, dayOffset));
+      candidateSet.add(toUtcTimestampSeconds(scoringDate, parsed.hour, parsed.minute, dayOffset));
     }
   }
 
-  if (referenceTimestampMs !== null) {
-    const referenceDate = new Date(referenceTimestampMs);
+  if (referenceTimestamp !== null) {
+    const referenceDate = new Date(referenceTimestamp * 1000);
     for (const dayOffset of [-1, 0, 1]) {
-      candidateSet.add(toUtcTimestamp(referenceDate, parsed.hour, parsed.minute, dayOffset));
+      candidateSet.add(toUtcTimestampSeconds(referenceDate, parsed.hour, parsed.minute, dayOffset));
     }
   }
 
   const candidates = Array.from(candidateSet).sort((a, b) => a - b);
   if (candidates.length === 0) return null;
 
-  if (otherBoundaryTimestampMs !== null) {
+  if (otherBoundaryTimestamp !== null) {
     if (field === "onset") {
-      const valid = candidates.filter((ts) => ts <= otherBoundaryTimestampMs);
+      const valid = candidates.filter((ts) => ts <= otherBoundaryTimestamp);
       if (valid.length > 0) return valid[valid.length - 1];
     } else {
-      const valid = candidates.filter((ts) => ts >= otherBoundaryTimestampMs);
+      const valid = candidates.filter((ts) => ts >= otherBoundaryTimestamp);
       if (valid.length > 0) return valid[0];
     }
   }
 
-  if (referenceTimestampMs !== null) {
-    return nearestToReference(candidates, referenceTimestampMs);
+  if (referenceTimestamp !== null) {
+    return nearestToReference(candidates, referenceTimestamp);
   }
 
   return candidates[0];
 }
-

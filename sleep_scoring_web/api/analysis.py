@@ -89,7 +89,6 @@ async def get_analysis_summary(
         has_nonwear = bool(ann.nonwear_markers_json and len(ann.nonwear_markers_json) > 0)
         if ann.is_no_sleep or has_sleep or has_nonwear:
             scored_dates_by_file.setdefault(ann.file_id, set()).add(ann.analysis_date)
-    scored_by_file = {fid: len(dates) for fid, dates in scored_dates_by_file.items()}
 
     # Activity-date sets per file
     activity_dates_result = await db.execute(

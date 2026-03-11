@@ -30,9 +30,11 @@ export function useConnectivity(enabled: boolean = true) {
       return;
     }
 
-    // Check if there's anything to sync before updating UI
+    // Quick check: skip sync entirely if no local files are linked to server
+    const localFiles = await localDb.getLocalFiles();
+    const hasServerLinked = localFiles.some((f) => !!f.serverFileId);
     const pending = await localDb.getPendingMarkers();
-    if (pending.length === 0) {
+    if (!hasServerLinked && pending.length === 0) {
       setSyncComplete(0);
       syncInProgressRef.current = false;
       return;

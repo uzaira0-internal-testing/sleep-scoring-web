@@ -1175,7 +1175,6 @@ async def get_complexity_detail(
 
 async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
     """Background task: compute complexity_pre for all dates in a file."""
-    import calendar
     import logging
 
     from sqlalchemy import and_
@@ -1188,8 +1187,7 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
 
     logger = logging.getLogger(__name__)
 
-    def naive_to_unix(dt: datetime) -> float:
-        return float(calendar.timegm(dt.timetuple()))
+    from sleep_scoring_web.utils import naive_to_unix
 
     async with async_session_maker() as db:
         for analysis_date in dates:

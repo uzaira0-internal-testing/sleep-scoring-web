@@ -2,10 +2,11 @@
 
 from typing import Any
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
+from sleep_scoring_web.api.access import is_admin_user
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.db.models import UserSettings
 from sleep_scoring_web.schemas.enums import (
@@ -43,8 +44,7 @@ class UserSettingsResponse(BaseModel):
     # Extra settings
     extra_settings: dict[str, Any] | None = None
 
-    class Config:  # noqa: D106
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserSettingsUpdate(BaseModel):
@@ -272,8 +272,7 @@ class StudySettingsResponse(BaseModel):
     default_algorithm: str | None = None
     extra_settings: dict[str, Any] | None = None
 
-    class Config:  # noqa: D106
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StudySettingsUpdate(BaseModel):
@@ -330,8 +329,11 @@ async def update_study_settings(
     settings_data: StudySettingsUpdate,
     db: DbSession,
     _: VerifiedPassword,
+    username: Username,
 ) -> StudySettingsResponse:
-    """Update study-wide settings. These are shared across all users."""
+    """Update study-wide settings. These are shared across all users (admin only)."""
+    if not is_admin_user(username):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     result = await db.execute(
         select(UserSettings).where(UserSettings.username == STUDY_SETTINGS_USERNAME)
     )
@@ -389,8 +391,11 @@ async def update_study_settings(
 async def reset_study_settings(
     db: DbSession,
     _: VerifiedPassword,
+    username: Username,
 ) -> None:
-    """Reset study-wide settings to defaults."""
+    """Reset study-wide settings to defaults (admin only)."""
+    if not is_admin_user(username):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     result = await db.execute(
         select(UserSettings).where(UserSettings.username == STUDY_SETTINGS_USERNAME)
     )

@@ -1,15 +1,20 @@
 import * as Comlink from "comlink";
 
-// Lazy-init WASM module
-let wasmModule: typeof import("@/wasm/pkg/sleep_scoring_wasm") | null = null;
+// Lazy-init WASM module — cache the promise to prevent double-initialization
+let wasmPromise: Promise<typeof import("@/wasm/pkg/sleep_scoring_wasm")> | null = null;
 
-async function ensureWasm() {
-  if (!wasmModule) {
-    const mod = await import("@/wasm/pkg/sleep_scoring_wasm");
-    await mod.default();
-    wasmModule = mod;
+function ensureWasm() {
+  if (!wasmPromise) {
+    wasmPromise = (async () => {
+      const mod = await import("@/wasm/pkg/sleep_scoring_wasm");
+      await mod.default();
+      return mod;
+    })().catch((err) => {
+      wasmPromise = null; // Allow retry on next call
+      throw err;
+    });
   }
-  return wasmModule;
+  return wasmPromise;
 }
 
 const workerApi = {

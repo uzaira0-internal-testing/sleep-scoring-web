@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from sqlalchemy import select as sa_select
 
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Cleanup stale uploads (UPLOADING status older than 24h → FAILED)
     try:
         async with async_session_maker() as db:
-            cutoff = datetime.now() - timedelta(hours=24)
+            cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=24)
             result = await db.execute(
                 sa_select(FileModel).where(
                     FileModel.status == FileStatus.UPLOADING,

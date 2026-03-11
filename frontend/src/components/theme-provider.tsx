@@ -34,9 +34,13 @@ export function ThemeProvider({
   storageKey = "sleep-scoring-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
-  );
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return (localStorage.getItem(storageKey) as Theme) || defaultTheme;
+    } catch {
+      return defaultTheme;
+    }
+  });
   const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
   );
@@ -65,7 +69,7 @@ export function ThemeProvider({
   const value = {
     theme,
     setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme);
+      try { localStorage.setItem(storageKey, theme); } catch { /* quota exceeded or private browsing */ }
       setTheme(theme);
     },
     resolvedTheme,

@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 import polars as pl
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, select
 
 from sleep_scoring_web.api.access import require_file_access
@@ -109,8 +109,7 @@ class DiaryEntryResponse(BaseModel):
     nonwear_3_end: str | None = None
     nonwear_3_reason: str | None = None
 
-    class Config:  # noqa: D106
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DiaryEntryCreate(BaseModel):

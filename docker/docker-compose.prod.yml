@@ -43,7 +43,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - wal_archive:/wal_archive
-      - /home/uzair/backups/sleep-scoring/wal:/wal_archive_host
+      - ${WAL_ARCHIVE_HOST_PATH:-./backups/wal}:/wal_archive_host
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sleep -d sleep_scoring"]
       interval: 10s
@@ -113,7 +113,7 @@ services:
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -128,7 +128,7 @@ services:
       - "traefik.http.routers.sleep-scoring-fe.rule=PathPrefix(`/sleep-scoring`)"
       - "traefik.http.routers.sleep-scoring-fe.entrypoints=web"
       - "traefik.http.routers.sleep-scoring-fe.service=sleep-scoring-fe-svc"
-      - "traefik.http.services.sleep-scoring-fe-svc.loadbalancer.server.port=80"
+      - "traefik.http.services.sleep-scoring-fe-svc.loadbalancer.server.port=8080"
       - "traefik.http.middlewares.sleep-scoring-fe-strip.stripprefix.prefixes=/sleep-scoring"
       - "traefik.http.routers.sleep-scoring-fe.middlewares=sleep-scoring-fe-strip"
       - "traefik.http.routers.sleep-scoring-fe.priority=1"

@@ -52,8 +52,16 @@ RUN bun run build
 # =============================================================================
 FROM nginx:alpine
 
+# Create non-root user for nginx
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup && \
+    chown -R appuser:appgroup /var/cache/nginx && \
+    chown -R appuser:appgroup /var/log/nginx && \
+    touch /var/run/nginx.pid && \
+    chown appuser:appgroup /var/run/nginx.pid
+
 # Copy built assets from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder --chown=appuser:appgroup /app/dist /usr/share/nginx/html
 
 # Install curl for healthcheck
 RUN apk add --no-cache curl
@@ -66,10 +74,12 @@ COPY docker/frontend/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Expose port
-EXPOSE 80
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost/health || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
+
+USER appuser
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

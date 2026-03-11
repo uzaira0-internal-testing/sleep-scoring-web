@@ -257,8 +257,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
       if (endPx < 0 || startPx > plotWidth) return;
 
-      const visibleStartPx = Math.max(0, startPx);
-      const visibleEndPx = Math.min(plotWidth, endPx);
 
       const isSelected = mode === "sleep" && selIdx === index;
 
@@ -287,8 +285,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
       if (endPx < 0 || startPx > plotWidth) return;
 
-      const visibleStartPx = Math.max(0, startPx);
-      const visibleEndPx = Math.min(plotWidth, endPx);
 
       const isSelected = mode === "nonwear" && selIdx === index;
 
@@ -1177,8 +1173,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       chartRef.current = null;
     }
 
-    // Remove old marker elements
-    document.querySelectorAll('.marker-line, .marker-region').forEach(el => el.remove());
+    // Remove old marker elements (scoped to this chart container)
+    container.querySelectorAll('.marker-line, .marker-region').forEach(el => el.remove());
 
     const width = container.clientWidth || 800;
     const height = container.clientHeight || 380;

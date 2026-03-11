@@ -131,8 +131,7 @@ export interface AutoScoreOptions {
 
 /**
  * Options for auto-nonwear.
- * `existingSleepMarkers` are onset/offset pairs in milliseconds (store units).
- * DataSource implementations convert to seconds internally.
+ * `existingSleepMarkers` are onset/offset pairs in Unix seconds.
  */
 export interface AutoNonwearOptions {
   threshold: number;

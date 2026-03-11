@@ -541,8 +541,8 @@ export function ScoringPage() {
     const newTs = resolveEditedTimeToTimestamp({
       timeStr: value,
       currentDate,
-      referenceTimestampMs: refTs,
-      otherBoundaryTimestampMs: counterpartTs,
+      referenceTimestamp: refTs,
+      otherBoundaryTimestamp: counterpartTs,
       field,
     });
     if (newTs === null) return;

@@ -5,7 +5,7 @@ Provides endpoints that return activity data around markers for tabular display.
 """
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -13,7 +13,7 @@ from sqlalchemy import and_, select
 
 from sleep_scoring_web.api.access import require_file_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
-from sleep_scoring_web.api.markers import naive_to_unix
+from sleep_scoring_web.utils import naive_to_unix
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker, RawActivityData
 from sleep_scoring_web.schemas.enums import MarkerCategory
@@ -98,7 +98,7 @@ async def get_onset_offset_data(
         return OnsetOffsetTableResponse(onset_data=[], offset_data=[], period_index=period_index)
 
     # Get data around onset (use UTC to match stored timestamps)
-    onset_dt = datetime.utcfromtimestamp(onset_timestamp)
+    onset_dt = datetime.fromtimestamp(onset_timestamp, tz=timezone.utc)
     onset_start = onset_dt - timedelta(minutes=window_minutes)
     onset_end = onset_dt + timedelta(minutes=window_minutes)
 
@@ -116,7 +116,7 @@ async def get_onset_offset_data(
     onset_rows = onset_result.scalars().all()
 
     # Get data around offset (use UTC to match stored timestamps)
-    offset_dt = datetime.utcfromtimestamp(offset_timestamp)
+    offset_dt = datetime.fromtimestamp(offset_timestamp, tz=timezone.utc)
     offset_start = offset_dt - timedelta(minutes=window_minutes)
     offset_end = offset_dt + timedelta(minutes=window_minutes)
 

@@ -18,7 +18,7 @@ export async function handleApiError(response: Response): Promise<never> {
   }
 
   // Try to parse error detail from response body
-  const error = await response.json().catch(() => ({ detail: "Request failed" }));
+  const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
   throw new Error(error.detail || `HTTP ${response.status}`);
 }
 

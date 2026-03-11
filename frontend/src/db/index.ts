@@ -10,12 +10,14 @@ export type { FileRecord, ActivityDay, MarkerRecord, SleepMarkerJson, NonwearMar
  */
 export async function saveFileRecord(record: Omit<FileRecord, "id">): Promise<number> {
   const db = getDb();
-  const existing = await db.files.where("filename").equals(record.filename).first();
-  if (existing?.id) {
-    await db.files.update(existing.id, record);
-    return existing.id;
-  }
-  return db.files.add(record as FileRecord);
+  return db.transaction("rw", db.files, async () => {
+    const existing = await db.files.where("filename").equals(record.filename).first();
+    if (existing?.id) {
+      await db.files.update(existing.id, record);
+      return existing.id;
+    }
+    return db.files.add(record as FileRecord);
+  });
 }
 
 /**
@@ -102,11 +104,6 @@ export async function saveMarkers(
   const db = getDb();
   const contentHash = await computeMarkerHash({ sleepMarkers, nonwearMarkers, isNoSleep, notes });
 
-  const existing = await db.markers
-    .where("[fileId+date+username]")
-    .equals([fileId, date, username])
-    .first();
-
   const record: Omit<MarkerRecord, "id"> = {
     fileId,
     date,
@@ -121,11 +118,18 @@ export async function saveMarkers(
     lastModifiedAt: new Date().toISOString(),
   };
 
-  if (existing?.id) {
-    await db.markers.update(existing.id, record);
-  } else {
-    await db.markers.add(record as MarkerRecord);
-  }
+  await db.transaction("rw", db.markers, async () => {
+    const existing = await db.markers
+      .where("[fileId+date+username]")
+      .equals([fileId, date, username])
+      .first();
+
+    if (existing?.id) {
+      await db.markers.update(existing.id, record);
+    } else {
+      await db.markers.add(record as MarkerRecord);
+    }
+  });
 }
 
 /**
@@ -213,18 +217,20 @@ export async function saveLocalStudySettings(settings: {
 }): Promise<void> {
   const db = getDb();
   const contentHash = await sha256Hex(JSON.stringify(settings));
-  const existing = await db.studySettings.where("key").equals("study").first();
   const record: Omit<StudySettingsRecord, "id"> = {
     key: "study",
     ...settings,
     contentHash,
     lastModifiedAt: new Date().toISOString(),
   };
-  if (existing?.id) {
-    await db.studySettings.update(existing.id, record);
-  } else {
-    await db.studySettings.add(record as StudySettingsRecord);
-  }
+  await db.transaction("rw", db.studySettings, async () => {
+    const existing = await db.studySettings.where("key").equals("study").first();
+    if (existing?.id) {
+      await db.studySettings.update(existing.id, record);
+    } else {
+      await db.studySettings.add(record as StudySettingsRecord);
+    }
+  });
 }
 
 // =============================================================================

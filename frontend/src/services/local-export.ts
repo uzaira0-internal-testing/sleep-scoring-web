@@ -185,8 +185,8 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.download = filename;
   document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
   document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Trigger a browser download of a CSV string. */

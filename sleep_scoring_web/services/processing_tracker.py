@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
+
+_MAX_ENTRIES = 100
+_STALE_THRESHOLD = timedelta(hours=1)
 
 
 @dataclass
@@ -25,8 +28,33 @@ class ProcessingProgress:
 _processing_status: dict[int, ProcessingProgress] = {}
 
 
+def _evict_stale_entries() -> None:
+    """Remove entries older than 1 hour and cap at _MAX_ENTRIES most recent."""
+    now = datetime.now()
+    # Remove entries older than the stale threshold
+    stale_ids = [
+        fid
+        for fid, p in _processing_status.items()
+        if now - p.updated_at > _STALE_THRESHOLD
+    ]
+    for fid in stale_ids:
+        del _processing_status[fid]
+
+    # If still over the cap, keep only the most recent entries
+    if len(_processing_status) > _MAX_ENTRIES:
+        sorted_entries = sorted(
+            _processing_status.items(),
+            key=lambda item: item[1].updated_at,
+            reverse=True,
+        )
+        _processing_status.clear()
+        for fid, progress in sorted_entries[:_MAX_ENTRIES]:
+            _processing_status[fid] = progress
+
+
 def start_tracking(file_id: int) -> ProcessingProgress:
     """Start tracking processing for a file."""
+    _evict_stale_entries()
     progress = ProcessingProgress(file_id=file_id)
     _processing_status[file_id] = progress
     return progress

@@ -8,7 +8,6 @@ because FastAPI's dependency injection needs actual types, not string
 annotations. Using Annotated types requires runtime resolution.
 """
 
-import calendar
 from datetime import date, datetime, timedelta
 from typing import Annotated
 
@@ -21,19 +20,9 @@ from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker, RawActivityData
 from sleep_scoring_web.schemas import ActivityDataColumnar, ActivityDataResponse
 from sleep_scoring_web.schemas.models import SensorNonwearPeriod
+from sleep_scoring_web.utils import naive_to_unix
 
 router = APIRouter()
-
-
-def naive_to_unix(dt: datetime) -> float:
-    """
-    Convert naive datetime to Unix timestamp WITHOUT timezone interpretation.
-
-    Uses calendar.timegm which treats the datetime as UTC without conversion.
-    This ensures that "12:00" in the database displays as "12:00" to the user,
-    regardless of server or client timezone.
-    """
-    return float(calendar.timegm(dt.timetuple()))
 
 
 @router.get("/{file_id}/{analysis_date}")

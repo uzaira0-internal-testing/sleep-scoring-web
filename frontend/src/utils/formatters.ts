@@ -48,7 +48,7 @@ export function formatTime(timestampSec: number | null): string {
  */
 export function formatDuration(startSec: number | null, endSec: number | null): string {
   if (startSec === null || endSec === null) return "--";
-  const durationSec = endSec - startSec;
+  const durationSec = Math.max(0, endSec - startSec);
   const hours = Math.floor(durationSec / 3600);
   const minutes = Math.floor((durationSec % 3600) / 60);
   return `${hours}h ${minutes}m`;

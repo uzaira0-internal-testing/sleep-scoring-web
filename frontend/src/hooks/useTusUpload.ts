@@ -250,6 +250,7 @@ export function useTusUpload() {
         }
       };
 
+      if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(poll, 2000);
       poll(); // Immediate first poll
     },

@@ -61,7 +61,7 @@ export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts> {
         const compressedBlob = await this.compressBlob(blob);
 
         const compressionRatio = ((1 - compressedBlob.size / originalSize) * 100).toFixed(1);
-        console.log(
+        console.debug(
           `[GzipCompressor] ${file.name}: ${(originalSize / 1024 / 1024).toFixed(1)}MB → ${(compressedBlob.size / 1024 / 1024).toFixed(1)}MB (${compressionRatio}% smaller)`
         );
 

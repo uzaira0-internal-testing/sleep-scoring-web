@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
-import weakref
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select

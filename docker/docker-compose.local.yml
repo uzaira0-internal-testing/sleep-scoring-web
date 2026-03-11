@@ -35,7 +35,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - wal_archive:/wal_archive
-      - /home/uzair/backups/sleep-scoring/wal:/wal_archive_host
+      - ${WAL_ARCHIVE_HOST_PATH:-../backups/wal}:/wal_archive_host
     ports:
       - "5435:5432"
     healthcheck:
@@ -125,11 +125,11 @@ services:
     environment:
       BASE_PATH: /sleep-scoring
     ports:
-      - "${FRONTEND_PORT:-8501}:80"
+      - "${FRONTEND_PORT:-8501}:8080"
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -144,7 +144,7 @@ services:
       - "traefik.http.routers.sleepscoring-fe.middlewares=sleepscoring-fe-strip"
       - "traefik.http.routers.sleepscoring-fe.service=sleepscoring-fe-svc"
       - "traefik.http.middlewares.sleepscoring-fe-strip.stripprefix.prefixes=/sleep-scoring"
-      - "traefik.http.services.sleepscoring-fe-svc.loadbalancer.server.port=80"
+      - "traefik.http.services.sleepscoring-fe-svc.loadbalancer.server.port=8080"
     networks:
       - sleep-scoring-network
       - traefik-apps

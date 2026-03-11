@@ -76,7 +76,7 @@ function dateTimeToTimestamp(isoDate: string, timeStr: string): number | null {
   const parsedTime = parseTime(timeStr);
   if (!parsedTime) return null;
 
-  const dt = new Date(`${isoDate}T${parsedTime}`);
+  const dt = new Date(`${isoDate}T${parsedTime}Z`);
   if (isNaN(dt.getTime())) return null;
   return dt.getTime() / 1000;
 }

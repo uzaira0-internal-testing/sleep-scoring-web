@@ -105,7 +105,7 @@ export function StudySettingsPage() {
     if (caps.server || !localSettings) return;
     if (localSettings.defaultAlgorithm) setCurrentAlgorithm(localSettings.defaultAlgorithm);
     if (localSettings.sleepDetectionRule) setSleepDetectionRule(localSettings.sleepDetectionRule as typeof sleepDetectionRule);
-    if (localSettings.nightStartHour && localSettings.nightEndHour) {
+    if (localSettings.nightStartHour != null && localSettings.nightEndHour != null) {
       setNightHours(localSettings.nightStartHour, localSettings.nightEndHour);
     }
   }, [localSettings, caps.server, setCurrentAlgorithm, setSleepDetectionRule, setNightHours]);
@@ -121,7 +121,7 @@ export function StudySettingsPage() {
       if (backendSettings.sleep_detection_rule) {
         setSleepDetectionRule(backendSettings.sleep_detection_rule as typeof sleepDetectionRule);
       }
-      if (backendSettings.night_start_hour && backendSettings.night_end_hour) {
+      if (backendSettings.night_start_hour != null && backendSettings.night_end_hour != null) {
         setNightHours(backendSettings.night_start_hour, backendSettings.night_end_hour);
       }
     }

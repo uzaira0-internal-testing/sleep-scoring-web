@@ -8,7 +8,6 @@ because FastAPI's dependency injection needs actual types, not string
 annotations. Using Annotated types requires runtime resolution.
 """
 
-import calendar
 import logging
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Annotated, Any
@@ -28,13 +27,9 @@ from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, Marke
 from sleep_scoring_web.services.consensus import compute_candidate_hash
 from sleep_scoring_web.services.consensus_realtime import broadcast_consensus_update
 from sleep_scoring_web.services.file_identity import is_excluded_file_obj
+from sleep_scoring_web.utils import naive_to_unix
 
 router = APIRouter()
-
-
-def naive_to_unix(dt: datetime) -> float:
-    """Convert naive datetime to Unix timestamp without timezone interpretation."""
-    return float(calendar.timegm(dt.timetuple()))
 
 
 async def _upsert_consensus_candidate_snapshot(

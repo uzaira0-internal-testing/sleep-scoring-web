@@ -493,17 +493,17 @@ export function DataSettingsPage() {
   };
 
   const handleClearSleepMarkers = async () => {
-    const ok = await confirm({ title: "Clear Sleep Markers", description: "Clear all sleep markers for the current file?", variant: "destructive", confirmLabel: "Clear" });
+    const ok = await confirm({ title: "Clear Sleep Markers", description: "Clear all sleep markers for the current date?", variant: "destructive", confirmLabel: "Clear" });
     if (ok) setSleepMarkers([]);
   };
 
   const handleClearNonwearMarkers = async () => {
-    const ok = await confirm({ title: "Clear Nonwear Markers", description: "Clear all nonwear markers for the current file?", variant: "destructive", confirmLabel: "Clear" });
+    const ok = await confirm({ title: "Clear Nonwear Markers", description: "Clear all nonwear markers for the current date?", variant: "destructive", confirmLabel: "Clear" });
     if (ok) setNonwearMarkers([]);
   };
 
   const handleClearAllMarkers = async () => {
-    const ok = await confirm({ title: "Clear All Markers", description: "Clear ALL markers for the current file?", variant: "destructive", confirmLabel: "Clear All" });
+    const ok = await confirm({ title: "Clear All Markers", description: "Clear ALL markers for the current date?", variant: "destructive", confirmLabel: "Clear All" });
     if (ok) {
       useSleepScoringStore.getState().clearAllMarkers();
     }
