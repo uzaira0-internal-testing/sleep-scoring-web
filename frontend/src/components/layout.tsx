@@ -6,6 +6,7 @@ import { useTheme } from "@/components/theme-provider";
 import { useSleepScoringStore } from "@/store";
 import { cn } from "@/lib/utils";
 import { OfflineBanner } from "@/components/offline-banner";
+import { UpdateBanner } from "@/components/update-banner";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import { useAppCapabilities } from "@/hooks/useAppCapabilities";
 import { useWorkspaceStore, getActiveWorkspaceId, clearActiveWorkspaceId } from "@/store/workspace-store";
@@ -198,6 +199,7 @@ export function Layout() {
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
         )}
+        <UpdateBanner />
         {caps.server && <OfflineBanner />}
         {uploadProgress && (
           <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/10 border-b border-primary/20 text-sm text-primary">

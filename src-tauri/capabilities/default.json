@@ -6,6 +6,7 @@
     "shell:allow-open",
     "log:default",
     "window-state:default",
-    "process:default"
+    "process:default",
+    "updater:default"
   ]
 }
