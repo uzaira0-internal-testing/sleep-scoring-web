@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+/** Injected by Vite define — app version from package.json */
+declare const __APP_VERSION__: string;
+
 // CSS modules
 declare module "*.css" {
   const css: string;

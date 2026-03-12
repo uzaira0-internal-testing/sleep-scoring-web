@@ -131,13 +131,16 @@ export function Layout() {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-border/60 space-y-3">
-          {/* Mode indicator */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {caps.server ? (
-              <><Wifi className="h-3.5 w-3.5 text-green-500" /><span>Connected</span></>
-            ) : (
-              <><WifiOff className="h-3.5 w-3.5 text-yellow-500" /><span>Local Mode</span></>
-            )}
+          {/* Mode indicator + version */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              {caps.server ? (
+                <><Wifi className="h-3.5 w-3.5 text-green-500" /><span>Connected</span></>
+              ) : (
+                <><WifiOff className="h-3.5 w-3.5 text-yellow-500" /><span>Local Mode</span></>
+              )}
+            </div>
+            <span className="opacity-50">v{__APP_VERSION__}</span>
           </div>
           {/* User */}
           <div className="flex items-center gap-2">

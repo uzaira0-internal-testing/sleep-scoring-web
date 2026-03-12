@@ -4,9 +4,13 @@ import tailwindcss from "@tailwindcss/vite";
 import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { resolve } from "path";
+import { readFileSync } from "fs";
 
 // Tauri expects a fixed port for dev, and internalHost for mobile
 const host = process.env.TAURI_DEV_HOST;
+
+// Read version from package.json at build time
+const pkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8"));
 
 export default defineConfig({
   plugins: [
@@ -40,6 +44,9 @@ export default defineConfig({
     alias: {
       "@": resolve(__dirname, "./src"),
     },
+  },
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
   },
   build: {
     outDir: "dist",
