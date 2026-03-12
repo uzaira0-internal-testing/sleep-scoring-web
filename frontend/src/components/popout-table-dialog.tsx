@@ -5,7 +5,7 @@ import { fetchWithAuth, getApiBase } from "@/api/client";
 import { hexToRgba } from "@/lib/color-themes";
 import { WindowPortal } from "./window-portal";
 import { Home } from "lucide-react";
-import type { FullTableDataPoint, FullTableResponse } from "@/api/types";
+import type { FullTableColumnar } from "@/api/types";
 
 interface PopoutTableDialogProps {
   open: boolean;
@@ -24,6 +24,7 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
   const { currentDate } = useDates();
   const isAuthenticated = useSleepScoringStore((state) => state.isAuthenticated);
   const colorTheme = useSleepScoringStore((state) => state.colorTheme);
+  const currentAlgorithm = useSleepScoringStore((state) => state.currentAlgorithm);
 
   const { sleepMarkers, nonwearMarkers, selectedPeriodIndex, updateMarker, markerMode } = useMarkers();
 
@@ -40,23 +41,28 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
       : highlightType === "onset" ? (currentMarker as { startTimestamp: number | null }).startTimestamp : (currentMarker as { endTimestamp: number | null }).endTimestamp
     : null;
 
-  // Fetch full table data from API
-  const { data: tableData, isLoading } = useQuery({
-    queryKey: ["full-table", currentFileId, currentDate],
+  // Fetch full table data from API (columnar format for smaller payload)
+  const { data: tableData, isLoading, error: tableError } = useQuery({
+    queryKey: ["full-table", currentFileId, currentDate, currentAlgorithm],
     queryFn: async () => {
       if (!currentFileId || !currentDate) {
         return null;
       }
-      const url = `${getApiBase()}/markers/${currentFileId}/${currentDate}/table-full`;
-      return fetchWithAuth<FullTableResponse>(url);
+      const params = new URLSearchParams();
+      if (currentAlgorithm) params.set("algorithm", currentAlgorithm);
+      const qs = params.toString();
+      const url = `${getApiBase()}/markers/${currentFileId}/${currentDate}/table-full/columnar${qs ? `?${qs}` : ""}`;
+      return fetchWithAuth<FullTableColumnar>(url);
     },
     enabled: open && isAuthenticated && !!currentFileId && !!currentDate,
     staleTime: 60000,
   });
 
+  const rowCount = tableData?.timestamps?.length ?? 0;
+
   // Find marker row index
-  const markerRowIndex = tableData?.data?.findIndex(
-    (row) => targetTimestamp && Math.abs(row.timestamp - targetTimestamp) < 60
+  const markerRowIndex = tableData?.timestamps?.findIndex(
+    (ts) => targetTimestamp && Math.abs(ts - targetTimestamp) < 60
   );
 
   // Scroll marker row into view when data loads or marker changes
@@ -82,25 +88,23 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
   }, []);
 
   // Handle click-to-move (supports both sleep and nonwear modes)
-  const handleRowClick = useCallback((row: FullTableDataPoint) => {
+  const handleRowClick = useCallback((timestamp: number) => {
     if (selectedPeriodIndex === null) return;
 
     if (markerMode === "sleep") {
       if (highlightType === "onset") {
-        updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: row.timestamp });
+        updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: timestamp });
       } else {
-        updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: row.timestamp });
+        updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: timestamp });
       }
     } else {
       if (highlightType === "onset") {
-        updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: row.timestamp });
+        updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: timestamp });
       } else {
-        updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: row.timestamp });
+        updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: timestamp });
       }
     }
   }, [selectedPeriodIndex, markerMode, highlightType, updateMarker]);
-
-  const data = tableData?.data ?? [];
 
   const isSleepMode = markerMode === "sleep";
 
@@ -135,7 +139,7 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {tableData?.start_time && tableData?.end_time && (
-                  <span>{tableData.start_time} to {tableData.end_time} ({tableData.total_rows} epochs)</span>
+                  <span>{tableData.start_time} to {tableData.end_time} ({rowCount} epochs)</span>
                 )}
                 {" | "}Click any row to move the {markerLabel} marker
               </p>
@@ -158,7 +162,11 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               Loading...
             </div>
-          ) : data.length === 0 ? (
+          ) : tableError ? (
+            <div className="flex items-center justify-center h-32 text-destructive">
+              Failed to load table data
+            </div>
+          ) : rowCount === 0 ? (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               No data available
             </div>
@@ -176,17 +184,22 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
                 </tr>
               </thead>
               <tbody>
-                {data.map((row, idx) => {
+                {tableData?.timestamps.map((ts, idx) => {
                   const isMarkerRow = idx === markerRowIndex;
-                  const sleepWake = row.algorithm_result === 1 ? "Sleep" : row.algorithm_result === 0 ? "Wake" : "-";
-                  const choiLabel = row.choi_result === 1 ? "Nonwear" : "-";
-                  const nwLabel = row.is_nonwear ? "Nonwear" : "-";
+                  const algoResult = tableData.algorithm_result[idx];
+                  const choiResult = tableData.choi_result[idx];
+                  const nonwear = tableData.is_nonwear[idx];
+                  const sleepWake = algoResult === 1 ? "Sleep" : algoResult === 0 ? "Wake" : "-";
+                  const choiLabel = choiResult === 1 ? "Nonwear" : "-";
+                  const nwLabel = nonwear ? "Nonwear" : "-";
+                  const d = new Date(ts * 1000);
+                  const timeStr = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 
                   return (
                     <tr
                       key={idx}
                       ref={isMarkerRow ? markerRowRef : undefined}
-                      onClick={() => handleRowClick(row)}
+                      onClick={() => handleRowClick(ts)}
                       className={`border-b cursor-pointer transition-colors ${
                         isMarkerRow
                           ? "font-bold border-l-4"
@@ -198,9 +211,9 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
                       } : undefined}
                     >
                       <td className="px-2 py-1 text-muted-foreground font-mono">{idx + 1}</td>
-                      <td className="px-2 py-1 font-mono">{row.datetime_str}</td>
-                      <td className="px-2 py-1 text-right font-mono">{row.axis_y}</td>
-                      <td className="px-2 py-1 text-right font-mono text-muted-foreground">{row.vector_magnitude}</td>
+                      <td className="px-2 py-1 font-mono">{timeStr}</td>
+                      <td className="px-2 py-1 text-right font-mono">{tableData.axis_y[idx]}</td>
+                      <td className="px-2 py-1 text-right font-mono text-muted-foreground">{tableData.vector_magnitude[idx]}</td>
                       <td className={`px-2 py-1 text-center ${
                         sleepWake === "Sleep" ? "text-purple-600 dark:text-purple-400" :
                         sleepWake === "Wake" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
@@ -227,7 +240,7 @@ export function PopoutTableDialog({ open, onOpenChange, highlightType = "onset" 
 
         {/* Footer */}
         <div className="flex-none text-xs text-muted-foreground text-center py-2 border-t">
-          {data.length} epochs | Close this window or the main app to dismiss
+          {rowCount} epochs | Close this window or the main app to dismiss
         </div>
       </div>
     </WindowPortal>

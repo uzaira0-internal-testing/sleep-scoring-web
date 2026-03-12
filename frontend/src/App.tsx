@@ -40,14 +40,16 @@ function rehydrateWorkspace(): boolean {
 
   // Restore serverAvailable based on workspace type so DataSourceProvider
   // picks the correct mode immediately (before the async probe completes).
-  // Mark serverChecked=true for both cases to prevent probeServer() from
-  // re-running — in Tauri local mode there's no server to probe, and for
-  // server workspaces we optimistically set available (the probe will correct
-  // if the server went offline).
   if (ws.serverUrl) {
+    // Explicit server URL — optimistically set available (probe will correct if down)
     useCapabilitiesStore.getState().setServerAvailable(true);
-  } else {
+  } else if (isTauri()) {
+    // Tauri local workspace — no server to probe
     useCapabilitiesStore.getState().setServerAvailable(false);
+  } else {
+    // Co-hosted web workspace (serverUrl === "") — server is on same origin,
+    // optimistically set available and let the probe verify
+    useCapabilitiesStore.getState().setServerAvailable(true);
   }
 
   return true;

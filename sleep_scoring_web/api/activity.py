@@ -8,17 +8,19 @@ because FastAPI's dependency injection needs actual types, not string
 annotations. Using Annotated types requires runtime resolution.
 """
 
+import hashlib
 from datetime import date, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy import and_, select
 
-from sleep_scoring_web.api.access import require_file_access
+from sleep_scoring_web.api.access import require_file_access, require_file_and_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker, RawActivityData
 from sleep_scoring_web.schemas import ActivityDataColumnar, ActivityDataResponse
+from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, NonwearDataSource
 from sleep_scoring_web.schemas.models import SensorNonwearPeriod
 from sleep_scoring_web.utils import naive_to_unix
 
@@ -125,15 +127,20 @@ async def get_activity_data(
     )
 
 
-@router.get("/{file_id}/{analysis_date}/score")
+@router.get(
+    "/{file_id}/{analysis_date}/score",
+    response_model_exclude_none=True,
+)
 async def get_activity_data_with_scoring(
     file_id: int,
     analysis_date: date,
+    request: Request,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
     view_hours: Annotated[int, Query(ge=12, le=48)] = 24,
-    algorithm: Annotated[str, Query(description="Sleep scoring algorithm to use")] = "sadeh_1994_actilife",
+    algorithm: Annotated[str, Query(description="Sleep scoring algorithm to use")] = AlgorithmType.get_default(),
+    fields: Annotated[str | None, Query(description="Comma-separated optional fields to include (axis_x,axis_z,available_dates). Omit for all.")] = None,
 ) -> ActivityDataResponse:
     """
     Get activity data with sleep scoring algorithm results.
@@ -149,6 +156,7 @@ async def get_activity_data_with_scoring(
     - cole_kripke_1992_original: Cole-Kripke 1992 original paper version
     """
     from sleep_scoring_web.services.algorithms import ALGORITHM_TYPES, ChoiAlgorithm, create_algorithm
+    from sleep_scoring_web.services.choi_helpers import get_choi_column
 
     # Validate algorithm type
     if algorithm not in ALGORITHM_TYPES:
@@ -157,8 +165,31 @@ async def get_activity_data_with_scoring(
             detail=f"Unknown algorithm: {algorithm}. Available: {ALGORITHM_TYPES}",
         )
 
-    # Get base activity data (auth already checked by dependency)
+    # Single atomic file load + access check (avoids double query)
+    file = await require_file_and_access(db, username, file_id)
+
+    # ETag: activity data is immutable for a given file+date+params combination.
+    choi_column = await get_choi_column(db, username)
+    etag_src = f"{file_id}:{analysis_date}:{algorithm}:{view_hours}:{choi_column}:{fields or ''}:{file.uploaded_at}"
+    etag = '"' + hashlib.md5(etag_src.encode(), usedforsecurity=False).hexdigest() + '"'
+
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})  # type: ignore[return-value]
+
+    # Parse requested fields
+    requested_fields = set(fields.split(",")) if fields else None
+
+    # Get base activity data
     response = await get_activity_data(file_id, analysis_date, db, "", username, view_hours)
+
+    # Strip optional axes if not requested
+    if requested_fields is not None:
+        if "axis_x" not in requested_fields:
+            response.data.axis_x = []
+        if "axis_z" not in requested_fields:
+            response.data.axis_z = []
+        if "available_dates" not in requested_fields:
+            response.available_dates = []
 
     # Run sleep scoring algorithm on the data
     if response.data.axis_y:
@@ -168,10 +199,9 @@ async def get_activity_data_with_scoring(
 
         # Run Choi nonwear detection using user's preferred column (or default
         # vector_magnitude) — same column as the table endpoints for consistency.
-        from sleep_scoring_web.services.choi_helpers import extract_choi_input_from_columnar, get_choi_column
+        from sleep_scoring_web.services.choi_helpers import extract_choi_input_from_columnar
 
         choi = ChoiAlgorithm()
-        choi_column = await get_choi_column(db, username)
         choi_input = extract_choi_input_from_columnar(response.data, choi_column)
         response.nonwear_results = choi.detect_mask(choi_input)
 
@@ -182,8 +212,8 @@ async def get_activity_data_with_scoring(
         select(Marker).where(
             and_(
                 Marker.file_id == file_id,
-                Marker.marker_category == "nonwear",
-                Marker.marker_type == "sensor",
+                Marker.marker_category == MarkerCategory.NONWEAR,
+                Marker.marker_type == NonwearDataSource.SENSOR,
                 Marker.start_timestamp <= response.view_end,
                 Marker.end_timestamp >= response.view_start,
             )
@@ -198,13 +228,24 @@ async def get_activity_data_with_scoring(
         for m in sensor_nw_markers
     ]
 
-    return response
+    # Set caching headers — ETag + short max-age for browser cache
+    response_headers = {
+        "ETag": etag,
+        "Cache-Control": "private, max-age=300",
+    }
+
+    return Response(
+        content=response.model_dump_json(exclude_none=True),
+        media_type="application/json",
+        headers=response_headers,
+    )  # type: ignore[return-value]
 
 
 @router.get("/{file_id}/{analysis_date}/sadeh")
 async def get_activity_data_with_sadeh(
     file_id: int,
     analysis_date: date,
+    request: Request,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
@@ -218,6 +259,7 @@ async def get_activity_data_with_sadeh(
     return await get_activity_data_with_scoring(
         file_id=file_id,
         analysis_date=analysis_date,
+        request=request,
         db=db,
         _="",  # Auth already verified at route level
         username=username,

@@ -19,6 +19,7 @@ from fastapi_logging import RequestLoggingMiddleware, get_logger, setup_logging
 from fastapi_ratelimit import setup_rate_limiting
 from global_auth import SessionAuthMiddleware, create_session_auth_router
 from global_auth.schemas import PasswordVerifyRequest, PasswordVerifyResponse
+from starlette.middleware.gzip import GZipMiddleware
 
 from sleep_scoring_web.auth_setup import create_session_storage
 from sleep_scoring_web.config import get_settings, settings
@@ -104,6 +105,9 @@ app = FastAPI(
     redoc_url="/api/v1/redoc",
     openapi_url="/api/v1/openapi.json",
 )
+
+# GZip compression — 70-80% reduction on JSON responses (skip small responses <1KB)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Install standard error handlers from fastapi-errors
 setup_error_handlers(app, debug=settings.debug)

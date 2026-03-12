@@ -138,16 +138,21 @@ async def log_audit_events(
     try:
         db.add_all(entries)
         await db.commit()
-    except IntegrityError:
-        # Concurrent flush from another tab — events already persisted
+    except IntegrityError as exc:
         await db.rollback()
-        logger.debug(
-            "Concurrent flush dedup for file=%d date=%s user=%s",
-            request.file_id,
-            request.analysis_date,
-            username,
-        )
-        return AuditBatchResponse(logged=0)
+        # Narrow check: only suppress the dedup constraint violation
+        exc_str = str(exc).lower()
+        if "uq_audit_session_sequence" in exc_str:
+            logger.debug(
+                "Concurrent flush dedup for file=%d date=%s user=%s",
+                request.file_id,
+                request.analysis_date,
+                username,
+            )
+            return AuditBatchResponse(logged=0)
+        # Unexpected constraint violation (FK, NOT NULL, etc.) — propagate
+        logger.exception("Unexpected IntegrityError in audit log: %s", exc)
+        raise
 
     logger.debug(
         "Logged %d audit events for file=%d date=%s user=%s",

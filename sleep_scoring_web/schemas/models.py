@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from sleep_scoring_web.utils import ensure_seconds
+
 from .enums import (
     AlgorithmType,
     FileStatus,
@@ -22,6 +24,20 @@ from .enums import (
 
 # Semantic type alias — all timestamp fields across the API are Unix seconds.
 UnixSeconds = Annotated[float, Field(description="Unix timestamp in seconds")]
+
+# Upper bound: year 2100 in Unix seconds
+_MAX_UNIX_SECONDS = 4_102_444_800
+
+
+def _normalize_timestamp(v: float | None) -> float | None:
+    """Normalize and validate a Unix timestamp, auto-converting ms → s."""
+    if v is None:
+        return None
+    v = ensure_seconds(v)
+    if v < 0 or v > _MAX_UNIX_SECONDS:
+        msg = f"Timestamp {v} out of valid range (0 to year 2100)"
+        raise ValueError(msg)
+    return v
 
 # =============================================================================
 # Sleep Period & Marker Models
@@ -45,15 +61,7 @@ class SleepPeriod(BaseModel):
     @field_validator("onset_timestamp", "offset_timestamp")
     @classmethod
     def _validate_timestamp(cls, v: float | None) -> float | None:
-        if v is None:
-            return None
-        # Auto-convert milliseconds → seconds (frontend historically sent ms)
-        if v > 1e12:
-            v = v / 1000
-        if v < 0 or v > 4_102_444_800:
-            msg = f"Timestamp {v} out of valid range (0 to year 2100)"
-            raise ValueError(msg)
-        return v
+        return _normalize_timestamp(v)
 
     @property
     def is_complete(self) -> bool:
@@ -92,15 +100,7 @@ class ManualNonwearPeriod(BaseModel):
     @field_validator("start_timestamp", "end_timestamp")
     @classmethod
     def _validate_timestamp(cls, v: float | None) -> float | None:
-        if v is None:
-            return None
-        # Auto-convert milliseconds → seconds (frontend historically sent ms)
-        if v > 1e12:
-            v = v / 1000
-        if v < 0 or v > 4_102_444_800:
-            msg = f"Timestamp {v} out of valid range (0 to year 2100)"
-            raise ValueError(msg)
-        return v
+        return _normalize_timestamp(v)
 
     @property
     def is_complete(self) -> bool:
@@ -383,11 +383,30 @@ class OnsetOffsetDataPoint(BaseModel):
     is_nonwear: bool = False  # Manual nonwear marker overlap
 
 
+class OnsetOffsetColumnar(BaseModel):
+    """Columnar format for onset/offset table data."""
+
+    timestamps: list[UnixSeconds] = Field(default_factory=list)
+    axis_y: list[int] = Field(default_factory=list)
+    vector_magnitude: list[int] = Field(default_factory=list)
+    algorithm_result: list[int | None] = Field(default_factory=list)
+    choi_result: list[int | None] = Field(default_factory=list)
+    is_nonwear: list[bool] = Field(default_factory=list)
+
+
 class OnsetOffsetTableResponse(BaseModel):
     """Response with data points around a marker for tables."""
 
     onset_data: list[OnsetOffsetDataPoint] = Field(default_factory=list)
     offset_data: list[OnsetOffsetDataPoint] = Field(default_factory=list)
+    period_index: int
+
+
+class OnsetOffsetColumnarResponse(BaseModel):
+    """Columnar response with data around a marker."""
+
+    onset_data: OnsetOffsetColumnar = Field(default_factory=OnsetOffsetColumnar)
+    offset_data: OnsetOffsetColumnar = Field(default_factory=OnsetOffsetColumnar)
     period_index: int
 
 
@@ -401,6 +420,20 @@ class FullTableDataPoint(BaseModel):
     algorithm_result: int | None = None
     choi_result: int | None = None
     is_nonwear: bool = False
+
+
+class FullTableColumnar(BaseModel):
+    """Columnar format for full table data."""
+
+    timestamps: list[UnixSeconds] = Field(default_factory=list)
+    axis_y: list[int] = Field(default_factory=list)
+    vector_magnitude: list[int] = Field(default_factory=list)
+    algorithm_result: list[int | None] = Field(default_factory=list)
+    choi_result: list[int | None] = Field(default_factory=list)
+    is_nonwear: list[bool] = Field(default_factory=list)
+    total_rows: int = 0
+    start_time: str | None = None
+    end_time: str | None = None
 
 
 class FullTableResponse(BaseModel):

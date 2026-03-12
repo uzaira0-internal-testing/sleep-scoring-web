@@ -31,9 +31,11 @@
 
 import { fetchWithAuth } from "@/api/client";
 import type { AuditLogRecord } from "@/db/schema";
+import { generateId } from "@/lib/uuid";
 import { getWorkspaceApiBase } from "@/lib/workspace-api";
 import { getDb } from "@/lib/workspace-db";
 import { useCapabilitiesStore } from "@/store/capabilities-store";
+import { ApiError } from "@/utils/api-errors";
 
 // ---------------------------------------------------------------------------
 // Service
@@ -52,7 +54,7 @@ class AuditLogService {
   private isFlushing = false;
 
   constructor() {
-    this.sessionId = crypto.randomUUID();
+    this.sessionId = generateId();
 
     // Replicate to server on visibility change (best-effort optimization)
     if (typeof window !== "undefined") {
@@ -94,7 +96,7 @@ class AuditLogService {
    */
   newSession(): void {
     void this.flushToServer();
-    this.sessionId = crypto.randomUUID();
+    this.sessionId = generateId();
     this.sequence = 0;
   }
 
@@ -122,7 +124,6 @@ class AuditLogService {
     };
 
     // Write to IndexedDB — this is the durable commit point.
-    // On failure, roll back the sequence counter so no gaps appear.
     let db;
     try {
       db = getDb();
@@ -243,9 +244,8 @@ class AuditLogService {
       return "ok";
     } catch (err) {
       // Permanent rejection (4xx) — drop the batch to avoid infinite retry
-      const msg = err instanceof Error ? err.message : "";
-      if (/\b4\d{2}\b/.test(msg)) {
-        console.error("[AuditLog] Permanent rejection, dropping batch:", msg);
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        console.error("[AuditLog] Permanent rejection (%d), dropping batch:", err.status, err.message);
         return "drop";
       }
       console.warn("[AuditLog] Server send failed, will retry:", err);

@@ -98,6 +98,7 @@ class NonwearDataSource(StrEnum):
 
     CHOI_ALGORITHM = "choi_algorithm"
     MANUAL = "manual"
+    SENSOR = "sensor"
 
 
 class ActivityDataPreference(StrEnum):

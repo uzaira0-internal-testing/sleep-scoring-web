@@ -28,7 +28,7 @@ from sleep_scoring_web.api.markers import (
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker
 from sleep_scoring_web.schemas import ManualNonwearPeriod, SleepPeriod
-from sleep_scoring_web.schemas.enums import MarkerCategory, MarkerType
+from sleep_scoring_web.schemas.enums import MarkerCategory, MarkerType, NonwearDataSource
 from sleep_scoring_web.services.file_identity import (
     build_file_identity,
     filename_stem,
@@ -384,7 +384,7 @@ async def _process_nonwear_csv(
                     and_(
                         Marker.file_id == fid,
                         Marker.marker_category == MarkerCategory.NONWEAR,
-                        Marker.marker_type == "sensor",
+                        Marker.marker_type == NonwearDataSource.SENSOR,
                     )
                 )
             )
@@ -419,7 +419,7 @@ async def _process_nonwear_csv(
                 file_id=fid,
                 analysis_date=analysis_date_val,
                 marker_category=MarkerCategory.NONWEAR,
-                marker_type="sensor",
+                marker_type=NonwearDataSource.SENSOR,
                 start_timestamp=start_ts,
                 end_timestamp=end_ts,
                 period_index=i + 1,
@@ -1071,7 +1071,7 @@ async def _process_sleep_csv(
                     Marker.file_id == fid,
                     Marker.analysis_date == analysis_date_val,
                     Marker.marker_category == MarkerCategory.NONWEAR,
-                    Marker.marker_type != "sensor",
+                    Marker.marker_type != NonwearDataSource.SENSOR,
                     or_(Marker.created_by == username, Marker.created_by.is_(None)),
                 )
             )

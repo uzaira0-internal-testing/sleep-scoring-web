@@ -88,6 +88,36 @@ export type FullTableDataPoint = components["schemas"]["FullTableDataPoint"];
 /** Response with full table data */
 export type FullTableResponse = components["schemas"]["FullTableResponse"];
 
+/** Columnar data for onset/offset tables (smaller payload) */
+export interface OnsetOffsetColumnar {
+  timestamps: number[];
+  axis_y: number[];
+  vector_magnitude: number[];
+  algorithm_result: (number | null)[];
+  choi_result: (number | null)[];
+  is_nonwear: boolean[];
+}
+
+/** Columnar response for onset/offset tables */
+export interface OnsetOffsetColumnarResponse {
+  onset_data: OnsetOffsetColumnar;
+  offset_data: OnsetOffsetColumnar;
+  period_index: number;
+}
+
+/** Columnar full table data (smaller payload) */
+export interface FullTableColumnar {
+  timestamps: number[];
+  axis_y: number[];
+  vector_magnitude: number[];
+  algorithm_result: (number | null)[];
+  choi_result: (number | null)[];
+  is_nonwear: boolean[];
+  total_rows: number;
+  start_time: string | null;
+  end_time: string | null;
+}
+
 /** Date annotation status with complexity scores (from /files/{id}/dates/status) */
 export type DateStatus = components["schemas"]["DateStatus"];
 

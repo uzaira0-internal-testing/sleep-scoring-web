@@ -1181,7 +1181,7 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
 
     from sleep_scoring_web.db.models import DiaryEntry, Marker, NightComplexity
     from sleep_scoring_web.db.session import async_session_maker
-    from sleep_scoring_web.schemas.enums import MarkerCategory
+    from sleep_scoring_web.schemas.enums import MarkerCategory, NonwearDataSource
     from sleep_scoring_web.services.algorithms import ChoiAlgorithm, SadehAlgorithm
     from sleep_scoring_web.services.complexity import compute_pre_complexity
 
@@ -1259,7 +1259,7 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
                             and_(
                                 Marker.file_id == file_id,
                                 Marker.marker_category == MarkerCategory.NONWEAR,
-                                Marker.marker_type == "sensor",
+                                Marker.marker_type == NonwearDataSource.SENSOR,
                                 Marker.start_timestamp <= data_max_ts,
                                 Marker.end_timestamp >= data_min_ts,
                             )

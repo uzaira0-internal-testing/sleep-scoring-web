@@ -185,6 +185,8 @@ export class ServerDataSource implements DataSource {
     const params = new URLSearchParams();
     if (options?.viewHours) params.set("view_hours", String(options.viewHours));
     if (options?.algorithm) params.set("algorithm", options.algorithm);
+    // Only request extra axes when needed — saves ~3KB gzipped per request
+    params.set("fields", "available_dates");
     const qs = params.toString();
     const url = `${getApiBase()}/activity/${fileId}/${date}/score${qs ? `?${qs}` : ""}`;
     const response = await fetch(url, {

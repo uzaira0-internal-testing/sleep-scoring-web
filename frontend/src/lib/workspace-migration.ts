@@ -2,6 +2,7 @@
  * Backward-compatibility migration from pre-workspace layout.
  * Runs once on first load when no workspace registry exists.
  */
+import { generateId } from "@/lib/uuid";
 import { useWorkspaceStore, type WorkspaceEntry } from "@/store/workspace-store";
 
 const MIGRATION_DONE_KEY = "sleep-scoring-workspace-migration-done";
@@ -33,7 +34,7 @@ export function migrateFromLegacy(): void {
   } catch { /* ignore */ }
 
   // Create workspace that adopts the existing DB (no data move needed)
-  const id = crypto.randomUUID();
+  const id = generateId();
   const entry: WorkspaceEntry = {
     id,
     displayName: serverUrl ? "Default Server" : "Default",

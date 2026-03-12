@@ -1,8 +1,10 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useSyncStore } from "@/store/sync-store";
 import { useSleepScoringStore } from "@/store";
+import { useCapabilitiesStore } from "@/store/capabilities-store";
 import { config } from "@/config";
 import { isTauri } from "@/lib/tauri";
+import { getWorkspaceServerUrl } from "@/lib/workspace-api";
 import { syncAll } from "@/services/sync";
 import * as localDb from "@/db";
 
@@ -14,7 +16,7 @@ const SYNC_INTERVAL = 30_000; // 30 seconds
  * Both navigator.onLine AND health check must pass for isOnline = true.
  * When online, runs sync every 30s and on connectivity recovery.
  */
-export function useConnectivity(enabled: boolean = true) {
+export function useConnectivity() {
   const { isOnline, setOnline, setSyncing, setSyncComplete, setSyncError } = useSyncStore();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -56,9 +58,11 @@ export function useConnectivity(enabled: boolean = true) {
   }, [setSyncing, setSyncComplete, setSyncError]);
 
   const checkHealth = useCallback(async () => {
-    // In Tauri, /health hits the asset server which returns 200 HTML for all paths.
-    // This would falsely set isOnline=true. Skip health checks entirely in Tauri.
-    if (isTauri()) {
+    // In Tauri local-only mode (no serverUrl), /health hits the asset server which
+    // returns 200 HTML for all paths. Skip health checks for local-only Tauri.
+    // Tauri with an external server URL still needs health polling.
+    const serverUrl = getWorkspaceServerUrl();
+    if (isTauri() && !serverUrl) {
       setOnline(false);
       return;
     }
@@ -68,8 +72,12 @@ export function useConnectivity(enabled: boolean = true) {
       return;
     }
 
+    // In Tauri with a server URL, hit the server's /health directly.
+    // In browser, use the co-hosted basePath.
+    const healthUrl = serverUrl ? `${serverUrl}/health` : `${config.basePath}/health`;
+
     try {
-      const response = await fetch(`${config.basePath}/health`, {
+      const response = await fetch(healthUrl, {
         method: "GET",
         signal: AbortSignal.timeout(5000),
       });
@@ -82,19 +90,25 @@ export function useConnectivity(enabled: boolean = true) {
       const wasOnline = useSyncStore.getState().isOnline;
       setOnline(response.ok);
 
-      // Trigger sync when coming back online
+      // Trigger capabilities re-probe and sync when coming back online
       if (response.ok && !wasOnline) {
+        useCapabilitiesStore.getState().resetProbeCache();
+        void useCapabilitiesStore.getState().probeServer();
         runSync();
       }
     } catch {
+      // Immediately reflect server-down in capabilities (don't wait for 60s cache)
+      if (useSyncStore.getState().isOnline) {
+        useCapabilitiesStore.getState().setServerAvailable(false);
+      }
       setOnline(false);
     }
   }, [setOnline, runSync]);
 
   useEffect(() => {
-    if (!enabled) return;
-    // In Tauri, there's no backend server — skip all connectivity infrastructure
-    if (isTauri()) return;
+    // In Tauri local-only mode (no serverUrl), there's no backend server to check.
+    // Tauri with an external server still needs connectivity monitoring.
+    if (isTauri() && !getWorkspaceServerUrl()) return;
 
     const handleOnline = () => {
       checkHealth();
@@ -132,7 +146,7 @@ export function useConnectivity(enabled: boolean = true) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
-  }, [enabled, checkHealth, setOnline, runSync, setSyncComplete]);
+  }, [checkHealth, setOnline, runSync, setSyncComplete]);
 
   return { isOnline };
 }

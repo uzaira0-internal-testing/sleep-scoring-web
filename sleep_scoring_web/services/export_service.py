@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, select
 
 from sleep_scoring_web.db.models import File, Marker, SleepMetric, UserAnnotation
-from sleep_scoring_web.schemas.enums import MarkerCategory
+from sleep_scoring_web.schemas.enums import MarkerCategory, NonwearDataSource
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -435,7 +435,7 @@ class ExportService:
         nonwear_query = select(Marker).where(and_(
             Marker.file_id.in_(file_ids),
             Marker.marker_category == MarkerCategory.NONWEAR,
-            Marker.marker_type != "sensor",
+            Marker.marker_type != NonwearDataSource.SENSOR,
             Marker.end_timestamp.isnot(None),
         ))
         if start_date and end_date:

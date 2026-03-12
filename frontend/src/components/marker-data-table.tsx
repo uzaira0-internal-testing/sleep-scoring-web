@@ -4,7 +4,8 @@ import { useSleepScoringStore, useMarkers, useDates } from "@/store";
 import { fetchWithAuth, getApiBase } from "@/api/client";
 import { hexToRgba } from "@/lib/color-themes";
 import { Maximize2, Home } from "lucide-react";
-import type { OnsetOffsetDataPoint, OnsetOffsetTableResponse } from "@/api/types";
+import type { OnsetOffsetDataPoint, OnsetOffsetTableResponse, OnsetOffsetColumnar, OnsetOffsetColumnarResponse } from "@/api/types";
+import { ApiError } from "@/utils/api-errors";
 import * as localDb from "@/db";
 
 
@@ -51,6 +52,18 @@ async function buildLocalTableData(
     onset_data: buildWindow(onsetTs),
     offset_data: buildWindow(offsetTs),
     period_index: 1,
+  };
+}
+
+/** Convert row-based onset/offset data to columnar format for unified rendering. */
+function toColumnar(points: OnsetOffsetDataPoint[]): OnsetOffsetColumnar {
+  return {
+    timestamps: points.map((p) => p.timestamp),
+    axis_y: points.map((p) => p.axis_y),
+    vector_magnitude: points.map((p) => p.vector_magnitude),
+    algorithm_result: points.map((p) => p.algorithm_result ?? null),
+    choi_result: points.map((p) => p.choi_result ?? null),
+    is_nonwear: points.map((p) => p.is_nonwear),
   };
 }
 
@@ -105,27 +118,38 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
   const quantize = (ts: number | null) => ts !== null ? Math.round(ts / 300) : null;
 
   const isLocal = useSleepScoringStore((state) => state.currentFileSource === "local");
+  const currentAlgorithm = useSleepScoringStore((state) => state.currentAlgorithm);
 
-  const { data: tableData, isLoading } = useQuery({
-    queryKey: ["marker-table", currentFileId, currentDate, selectedPeriodIndex, type, quantize(onsetTs), quantize(offsetTs), isLocal ? "local" : "server"],
-    queryFn: async () => {
+  const { data: tableData, isLoading, error: tableError } = useQuery<OnsetOffsetColumnarResponse | null>({
+    queryKey: ["marker-table", currentFileId, currentDate, selectedPeriodIndex, type, quantize(onsetTs), quantize(offsetTs), isLocal ? "local" : "server", currentAlgorithm],
+    queryFn: async (): Promise<OnsetOffsetColumnarResponse | null> => {
       if (!currentFileId || !currentDate || selectedPeriodIndex === null) return null;
 
-      // Local mode: build table data directly from IndexedDB
+      // Local mode: build table data directly from IndexedDB, convert to columnar
       if (isLocal) {
-        return buildLocalTableData(currentFileId, currentDate, onsetTs, offsetTs, 100);
+        const result = await buildLocalTableData(currentFileId, currentDate, onsetTs, offsetTs, 100);
+        if (!result) return null;
+        return {
+          onset_data: toColumnar(result.onset_data),
+          offset_data: toColumnar(result.offset_data),
+          period_index: result.period_index,
+        };
       }
 
-      // Server mode: fetch from backend API
+      // Server mode: fetch columnar endpoint
       const params = new URLSearchParams({ window_minutes: "100" });
       if (onsetTs !== null) params.set("onset_ts", String(onsetTs));
       if (offsetTs !== null) params.set("offset_ts", String(offsetTs));
-      const url = `${getApiBase()}/markers/${currentFileId}/${currentDate}/table/${selectedPeriodIndex + 1}?${params}`;
+      if (currentAlgorithm) params.set("algorithm", currentAlgorithm);
+      const url = `${getApiBase()}/markers/${currentFileId}/${currentDate}/table/${selectedPeriodIndex + 1}/columnar?${params}`;
       try {
-        return await fetchWithAuth<OnsetOffsetTableResponse>(url);
-      } catch {
-        // 404 is expected when marker hasn't been saved to backend yet and no timestamps provided
-        return null;
+        return await fetchWithAuth<OnsetOffsetColumnarResponse>(url);
+      } catch (err) {
+        // 404 is expected when marker hasn't been saved to backend yet
+        if (err instanceof ApiError && err.status === 404) {
+          return null;
+        }
+        throw err;
       }
     },
     enabled: (isLocal || isAuthenticated) && !!currentFileId && !!currentDate && selectedPeriodIndex !== null && onsetTs !== null && offsetTs !== null,
@@ -133,10 +157,11 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
     placeholderData: keepPreviousData,
   });
 
-  const data = type === "onset" ? tableData?.onset_data : tableData?.offset_data;
+  const colData = type === "onset" ? tableData?.onset_data : tableData?.offset_data;
+  const rowCount = colData?.timestamps?.length ?? 0;
 
-  const markerRowIndex = data?.findIndex(
-    (row) => targetTimestamp && Math.abs(row.timestamp - targetTimestamp) < 60
+  const markerRowIndex = colData?.timestamps?.findIndex(
+    (ts) => targetTimestamp && Math.abs(ts - targetTimestamp) < 60
   );
 
   // Track previous marker row index to only scroll when it actually changes
@@ -159,14 +184,14 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
     }
   }, []);
 
-  const handleRowClick = useCallback((row: OnsetOffsetDataPoint) => {
+  const handleRowClick = useCallback((timestamp: number) => {
     if (selectedPeriodIndex === null) return;
     if (isSleepMode) {
-      if (type === "onset") updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: row.timestamp });
-      else updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: row.timestamp });
+      if (type === "onset") updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: timestamp });
+      else updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: timestamp });
     } else {
-      if (type === "onset") updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: row.timestamp });
-      else updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: row.timestamp });
+      if (type === "onset") updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: timestamp });
+      else updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: timestamp });
     }
   }, [selectedPeriodIndex, isSleepMode, type, updateMarker]);
 
@@ -195,7 +220,18 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
     );
   }
 
-  if (!data || data.length === 0) {
+  if (tableError) {
+    return (
+      <div className="h-full flex flex-col">
+        <TableHeader title={title} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
+        <div className="flex-1 flex items-center justify-center p-4">
+          <p className="text-xs text-destructive">Failed to load table data</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!colData || rowCount === 0) {
     return (
       <div className="h-full flex flex-col">
         <TableHeader title={title} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
@@ -222,17 +258,22 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
             </tr>
           </thead>
           <tbody>
-            {data.map((row, idx) => {
+            {colData.timestamps.map((ts, idx) => {
               const isMarkerRow = idx === markerRowIndex;
-              const sleepWake = row.algorithm_result === 1 ? "S" : row.algorithm_result === 0 ? "W" : "-";
-              const choiLabel = row.choi_result === 1 ? "N" : "-";
-              const nwLabel = row.is_nonwear ? "N" : "-";
+              const algoResult = colData.algorithm_result[idx];
+              const choiResult = colData.choi_result[idx];
+              const nonwear = colData.is_nonwear[idx];
+              const sleepWake = algoResult === 1 ? "S" : algoResult === 0 ? "W" : "-";
+              const choiLabel = choiResult === 1 ? "N" : "-";
+              const nwLabel = nonwear ? "N" : "-";
+              const d = new Date(ts * 1000);
+              const timeStr = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 
               return (
                 <tr
                   key={idx}
                   ref={isMarkerRow ? markerRowRef : undefined}
-                  onClick={() => handleRowClick(row)}
+                  onClick={() => handleRowClick(ts)}
                   className={`border-b border-border/20 cursor-pointer transition-colors ${
                     isMarkerRow
                       ? "font-bold"
@@ -244,9 +285,9 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
                     boxShadow: `inset 0 0 0 1px ${hexToRgba(isSleepMode ? colorTheme.sleepOverlay : colorTheme.nonwear, 0.3)}`,
                   } : undefined}
                 >
-                  <td className="px-2 py-1 font-mono">{row.datetime_str}</td>
-                  <td className="px-1.5 py-1 text-right font-mono">{row.axis_y}</td>
-                  <td className="px-1.5 py-1 text-right font-mono text-muted-foreground">{row.vector_magnitude}</td>
+                  <td className="px-2 py-1 font-mono">{timeStr}</td>
+                  <td className="px-1.5 py-1 text-right font-mono">{colData.axis_y[idx]}</td>
+                  <td className="px-1.5 py-1 text-right font-mono text-muted-foreground">{colData.vector_magnitude[idx]}</td>
                   <td className={`px-1.5 py-1 text-center font-medium ${
                     sleepWake === "S" ? "text-sleep" : sleepWake === "W" ? "text-warning" : "text-muted-foreground/40"
                   }`}>
@@ -265,7 +306,7 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
         </table>
       </div>
       <div className="text-xs text-muted-foreground/60 text-center py-1.5 border-t border-border/40 font-mono">
-        {data.length} rows
+        {rowCount} rows
       </div>
     </div>
   );

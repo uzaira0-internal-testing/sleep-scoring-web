@@ -27,7 +27,7 @@ export function Layout() {
   const wsId = getActiveWorkspaceId();
   const workspace = useWorkspaceStore((s) => s.workspaces.find((w) => w.id === wsId));
 
-  useConnectivity(caps.server);
+  useConnectivity();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {

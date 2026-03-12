@@ -6,10 +6,25 @@
 import { useSleepScoringStore } from "@/store";
 
 /**
+ * Error class that carries the HTTP status code.
+ * Use `err instanceof ApiError` to distinguish API errors from network errors,
+ * and `err.status` to classify (4xx = permanent, 5xx = transient).
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/**
  * Handle API response errors with consistent behavior.
  * - Clears auth on 401 Unauthorized
  * - Parses error detail from response body
- * - Throws Error with appropriate message
+ * - Throws ApiError with status code and message
  */
 export async function handleApiError(response: Response): Promise<never> {
   // Clear auth on 401 Unauthorized (invalid password)
@@ -19,7 +34,7 @@ export async function handleApiError(response: Response): Promise<never> {
 
   // Try to parse error detail from response body
   const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
-  throw new Error(error.detail || `HTTP ${response.status}`);
+  throw new ApiError(error.detail || `HTTP ${response.status}`, response.status);
 }
 
 /**

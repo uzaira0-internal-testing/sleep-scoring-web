@@ -23,7 +23,7 @@ from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.db.models import ConsensusCandidate, DiaryEntry, Marker, RawActivityData, SleepMetric, UserAnnotation
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.schemas import ManualNonwearPeriod, MarkerUpdateRequest, SleepMetrics, SleepPeriod
-from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, MarkerType, VerificationStatus
+from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, MarkerType, NonwearDataSource, VerificationStatus
 from sleep_scoring_web.services.consensus import compute_candidate_hash
 from sleep_scoring_web.services.consensus_realtime import broadcast_consensus_update
 from sleep_scoring_web.services.file_identity import is_excluded_file_obj
@@ -159,7 +159,7 @@ async def get_markers(
                     Marker.file_id == file_id,
                     Marker.analysis_date == analysis_date,
                     Marker.created_by == username,
-                    Marker.marker_type != "sensor",
+                    Marker.marker_type != NonwearDataSource.SENSOR,
                 )
             )
         )
@@ -171,7 +171,7 @@ async def get_markers(
                         Marker.file_id == file_id,
                         Marker.analysis_date == analysis_date,
                         Marker.created_by.is_(None),
-                        Marker.marker_type != "sensor",
+                        Marker.marker_type != NonwearDataSource.SENSOR,
                     )
                 )
             )
@@ -224,7 +224,7 @@ async def get_markers(
                     marker_type=MarkerType(marker.marker_type) if marker.marker_type else MarkerType.MAIN_SLEEP,
                 )
             )
-        elif marker.marker_category == MarkerCategory.NONWEAR and marker.marker_type != "sensor":
+        elif marker.marker_category == MarkerCategory.NONWEAR and marker.marker_type != NonwearDataSource.SENSOR:
             nonwear_markers.append(
                 ManualNonwearPeriod(
                     start_timestamp=marker.start_timestamp,
@@ -439,7 +439,7 @@ async def save_markers(
                 Marker.file_id == file_id,
                 Marker.analysis_date == analysis_date,
                 or_(Marker.created_by == username, Marker.created_by.is_(None)),
-                Marker.marker_type != "sensor",
+                Marker.marker_type != NonwearDataSource.SENSOR,
             )
         )
     )
@@ -1108,7 +1108,7 @@ async def _calculate_and_store_metrics(
                         and_(
                             Marker.file_id == file_id,
                             Marker.marker_category == MarkerCategory.NONWEAR,
-                            Marker.marker_type == "sensor",
+                            Marker.marker_type == NonwearDataSource.SENSOR,
                             Marker.start_timestamp <= data_max_ts,
                             Marker.end_timestamp >= data_min_ts,
                         )

@@ -23,7 +23,7 @@ from sleep_scoring_web.api.markers import (
 )
 from sleep_scoring_web.db.models import DiaryEntry, Marker, RawActivityData, UserAnnotation
 from sleep_scoring_web.db.models import File as FileModel
-from sleep_scoring_web.schemas.enums import MarkerCategory
+from sleep_scoring_web.schemas.enums import MarkerCategory, NonwearDataSource
 from sleep_scoring_web.schemas.pipeline import PipelineConfigRequest
 from sleep_scoring_web.services.consensus_realtime import broadcast_consensus_update
 from sleep_scoring_web.services.file_identity import is_excluded_activity_filename, is_excluded_file_obj
@@ -660,7 +660,7 @@ async def auto_nonwear_markers(
             and_(
                 Marker.file_id == file_id,
                 Marker.marker_category == "nonwear",
-                Marker.marker_type == "sensor",
+                Marker.marker_type == NonwearDataSource.SENSOR,
             )
         )
     )
