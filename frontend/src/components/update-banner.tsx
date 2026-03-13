@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@/lib/tauri";
+import { formatBytes } from "@/lib/format";
 import type { UpdateInfo } from "@/lib/updater";
 import { Download, RefreshCw, RotateCcw, X, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -23,12 +24,6 @@ const RETRY_BASE_MS = 5000;
 /** Minimum time between visibility-triggered checks */
 const VISIBILITY_COOLDOWN_MS = 60 * 1000;
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export function UpdateBanner() {
   const [state, setState] = useState<BannerState>({ status: "idle" });
   const [showNotes, setShowNotes] = useState(false);
@@ -36,28 +31,41 @@ export function UpdateBanner() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastCheckRef = useRef(0);
   const checkInFlightRef = useRef(false);
-  const stateRef = useRef<BannerState["status"]>("idle");
+  const downloadingRef = useRef(false);
+  // Updated synchronously at every setState call site — no effect-sync needed
+  const statusRef = useRef<BannerState["status"]>("idle");
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+
+  const setStateTracked = useCallback((next: BannerState | ((prev: BannerState) => BannerState)) => {
+    if (!mountedRef.current) return;
+    setState((prev) => {
+      const resolved = typeof next === "function" ? next(prev) : next;
+      statusRef.current = resolved.status;
+      return resolved;
+    });
+  }, []);
 
   const doCheck = useCallback(async () => {
     if (checkInFlightRef.current) return;
-    if (stateRef.current === "downloading" || stateRef.current === "ready") return;
+    if (statusRef.current === "downloading" || statusRef.current === "ready") return;
 
     checkInFlightRef.current = true;
     lastCheckRef.current = Date.now();
-    setState({ status: "checking" });
+    setStateTracked({ status: "checking" });
     try {
       const { checkForUpdate } = await import("@/lib/updater");
       const info = await checkForUpdate();
       retryCount.current = 0;
       if (info) {
-        setState((prev) => {
+        setStateTracked((prev) => {
           if (prev.status === "dismissed" && prev.version === info.version) {
             return prev;
           }
           return { status: "available", info };
         });
       } else {
-        setState({ status: "idle" });
+        setStateTracked({ status: "idle" });
       }
     } catch (err) {
       console.error("[UpdateBanner] Update check failed:", err);
@@ -66,25 +74,21 @@ export function UpdateBanner() {
       if (retryCount.current < MAX_RETRIES) {
         retryCount.current++;
         const delay = RETRY_BASE_MS * Math.pow(2, retryCount.current - 1);
-        setTimeout(doCheck, delay);
+        retryTimerRef.current = setTimeout(doCheck, delay);
         checkInFlightRef.current = false;
         return;
       }
 
-      setState({ status: "error", message, retryAction: "check" });
+      setStateTracked({ status: "error", message, retryAction: "check" });
     } finally {
       checkInFlightRef.current = false;
     }
-  }, []);
-
-  // Keep stateRef in sync
-  useEffect(() => {
-    stateRef.current = state.status;
-  }, [state.status]);
+  }, [setStateTracked]);
 
   // Initial check + periodic re-check + visibility/focus re-check
   useEffect(() => {
     if (!isTauri()) return;
+    mountedRef.current = true;
 
     const initialTimer = setTimeout(doCheck, INITIAL_DELAY_MS);
     intervalRef.current = setInterval(doCheck, CHECK_INTERVAL_MS);
@@ -98,41 +102,55 @@ export function UpdateBanner() {
     window.addEventListener("focus", handleAppResume);
 
     return () => {
+      mountedRef.current = false;
       clearTimeout(initialTimer);
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       document.removeEventListener("visibilitychange", handleAppResume);
       window.removeEventListener("focus", handleAppResume);
     };
   }, [doCheck]);
 
   const handleUpdate = async () => {
+    // Guard against double-click
+    if (downloadingRef.current) return;
+    downloadingRef.current = true;
+
     const info = state.status === "available" ? state.info
       : state.status === "error" ? state.info
       : undefined;
 
-    setState({ status: "downloading", percent: null, downloaded: 0, total: 0 });
+    setStateTracked({ status: "downloading", percent: null, downloaded: 0, total: 0 });
     let downloadedSoFar = 0;
+    let lastPercent = -1;
 
     try {
       const { downloadAndInstall } = await import("@/lib/updater");
       await downloadAndInstall((progress) => {
-        if (progress.total > 0 && progress.downloaded === progress.total) {
-          setState({ status: "downloading", percent: 100, downloaded: progress.total, total: progress.total });
+        if (progress.chunkSize === 0 && progress.total > 0 && downloadedSoFar > 0) {
+          // Finished event
+          setStateTracked({ status: "downloading", percent: 100, downloaded: progress.total, total: progress.total });
         } else if (progress.total > 0) {
-          downloadedSoFar += progress.downloaded;
+          downloadedSoFar += progress.chunkSize;
           const percent = Math.min(100, Math.round((downloadedSoFar / progress.total) * 100));
-          setState({ status: "downloading", percent, downloaded: downloadedSoFar, total: progress.total });
+          // Only update state when displayed percent changes (throttle renders)
+          if (percent !== lastPercent) {
+            lastPercent = percent;
+            setStateTracked({ status: "downloading", percent, downloaded: downloadedSoFar, total: progress.total });
+          }
         }
       });
-      setState({ status: "ready", info: info ?? { version: "latest", currentVersion: "" } });
+      setStateTracked({ status: "ready", info: info ?? { version: "latest", currentVersion: "" } });
     } catch (err) {
       console.error("[UpdateBanner] Download/install failed:", err);
-      setState({
+      setStateTracked({
         status: "error",
         message: err instanceof Error ? err.message : "Update failed",
         retryAction: "download",
         info,
       });
+    } finally {
+      downloadingRef.current = false;
     }
   };
 
@@ -142,7 +160,7 @@ export function UpdateBanner() {
       await relaunchApp();
     } catch (err) {
       console.error("[UpdateBanner] Relaunch failed:", err);
-      setState({
+      setStateTracked({
         status: "error",
         message: "Could not restart automatically. Please close and reopen the app.",
       });
@@ -153,9 +171,9 @@ export function UpdateBanner() {
     if (state.status === "error") {
       retryCount.current = 0;
       if (state.retryAction === "download") {
-        handleUpdate();
+        void handleUpdate();
       } else {
-        doCheck();
+        void doCheck();
       }
     }
   };
@@ -164,7 +182,7 @@ export function UpdateBanner() {
     const version = state.status === "available" ? state.info.version
       : state.status === "error" && state.info ? state.info.version
       : "unknown";
-    setState({ status: "dismissed", version });
+    setStateTracked({ status: "dismissed", version });
   };
 
   if (!isTauri() || state.status === "idle" || state.status === "checking" || state.status === "dismissed") {

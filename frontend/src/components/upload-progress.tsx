@@ -5,14 +5,7 @@
 import { Loader2, Pause, Play, X, Check, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { TusProgress } from "@/hooks/useTusUpload";
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
+import { formatBytes } from "@/lib/format";
 
 function formatEta(seconds: number): string {
   if (seconds <= 0 || !isFinite(seconds)) return "";

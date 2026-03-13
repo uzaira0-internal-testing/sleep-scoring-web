@@ -11,7 +11,9 @@ export interface UpdateInfo {
 }
 
 export interface UpdateProgress {
-  downloaded: number;
+  /** Bytes received in this chunk (not cumulative). */
+  chunkSize: number;
+  /** Total expected bytes. */
   total: number;
 }
 
@@ -64,27 +66,31 @@ export async function downloadAndInstall(
     throw new Error("No pending update. Call checkForUpdate() first.");
   }
 
+  const update = pendingUpdate;
   let totalBytes = 0;
 
-  await pendingUpdate.downloadAndInstall(
+  await update.downloadAndInstall(
     (event: UpdateEvent) => {
       if (!onProgress) return;
 
       switch (event.event) {
         case "Started":
           totalBytes = event.data.contentLength ?? 0;
-          onProgress({ downloaded: 0, total: totalBytes });
+          onProgress({ chunkSize: 0, total: totalBytes });
           break;
         case "Progress":
           onProgress({
-            downloaded: event.data.chunkLength ?? 0,
+            chunkSize: event.data.chunkLength ?? 0,
             total: totalBytes,
           });
           break;
         case "Finished":
-          onProgress({ downloaded: totalBytes, total: totalBytes });
+          onProgress({ chunkSize: 0, total: totalBytes });
           break;
       }
     },
   );
+
+  // Release the consumed update reference
+  pendingUpdate = null;
 }
