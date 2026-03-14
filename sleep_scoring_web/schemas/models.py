@@ -7,8 +7,8 @@ These models are the single source of truth for API request/response shapes.
 
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import TYPE_CHECKING, Annotated, Any
+from datetime import date, datetime  # noqa: TC003 — Pydantic needs these at runtime
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -18,7 +18,6 @@ from .enums import (
     AlgorithmType,
     FileStatus,
     MarkerType,
-    NonwearDataSource,
     VerificationStatus,
 )
 
@@ -95,7 +94,6 @@ class ManualNonwearPeriod(BaseModel):
     start_timestamp: UnixSeconds | None = None
     end_timestamp: UnixSeconds | None = None
     marker_index: int = 1
-    source: NonwearDataSource = NonwearDataSource.MANUAL
 
     @field_validator("start_timestamp", "end_timestamp")
     @classmethod
@@ -176,10 +174,10 @@ class ActivityDataColumnar(BaseModel):
     """
 
     timestamps: list[UnixSeconds] = Field(default_factory=list, description="Unix timestamps in seconds")
-    axis_x: list[int] = Field(default_factory=list)
-    axis_y: list[int] = Field(default_factory=list)
-    axis_z: list[int] = Field(default_factory=list)
-    vector_magnitude: list[int] = Field(default_factory=list)
+    axis_x: list[float] = Field(default_factory=list)
+    axis_y: list[float] = Field(default_factory=list)
+    axis_z: list[float] = Field(default_factory=list)
+    vector_magnitude: list[float] = Field(default_factory=list)
 
     @property
     def count(self) -> int:
@@ -376,8 +374,8 @@ class OnsetOffsetDataPoint(BaseModel):
 
     timestamp: UnixSeconds
     datetime_str: str
-    axis_y: int
-    vector_magnitude: int
+    axis_y: float
+    vector_magnitude: float
     algorithm_result: int | None = None  # 0=wake, 1=sleep
     choi_result: int | None = None  # 0=wear, 1=nonwear
     is_nonwear: bool = False  # Manual nonwear marker overlap
@@ -387,8 +385,8 @@ class OnsetOffsetColumnar(BaseModel):
     """Columnar format for onset/offset table data."""
 
     timestamps: list[UnixSeconds] = Field(default_factory=list)
-    axis_y: list[int] = Field(default_factory=list)
-    vector_magnitude: list[int] = Field(default_factory=list)
+    axis_y: list[float] = Field(default_factory=list)
+    vector_magnitude: list[float] = Field(default_factory=list)
     algorithm_result: list[int | None] = Field(default_factory=list)
     choi_result: list[int | None] = Field(default_factory=list)
     is_nonwear: list[bool] = Field(default_factory=list)
@@ -415,8 +413,8 @@ class FullTableDataPoint(BaseModel):
 
     timestamp: UnixSeconds
     datetime_str: str
-    axis_y: int
-    vector_magnitude: int
+    axis_y: float
+    vector_magnitude: float
     algorithm_result: int | None = None
     choi_result: int | None = None
     is_nonwear: bool = False
@@ -426,8 +424,8 @@ class FullTableColumnar(BaseModel):
     """Columnar format for full table data."""
 
     timestamps: list[UnixSeconds] = Field(default_factory=list)
-    axis_y: list[int] = Field(default_factory=list)
-    vector_magnitude: list[int] = Field(default_factory=list)
+    axis_y: list[float] = Field(default_factory=list)
+    vector_magnitude: list[float] = Field(default_factory=list)
     algorithm_result: list[int | None] = Field(default_factory=list)
     choi_result: list[int | None] = Field(default_factory=list)
     is_nonwear: list[bool] = Field(default_factory=list)

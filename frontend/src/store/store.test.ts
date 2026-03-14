@@ -369,4 +369,179 @@ describe("SleepScoringStore", () => {
       );
     });
   });
+
+  describe("addSleepMarker", () => {
+    it("should add a sleep marker with correct markerType and increment _editGeneration", () => {
+      const genBefore = useSleepScoringStore.getState()._editGeneration;
+      const { addSleepMarker } = useSleepScoringStore.getState();
+
+      addSleepMarker(1000, 2000);
+
+      const state = useSleepScoringStore.getState();
+      expect(state.sleepMarkers).toHaveLength(1);
+      expect(state.sleepMarkers[0]!.onsetTimestamp).toBe(1000);
+      expect(state.sleepMarkers[0]!.offsetTimestamp).toBe(2000);
+      // First marker when isNoSleep=false should be MAIN_SLEEP
+      expect(state.sleepMarkers[0]!.markerType).toBe(MARKER_TYPES.MAIN_SLEEP);
+      expect(state.sleepMarkers[0]!.markerIndex).toBe(1); // 1-indexed
+      expect(state.isDirty).toBe(true);
+      expect(state._editGeneration).toBe(genBefore + 1);
+    });
+
+    it("should default to NAP for the second marker when isNoSleep is false", () => {
+      const { addSleepMarker } = useSleepScoringStore.getState();
+
+      addSleepMarker(1000, 2000); // MAIN_SLEEP (first)
+      addSleepMarker(3000, 4000); // NAP (second)
+
+      const state = useSleepScoringStore.getState();
+      expect(state.sleepMarkers).toHaveLength(2);
+      expect(state.sleepMarkers[0]!.markerType).toBe(MARKER_TYPES.MAIN_SLEEP);
+      expect(state.sleepMarkers[1]!.markerType).toBe(MARKER_TYPES.NAP);
+    });
+  });
+
+  describe("addNonwearMarker", () => {
+    it("should add a nonwear marker with start/end and increment _editGeneration", () => {
+      const genBefore = useSleepScoringStore.getState()._editGeneration;
+      const { addNonwearMarker } = useSleepScoringStore.getState();
+
+      addNonwearMarker(5000, 6000);
+
+      const state = useSleepScoringStore.getState();
+      expect(state.nonwearMarkers).toHaveLength(1);
+      expect(state.nonwearMarkers[0]!.startTimestamp).toBe(5000);
+      expect(state.nonwearMarkers[0]!.endTimestamp).toBe(6000);
+      expect(state.nonwearMarkers[0]!.markerIndex).toBe(1); // 1-indexed
+      expect(state.isDirty).toBe(true);
+      expect(state._editGeneration).toBe(genBefore + 1);
+    });
+  });
+
+  describe("deleteMarker", () => {
+    it("should remove the correct sleep marker by index and re-index remaining", () => {
+      const { addSleepMarker } = useSleepScoringStore.getState();
+
+      addSleepMarker(1000, 2000);
+      addSleepMarker(3000, 4000);
+      expect(useSleepScoringStore.getState().sleepMarkers).toHaveLength(2);
+
+      useSleepScoringStore.getState().deleteMarker("sleep", 0);
+
+      const state = useSleepScoringStore.getState();
+      expect(state.sleepMarkers).toHaveLength(1);
+      // The remaining marker should be the second one (onset=3000)
+      expect(state.sleepMarkers[0]!.onsetTimestamp).toBe(3000);
+      // markerIndex should be re-indexed to 1
+      expect(state.sleepMarkers[0]!.markerIndex).toBe(1);
+      expect(state.selectedPeriodIndex).toBeNull();
+    });
+
+    it("should remove the correct nonwear marker by index", () => {
+      const { addNonwearMarker } = useSleepScoringStore.getState();
+
+      addNonwearMarker(1000, 2000);
+      addNonwearMarker(3000, 4000);
+
+      useSleepScoringStore.getState().deleteMarker("nonwear", 1);
+
+      const state = useSleepScoringStore.getState();
+      expect(state.nonwearMarkers).toHaveLength(1);
+      expect(state.nonwearMarkers[0]!.startTimestamp).toBe(1000);
+    });
+  });
+
+  describe("toggleNoSleep (setIsNoSleep)", () => {
+    it("should delete MAIN_SLEEP markers but preserve NAP markers", () => {
+      const { addSleepMarker, setIsNoSleep } = useSleepScoringStore.getState();
+
+      // Add a MAIN_SLEEP and a NAP marker
+      addSleepMarker(1000, 2000);       // MAIN_SLEEP (first)
+      addSleepMarker(3000, 4000, "NAP"); // Explicit NAP
+
+      expect(useSleepScoringStore.getState().sleepMarkers).toHaveLength(2);
+
+      setIsNoSleep(true);
+
+      const state = useSleepScoringStore.getState();
+      expect(state.isNoSleep).toBe(true);
+      // Only the NAP should remain
+      expect(state.sleepMarkers).toHaveLength(1);
+      expect(state.sleepMarkers[0]!.markerType).toBe(MARKER_TYPES.NAP);
+      // Re-indexed to 1
+      expect(state.sleepMarkers[0]!.markerIndex).toBe(1);
+    });
+  });
+
+  describe("markSaved", () => {
+    it("should reset isDirty when editGeneration matches", () => {
+      const { addSleepMarker } = useSleepScoringStore.getState();
+      addSleepMarker(1000, 2000);
+      expect(useSleepScoringStore.getState().isDirty).toBe(true);
+
+      const gen = useSleepScoringStore.getState()._editGeneration;
+      useSleepScoringStore.getState().markSaved(gen);
+
+      const state = useSleepScoringStore.getState();
+      expect(state.isDirty).toBe(false);
+      expect(state.isSaving).toBe(false);
+      expect(state.lastSavedAt).not.toBeNull();
+    });
+
+    it("should keep isDirty=true when editGeneration does not match (edit during save)", () => {
+      const { addSleepMarker } = useSleepScoringStore.getState();
+      addSleepMarker(1000, 2000);
+
+      const genAtSaveStart = useSleepScoringStore.getState()._editGeneration;
+
+      // Simulate another edit happening while the save was in flight
+      addSleepMarker(3000, 4000);
+
+      useSleepScoringStore.getState().markSaved(genAtSaveStart);
+
+      // isDirty should remain true because another edit occurred
+      expect(useSleepScoringStore.getState().isDirty).toBe(true);
+    });
+  });
+
+  describe("registerFlushSave", () => {
+    it("should store the flush callback", () => {
+      const flushFn = async () => true;
+      useSleepScoringStore.getState().registerFlushSave(flushFn);
+      expect(useSleepScoringStore.getState()._flushSave).toBe(flushFn);
+    });
+
+    it("should allow clearing the callback with null", () => {
+      const flushFn = async () => true;
+      useSleepScoringStore.getState().registerFlushSave(flushFn);
+      useSleepScoringStore.getState().registerFlushSave(null);
+      expect(useSleepScoringStore.getState()._flushSave).toBeNull();
+    });
+  });
+
+  describe("_editGeneration", () => {
+    it("should increment on each marker mutation", () => {
+      const gen0 = useSleepScoringStore.getState()._editGeneration;
+
+      // Mutation 1: addSleepMarker
+      useSleepScoringStore.getState().addSleepMarker(1000, 2000);
+      const gen1 = useSleepScoringStore.getState()._editGeneration;
+      expect(gen1).toBe(gen0 + 1);
+
+      // Mutation 2: addNonwearMarker
+      useSleepScoringStore.getState().addNonwearMarker(3000, 4000);
+      const gen2 = useSleepScoringStore.getState()._editGeneration;
+      expect(gen2).toBe(gen1 + 1);
+
+      // Mutation 3: deleteMarker
+      useSleepScoringStore.getState().deleteMarker("sleep", 0);
+      const gen3 = useSleepScoringStore.getState()._editGeneration;
+      expect(gen3).toBe(gen2 + 1);
+
+      // Mutation 4: setIsNoSleep
+      useSleepScoringStore.getState().setIsNoSleep(true);
+      const gen4 = useSleepScoringStore.getState()._editGeneration;
+      expect(gen4).toBe(gen3 + 1);
+    });
+  });
 });

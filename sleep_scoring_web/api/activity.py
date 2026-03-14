@@ -20,7 +20,7 @@ from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker, RawActivityData
 from sleep_scoring_web.schemas import ActivityDataColumnar, ActivityDataResponse
-from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, NonwearDataSource
+from sleep_scoring_web.schemas.enums import AlgorithmType
 from sleep_scoring_web.schemas.models import SensorNonwearPeriod
 from sleep_scoring_web.utils import naive_to_unix
 
@@ -82,10 +82,10 @@ async def get_activity_data(
 
     # Convert to columnar format
     timestamps: list[float] = []
-    axis_x: list[int] = []
-    axis_y: list[int] = []
-    axis_z: list[int] = []
-    vector_magnitude: list[int] = []
+    axis_x: list[float] = []
+    axis_y: list[float] = []
+    axis_z: list[float] = []
+    vector_magnitude: list[float] = []
 
     for row in activity_rows:
         timestamps.append(naive_to_unix(row.timestamp))
@@ -212,8 +212,7 @@ async def get_activity_data_with_scoring(
         select(Marker).where(
             and_(
                 Marker.file_id == file_id,
-                Marker.marker_category == MarkerCategory.NONWEAR,
-                Marker.marker_type == NonwearDataSource.SENSOR,
+                Marker.sensor_nonwear_filter(),
                 Marker.start_timestamp <= response.view_end,
                 Marker.end_timestamp >= response.view_start,
             )
@@ -264,5 +263,5 @@ async def get_activity_data_with_sadeh(
         _="",  # Auth already verified at route level
         username=username,
         view_hours=view_hours,
-        algorithm="sadeh_1994_actilife",
+        algorithm=AlgorithmType.SADEH_1994_ACTILIFE,
     )

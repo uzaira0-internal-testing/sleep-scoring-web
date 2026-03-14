@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
 
 from sleep_scoring_web.config import get_settings
+from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import FileAssignment
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def is_admin_user(username: str) -> bool:
@@ -50,6 +56,37 @@ async def require_file_access(db, username: str, file_id: int) -> None:
         status_code=status.HTTP_404_NOT_FOUND,
         detail="File not found",
     )
+
+
+async def get_accessible_files(
+    db: AsyncSession, username: str
+) -> list[FileModel]:
+    """
+    Load non-excluded files the user can access in a single DB query.
+
+    For admins, returns all non-excluded files.  For regular users, uses a
+    subquery join against ``file_assignments`` so only one round-trip is needed.
+    """
+    from sleep_scoring_web.api.files import _excluded_filename_sql_filter
+
+    exclusion_filter = ~_excluded_filename_sql_filter()
+
+    if is_admin_user(username):
+        stmt = select(FileModel).where(exclusion_filter)
+    else:
+        assigned_ids = (
+            select(FileAssignment.file_id)
+            .where(FileAssignment.username == username)
+            .correlate(None)
+            .scalar_subquery()
+        )
+        stmt = select(FileModel).where(
+            FileModel.id.in_(assigned_ids),
+            exclusion_filter,
+        )
+
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 async def require_file_and_access(db, username: str, file_id: int):

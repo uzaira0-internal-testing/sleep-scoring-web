@@ -7,7 +7,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { isTauri, deleteTauriWorkspace } from "@/lib/tauri";
 
-export { generateId } from "@/lib/uuid";
+import { generateId } from "@/lib/uuid";
 
 export interface WorkspaceEntry {
   id: string;

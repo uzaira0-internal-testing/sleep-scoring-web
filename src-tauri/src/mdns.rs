@@ -15,7 +15,7 @@ pub struct PeerInfo {
 
 /// Manages mDNS service registration for this instance.
 pub struct MdnsManager {
-    daemon: ServiceDaemon,
+    daemon: Option<ServiceDaemon>,
     #[allow(dead_code)]
     fullname: String,
 }
@@ -53,7 +53,7 @@ impl MdnsManager {
 
         daemon.register(service)?;
         Ok(Self {
-            daemon,
+            daemon: Some(daemon),
             fullname: instance_name,
         })
     }
@@ -103,15 +103,19 @@ impl MdnsManager {
     }
 
     /// Shut down the mDNS daemon (unregisters the service).
-    pub fn shutdown(self) -> Result<(), mdns_sd::Error> {
-        self.daemon.shutdown().map(|_| ())
+    pub fn shutdown(&mut self) -> Result<(), mdns_sd::Error> {
+        if let Some(daemon) = self.daemon.take() {
+            daemon.shutdown().map(|_| ())
+        } else {
+            Ok(())
+        }
     }
 }
 
 impl Drop for MdnsManager {
     fn drop(&mut self) {
-        if let Err(e) = self.daemon.shutdown() {
-            log::warn!("mDNS shutdown failed: {e}");
+        if let Err(e) = self.shutdown() {
+            log::warn!("mDNS shutdown failed in drop: {e}");
         }
     }
 }

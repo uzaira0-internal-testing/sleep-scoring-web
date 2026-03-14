@@ -1,4 +1,5 @@
-"""Centralized Choi nonwear detection helpers.
+"""
+Centralized Choi nonwear detection helpers.
 
 Ensures all Choi call sites (chart overlay, onset/offset tables, full table,
 metrics, auto-score) use the same column — either the user's preference from
@@ -12,6 +13,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 
 from sleep_scoring_web.db.models import UserSettings
+from sleep_scoring_web.schemas.enums import ActivityDataPreference
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +21,7 @@ if TYPE_CHECKING:
     from sleep_scoring_web.db.models import RawActivityData
     from sleep_scoring_web.schemas import ActivityDataColumnar
 
-DEFAULT_CHOI_COLUMN = "vector_magnitude"
+DEFAULT_CHOI_COLUMN = ActivityDataPreference.VECTOR_MAGNITUDE
 VALID_CHOI_COLUMNS = {"axis_x", "axis_y", "axis_z", "vector_magnitude"}
 
 

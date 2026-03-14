@@ -166,7 +166,7 @@ async fn test_auth_empty_group_hash_returns_503() {
     // Server with empty group_hash (simulates pre-login state)
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     sleep_scoring_desktop::db::init_db_conn(&conn).unwrap();
-    let db = std::sync::Arc::new(std::sync::Mutex::new(conn));
+    let db = std::sync::Arc::new(std::sync::RwLock::new(std::sync::Arc::new(std::sync::Mutex::new(conn))));
     let addr = sleep_scoring_desktop::server::start_on_random_port(db, "", "testuser", "test-id").await;
     let client = reqwest::Client::new();
     let resp = client

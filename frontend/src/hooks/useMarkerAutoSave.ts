@@ -82,8 +82,8 @@ export function useMarkerAutoSave() {
 
   // Post-save effects — conditional on local vs server
   const applyPostSaveEffects = useCallback(
-    (fileId: number | null, date: string | null, isLocal: boolean) => {
-      markSaved();
+    (fileId: number | null, date: string | null, isLocal: boolean, editGeneration?: number) => {
+      markSaved(editGeneration);
       retryCountRef.current = 0;
       if (!fileId || !date) return;
 
@@ -128,17 +128,21 @@ export function useMarkerAutoSave() {
       const date = availableDates[currentDateIndex] ?? null;
       if (!fileId || !date) throw new Error("No file/date for save");
 
+      // Capture the edit generation at save start so markSaved can detect
+      // whether the user edited during the in-flight save.
+      const editGeneration = state._editGeneration;
+
       const ds = getDataSourceFromStore();
       const markerData = buildMarkerData();
       await ds.saveMarkers(fileId, date, state.username || "anonymous", markerData);
-      return { savedFileId: fileId, savedDate: date, isLocal: state.currentFileSource === "local" };
+      return { savedFileId: fileId, savedDate: date, isLocal: state.currentFileSource === "local", editGeneration };
     },
     onMutate: () => {
       setSaving(true);
       setSaveError(null);
     },
-    onSuccess: ({ savedFileId, savedDate, isLocal }) => {
-      applyPostSaveEffects(savedFileId, savedDate, isLocal);
+    onSuccess: ({ savedFileId, savedDate, isLocal, editGeneration }) => {
+      applyPostSaveEffects(savedFileId, savedDate, isLocal, editGeneration);
     },
     onError: (error: Error) => {
       setSaving(false);
@@ -259,6 +263,20 @@ export function useMarkerAutoSave() {
       }
     };
   }, [applyPostSaveEffects, setSaveError, setSaving]);
+
+  // Warn user before closing tab with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const state = useSleepScoringStore.getState();
+      if (state.isDirty) {
+        e.preventDefault();
+        // Modern browsers show a generic message regardless of returnValue
+        e.returnValue = "You have unsaved changes. Are you sure you want to leave?";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {

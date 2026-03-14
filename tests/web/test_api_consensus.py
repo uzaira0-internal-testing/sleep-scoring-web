@@ -310,6 +310,14 @@ class TestConsensusBallotVoting:
             status="submitted",
         )
 
+        # Assign annotator to the file so they can access the ballot
+        assign_resp = await client.post(
+            "/api/v1/files/assignments",
+            json={"file_ids": [file_id], "username": "testannotator"},
+            headers=admin_auth_headers,
+        )
+        assert assign_resp.status_code == 200
+
         ballot_resp = await client.get(
             f"/api/v1/consensus/{file_id}/{analysis_date}/ballot",
             headers=annotator_auth_headers,
@@ -381,6 +389,20 @@ class TestConsensusBallotVoting:
         )
         assert activity_resp.status_code == 200
         timestamps = activity_resp.json()["data"]["timestamps"]
+
+        # Assign auto_score and annotator to the file so they can save/access markers
+        assign_resp = await client.post(
+            "/api/v1/files/assignments",
+            json={"file_ids": [file_id], "username": "auto_score"},
+            headers=admin_auth_headers,
+        )
+        assert assign_resp.status_code == 200
+        assign_resp2 = await client.post(
+            "/api/v1/files/assignments",
+            json={"file_ids": [file_id], "username": "testannotator"},
+            headers=admin_auth_headers,
+        )
+        assert assign_resp2.status_code == 200
 
         # Human candidate
         human_save_resp = await client.put(
@@ -547,6 +569,15 @@ class TestConsensusBallotVoting:
         )
 
         await _save_markers(client, admin_auth_headers, file_id, analysis_date)
+
+        # Assign annotator so they can access the file's websocket stream
+        assign_resp = await client.post(
+            "/api/v1/files/assignments",
+            json={"file_ids": [file_id], "username": "testannotator"},
+            headers=admin_auth_headers,
+        )
+        assert assign_resp.status_code == 200
+
         ballot_resp = await client.get(
             f"/api/v1/consensus/{file_id}/{analysis_date}/ballot",
             headers=admin_auth_headers,
@@ -688,7 +719,7 @@ class TestConsensusBallotVoting:
                 assert ws.receive_json()["type"] == "consensus_connected"
 
                 auto_resp = await client.post(
-                    f"/api/v1/markers/{file_id}/{analysis_date}/auto-score",
+                    f"/api/v1/markers/{file_id}/{analysis_date}/auto-score?include_diary=false",
                     headers=admin_auth_headers,
                 )
                 assert auto_resp.status_code == 200
@@ -713,6 +744,14 @@ class TestConsensusBallotVoting:
             sample_csv_content,
             "consensus_ws_auto_cleared.csv",
         )
+
+        # Assign auto_score to the file so it can save markers
+        assign_resp = await client.post(
+            "/api/v1/files/assignments",
+            json={"file_ids": [file_id], "username": "auto_score"},
+            headers=admin_auth_headers,
+        )
+        assert assign_resp.status_code == 200
 
         # Seed stale auto_score annotation.
         auto_headers = {**admin_auth_headers, "X-Username": "auto_score"}
@@ -869,6 +908,14 @@ class TestConsensusBallotVoting:
             analysis_date,
             sleep_markers=[{"onset_timestamp": 1100, "offset_timestamp": 2100, "marker_type": "MAIN_SLEEP"}],
         )
+
+        # Assign annotator to the file so they can vote
+        assign_resp = await client.post(
+            "/api/v1/files/assignments",
+            json={"file_ids": [file_id], "username": "testannotator"},
+            headers=admin_auth_headers,
+        )
+        assert assign_resp.status_code == 200
 
         ballot_resp = await client.get(
             f"/api/v1/consensus/{file_id}/{analysis_date}/ballot",

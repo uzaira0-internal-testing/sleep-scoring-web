@@ -15,7 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Uplo
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, delete, or_, select
 
-from sleep_scoring_web.api.access import require_file_access
+from sleep_scoring_web.api.access import get_accessible_files, require_file_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.api.markers import (
     _calculate_and_store_metrics,
@@ -28,7 +28,7 @@ from sleep_scoring_web.api.markers import (
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker
 from sleep_scoring_web.schemas import ManualNonwearPeriod, SleepPeriod
-from sleep_scoring_web.schemas.enums import MarkerCategory, MarkerType, NonwearDataSource
+from sleep_scoring_web.schemas.enums import MarkerCategory, MarkerType
 from sleep_scoring_web.services.file_identity import (
     build_file_identity,
     filename_stem,
@@ -225,8 +225,7 @@ async def _process_nonwear_csv(
                         detail="CSV must have participant_id or filename column, or upload filename must identify participant",
                     )
 
-        files_result = await db.execute(select(FileModel))
-        all_files = [f for f in files_result.scalars().all() if not is_excluded_file_obj(f)]
+        all_files = await get_accessible_files(db, username)
         identities = [build_file_identity(f) for f in all_files]
         for ident in identities:
             filename_to_files.setdefault(ident.normalized_filename, []).append(ident.file)
@@ -383,8 +382,7 @@ async def _process_nonwear_csv(
                 delete(Marker).where(
                     and_(
                         Marker.file_id == fid,
-                        Marker.marker_category == MarkerCategory.NONWEAR,
-                        Marker.marker_type == NonwearDataSource.SENSOR,
+                        Marker.sensor_nonwear_filter(),
                     )
                 )
             )
@@ -419,7 +417,7 @@ async def _process_nonwear_csv(
                 file_id=fid,
                 analysis_date=analysis_date_val,
                 marker_category=MarkerCategory.NONWEAR,
-                marker_type=NonwearDataSource.SENSOR,
+                marker_type=MarkerType.SENSOR_NONWEAR,
                 start_timestamp=start_ts,
                 end_timestamp=end_ts,
                 period_index=i + 1,
@@ -750,8 +748,7 @@ async def _process_sleep_csv(
             scored_by_col = col
             break
 
-    files_result = await db.execute(select(FileModel))
-    all_files = [f for f in files_result.scalars().all() if not is_excluded_file_obj(f)]
+    all_files = await get_accessible_files(db, username)
     identities = [build_file_identity(f) for f in all_files]
 
     filename_to_files: dict[str, list[FileModel]] = {}
@@ -975,9 +972,9 @@ async def _process_sleep_csv(
             raw_type = str(row[type_col]).strip().upper().replace(" ", "_")
             if raw_type in ("MANUAL_NONWEAR", "NONWEAR"):
                 is_nonwear_row = True
-            elif raw_type == "NAP":
+            elif raw_type == MarkerType.NAP:
                 marker_type = MarkerType.NAP
-            elif raw_type == "MAIN_SLEEP":
+            elif raw_type == MarkerType.MAIN_SLEEP:
                 marker_type = MarkerType.MAIN_SLEEP
 
         marker_index = None
@@ -1071,7 +1068,7 @@ async def _process_sleep_csv(
                     Marker.file_id == fid,
                     Marker.analysis_date == analysis_date_val,
                     Marker.marker_category == MarkerCategory.NONWEAR,
-                    Marker.marker_type != NonwearDataSource.SENSOR,
+                    Marker.exclude_sensor_nonwear_filter(),
                     or_(Marker.created_by == username, Marker.created_by.is_(None)),
                 )
             )
@@ -1083,7 +1080,7 @@ async def _process_sleep_csv(
                 file_id=fid,
                 analysis_date=analysis_date_val,
                 marker_category=MarkerCategory.NONWEAR,
-                marker_type="manual",
+                marker_type=MarkerType.MANUAL_NONWEAR,
                 start_timestamp=nw["start_ts"],
                 end_timestamp=nw["end_ts"],
                 period_index=i + 1,

@@ -15,13 +15,19 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
-from PyQt6.QtCore import QSettings
-from PyQt6.QtWidgets import QApplication, QWidget
 
-from sleep_scoring_app.core.dataclasses import ParticipantInfo
-from sleep_scoring_app.data.database import DatabaseManager
-from sleep_scoring_app.services.unified_data_service import UnifiedDataService
-from sleep_scoring_app.ui.utils.config import ConfigManager
+try:
+    from PyQt6.QtCore import QSettings
+    from PyQt6.QtWidgets import QApplication, QWidget
+
+    from sleep_scoring_app.core.dataclasses import ParticipantInfo
+    from sleep_scoring_app.data.database import DatabaseManager
+    from sleep_scoring_app.services.unified_data_service import UnifiedDataService
+    from sleep_scoring_app.ui.utils.config import ConfigManager
+
+    _HAS_DESKTOP_APP = True
+except ImportError:
+    _HAS_DESKTOP_APP = False
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -36,6 +42,10 @@ def isolated_test_environment(tmp_path_factory):
 
     This runs automatically for all tests (autouse=True).
     """
+    if not _HAS_DESKTOP_APP:
+        yield {}
+        return
+
     # Create session-wide temp directory for test data
     test_data_dir = tmp_path_factory.mktemp("sleep_scoring_test_data")
     test_db_path = test_data_dir / "test_sleep_scoring.db"
@@ -73,6 +83,10 @@ def isolated_qsettings(tmp_path):
 
     This ensures tests don't interfere with each other's settings.
     """
+    if not _HAS_DESKTOP_APP:
+        yield None
+        return
+
     from threading import Lock
 
     from sleep_scoring_app.utils.resource_resolver import get_config_path

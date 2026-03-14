@@ -82,6 +82,8 @@ interface MarkerState {
     markerIndex: number;
   }>;
   isDirty: boolean;
+  /** Monotonically increasing counter — incremented on every user edit. */
+  _editGeneration: number;
   isSaving: boolean;
   lastSavedAt: number | null;
   saveError: string | null;
@@ -248,7 +250,8 @@ interface SleepScoringState
   // Save status actions
   setSaving: (saving: boolean) => void;
   setSaveError: (error: string | null) => void;
-  markSaved: () => void;
+  /** Clear isDirty only if no edits occurred since the save started. */
+  markSaved: (editGeneration?: number) => void;
   /** Registered by useMarkerAutoSave — flushes pending debounced save immediately */
   _flushSave: (() => Promise<boolean>) | null;
   registerFlushSave: (fn: (() => Promise<boolean>) | null) => void;
@@ -342,6 +345,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         sleepMarkers: [],
         nonwearMarkers: [],
         isDirty: false,
+        _editGeneration: 0,
         isSaving: false,
         lastSavedAt: null,
         saveError: null,
@@ -625,12 +629,12 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         // User-initiated marker actions (push undo + mark dirty)
         setSleepMarkers: (markers) => {
           get().pushMarkerSnapshot();
-          set({ sleepMarkers: markers, isDirty: true });
+          set({ sleepMarkers: markers, isDirty: true, _editGeneration: get()._editGeneration + 1 });
         },
 
         setNonwearMarkers: (markers) => {
           get().pushMarkerSnapshot();
-          set({ nonwearMarkers: markers, isDirty: true });
+          set({ nonwearMarkers: markers, isDirty: true, _editGeneration: get()._editGeneration + 1 });
         },
 
         setMarkersDirty: (dirty) => set({ isDirty: dirty }),
@@ -684,7 +688,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               };
               set({
                 sleepMarkers: [...sleepMarkers, newMarker],
-                isDirty: true,
+                isDirty: true, _editGeneration: get()._editGeneration + 1,
                 creationMode: "idle",
                 pendingOnsetTimestamp: null,
                 selectedPeriodIndex: newArrayIndex, // Array index (0-based) for UI selection
@@ -700,7 +704,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               };
               set({
                 nonwearMarkers: [...nonwearMarkers, newMarker],
-                isDirty: true,
+                isDirty: true, _editGeneration: get()._editGeneration + 1,
                 creationMode: "idle",
                 pendingOnsetTimestamp: null,
                 selectedPeriodIndex: newArrayIndex, // Array index (0-based) for UI selection
@@ -733,7 +737,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           };
           set({
             sleepMarkers: [...sleepMarkers, newMarker],
-            isDirty: true,
+            isDirty: true, _editGeneration: get()._editGeneration + 1,
             selectedPeriodIndex: sleepMarkers.length,
             markerMode: "sleep" as const,
           });
@@ -754,7 +758,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           };
           set({
             nonwearMarkers: [...nonwearMarkers, newMarker],
-            isDirty: true,
+            isDirty: true, _editGeneration: get()._editGeneration + 1,
             selectedPeriodIndex: nonwearMarkers.length,
             markerMode: "nonwear" as const,
           });
@@ -781,13 +785,13 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             const updated = sleepMarkers.map((m, i) =>
               i === index ? { ...m, ...clamped } : m
             );
-            set({ sleepMarkers: updated, isDirty: true });
+            set({ sleepMarkers: updated, isDirty: true, _editGeneration: get()._editGeneration + 1 });
           } else {
             const { nonwearMarkers } = get();
             const updated = nonwearMarkers.map((m, i) =>
               i === index ? { ...m, ...clamped } : m
             );
-            set({ nonwearMarkers: updated, isDirty: true });
+            set({ nonwearMarkers: updated, isDirty: true, _editGeneration: get()._editGeneration + 1 });
           }
         },
 
@@ -800,13 +804,13 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             const updated = sleepMarkers
               .filter((_, i) => i !== index)
               .map((m, i) => ({ ...m, markerIndex: i + 1 }));  // 1-indexed
-            set({ sleepMarkers: updated, isDirty: true, selectedPeriodIndex: null });
+            set({ sleepMarkers: updated, isDirty: true, _editGeneration: get()._editGeneration + 1, selectedPeriodIndex: null });
           } else {
             const { nonwearMarkers } = get();
             const updated = nonwearMarkers
               .filter((_, i) => i !== index)
               .map((m, i) => ({ ...m, markerIndex: i + 1 }));  // 1-indexed
-            set({ nonwearMarkers: updated, isDirty: true, selectedPeriodIndex: null });
+            set({ nonwearMarkers: updated, isDirty: true, _editGeneration: get()._editGeneration + 1, selectedPeriodIndex: null });
           }
         },
 
@@ -822,32 +826,37 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             set({
               isNoSleep: true,
               sleepMarkers: napsOnly,
-              isDirty: true,
+              isDirty: true, _editGeneration: get()._editGeneration + 1,
               selectedPeriodIndex: napsOnly.length > 0 ? 0 : null,
             });
           } else {
-            set({ isNoSleep: false, isDirty: true });
+            set({ isNoSleep: false, isDirty: true, _editGeneration: get()._editGeneration + 1 });
           }
         },
 
         setNeedsConsensus: (needsConsensus) => {
           auditLog.log("consensus_toggled", { value: needsConsensus });
           get().pushMarkerSnapshot();
-          set({ needsConsensus, isDirty: true });
+          set({ needsConsensus, isDirty: true, _editGeneration: get()._editGeneration + 1 });
         },
 
         setNotes: (notes) => {
           auditLog.log("notes_changed", { length: notes.length });
           get().pushMarkerSnapshot();
-          set({ notes, isDirty: true });
+          set({ notes, isDirty: true, _editGeneration: get()._editGeneration + 1 });
         },
 
         // Save status actions
         setSaving: (saving) => set({ isSaving: saving }),
         setSaveError: (error) => set({ saveError: error }),
-        markSaved: () => {
+        markSaved: (editGeneration?: number) => {
           auditLog.log("markers_saved", { sleepCount: get().sleepMarkers.length, nonwearCount: get().nonwearMarkers.length });
-          set({ isDirty: false, isSaving: false, lastSavedAt: Date.now() });
+          // Only clear isDirty if no edits happened since the save started.
+          // If editGeneration is provided and doesn't match, the user edited
+          // during the save — keep isDirty so the next save cycle picks it up.
+          const currentGen = get()._editGeneration;
+          const stillDirty = editGeneration !== undefined && editGeneration !== currentGen;
+          set({ isDirty: stillDirty, isSaving: false, lastSavedAt: Date.now() });
         },
         _flushSave: null,
         registerFlushSave: (fn) => set({ _flushSave: fn }),
@@ -906,7 +915,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
                   needsConsensus: snapshot.needsConsensus,
                   notes: snapshot.notes,
                   selectedPeriodIndex: snapshot.selectedPeriodIndex,
-                  isDirty: true,
+                  isDirty: true, _editGeneration: get()._editGeneration + 1,
                   markerHistoryIndex: newHistory.length - 2,
                 });
               }
@@ -924,7 +933,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             needsConsensus: snapshot.needsConsensus,
             notes: snapshot.notes,
             selectedPeriodIndex: snapshot.selectedPeriodIndex,
-            isDirty: true,
+            isDirty: true, _editGeneration: get()._editGeneration + 1,
             markerHistoryIndex: newIndex,
           });
         },
@@ -942,7 +951,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             needsConsensus: snapshot.needsConsensus,
             notes: snapshot.notes,
             selectedPeriodIndex: snapshot.selectedPeriodIndex,
-            isDirty: true,
+            isDirty: true, _editGeneration: get()._editGeneration + 1,
             markerHistoryIndex: newIndex,
           });
         },
@@ -977,7 +986,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           set({
             sleepMarkers: [],
             nonwearMarkers: [],
-            isDirty: true,
+            isDirty: true, _editGeneration: get()._editGeneration + 1,
             selectedPeriodIndex: null,
           });
         },

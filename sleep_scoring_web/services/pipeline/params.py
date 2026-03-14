@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from sleep_scoring_web.schemas.enums import AlgorithmType
+
 # Default component IDs — shared between PipelineParams and PipelineConfigRequest
-DEFAULT_EPOCH_CLASSIFIER = "sadeh_1994_actilife"
+DEFAULT_EPOCH_CLASSIFIER = AlgorithmType.SADEH_1994_ACTILIFE
 DEFAULT_BOUT_DETECTOR = "consecutive_run"
 DEFAULT_PERIOD_GUIDER = "diary"
 DEFAULT_PERIOD_CONSTRUCTOR = "onset_offset"

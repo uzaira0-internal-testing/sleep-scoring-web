@@ -44,6 +44,10 @@ COPY frontend/eslint.config.js ./
 # Copy WASM build output into the expected location
 COPY --from=wasm-builder /wasm/pkg ./src/wasm/pkg
 
+# Sentry DSN (inlined by Vite at build time)
+ARG VITE_SENTRY_DSN=""
+ENV VITE_SENTRY_DSN=${VITE_SENTRY_DSN}
+
 # Build the application using Vite
 RUN bun run build
 

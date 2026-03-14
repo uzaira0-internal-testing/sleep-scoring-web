@@ -23,6 +23,10 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from sleep_scoring_web.auth_setup import create_session_storage
 from sleep_scoring_web.config import get_settings, settings
+from sleep_scoring_web.sentry_setup import init_sentry
+
+# Initialize Sentry before app creation (no-op if SENTRY_DSN not set)
+init_sentry()
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

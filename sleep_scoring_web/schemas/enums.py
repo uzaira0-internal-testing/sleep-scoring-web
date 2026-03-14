@@ -84,6 +84,8 @@ class MarkerType(StrEnum):
 
     MAIN_SLEEP = "MAIN_SLEEP"
     NAP = "NAP"
+    MANUAL_NONWEAR = "manual"
+    SENSOR_NONWEAR = "sensor"
 
 
 class MarkerCategory(StrEnum):
@@ -91,14 +93,6 @@ class MarkerCategory(StrEnum):
 
     SLEEP = "sleep"
     NONWEAR = "nonwear"
-
-
-class NonwearDataSource(StrEnum):
-    """Nonwear data source types."""
-
-    CHOI_ALGORITHM = "choi_algorithm"
-    MANUAL = "manual"
-    SENSOR = "sensor"
 
 
 class ActivityDataPreference(StrEnum):

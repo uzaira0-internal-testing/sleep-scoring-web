@@ -20,10 +20,11 @@ from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.api.markers import (
     _upsert_consensus_candidate_snapshot,
     naive_to_unix,
+    upsert_user_annotation,
 )
 from sleep_scoring_web.db.models import DiaryEntry, Marker, RawActivityData, UserAnnotation
 from sleep_scoring_web.db.models import File as FileModel
-from sleep_scoring_web.schemas.enums import MarkerCategory, NonwearDataSource
+from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, VerificationStatus
 from sleep_scoring_web.schemas.pipeline import PipelineConfigRequest
 from sleep_scoring_web.services.consensus_realtime import broadcast_consensus_update
 from sleep_scoring_web.services.file_identity import is_excluded_activity_filename, is_excluded_file_obj
@@ -58,7 +59,7 @@ class AutoScoreBatchRequest(BaseModel):
 
     file_ids: list[int] | None = None
     only_missing: bool = True
-    algorithm: str = "sadeh_1994_actilife"
+    algorithm: str = AlgorithmType.SADEH_1994_ACTILIFE
     include_diary: bool = True
     onset_epochs: int = Field(default=3, ge=1, le=30)
     offset_minutes: int = Field(default=5, ge=1, le=60)
@@ -284,42 +285,23 @@ async def _run_auto_score_single(
         offset_min_consecutive_minutes=offset_minutes,
     )
 
-    existing = await db.execute(
-        select(UserAnnotation).where(
-            and_(
-                UserAnnotation.file_id == file_id,
-                UserAnnotation.analysis_date == analysis_date,
-                UserAnnotation.username == "auto_score",
-            )
-        )
-    )
-    annotation = existing.scalar_one_or_none()
     all_markers = result["sleep_markers"] + result["nap_markers"]
 
     if all_markers:
         markers_json = all_markers
-        if annotation:
-            annotation.sleep_markers_json = markers_json
-            annotation.nonwear_markers_json = None
-            annotation.is_no_sleep = False
-            annotation.algorithm_used = algorithm
-            annotation.detection_rule = detection_rule
-            annotation.notes = "; ".join(result["notes"]) if result["notes"] else None
-            annotation.status = "submitted"
-        else:
-            annotation = UserAnnotation(
-                file_id=file_id,
-                analysis_date=analysis_date,
-                username="auto_score",
-                sleep_markers_json=markers_json,
-                nonwear_markers_json=None,
-                is_no_sleep=False,
-                algorithm_used=algorithm,
-                detection_rule=detection_rule,
-                notes="; ".join(result["notes"]) if result["notes"] else None,
-                status="submitted",
-            )
-            db.add(annotation)
+        notes_str = "; ".join(result["notes"]) if result["notes"] else None
+        await upsert_user_annotation(
+            db,
+            file_id=file_id,
+            analysis_date=analysis_date,
+            username="auto_score",
+            sleep_markers_json=markers_json,
+            nonwear_markers_json=None,
+            is_no_sleep=False,
+            algorithm_used=algorithm,
+            detection_rule=detection_rule,
+            notes=notes_str,
+        )
 
         await _upsert_consensus_candidate_snapshot(
             db,
@@ -330,7 +312,7 @@ async def _run_auto_score_single(
             nonwear_markers_json=None,
             is_no_sleep=False,
             algorithm_used=algorithm,
-            notes="; ".join(result["notes"]) if result["notes"] else None,
+            notes=notes_str,
         )
         await db.commit()
         await broadcast_consensus_update(
@@ -339,15 +321,27 @@ async def _run_auto_score_single(
             event="auto_score_updated",
             username="auto_score",
         )
-    elif annotation:
-        await db.delete(annotation)
-        await db.commit()
-        await broadcast_consensus_update(
-            file_id=file_id,
-            analysis_date=analysis_date,
-            event="auto_score_cleared",
-            username="auto_score",
+    else:
+        # No markers produced — clean up any existing auto_score annotation
+        existing = await db.execute(
+            select(UserAnnotation).where(
+                and_(
+                    UserAnnotation.file_id == file_id,
+                    UserAnnotation.analysis_date == analysis_date,
+                    UserAnnotation.username == "auto_score",
+                )
+            )
         )
+        annotation = existing.scalar_one_or_none()
+        if annotation:
+            await db.delete(annotation)
+            await db.commit()
+            await broadcast_consensus_update(
+                file_id=file_id,
+                analysis_date=analysis_date,
+                event="auto_score_cleared",
+                username="auto_score",
+            )
 
     return AutoScoreResponse(
         sleep_markers=result["sleep_markers"],
@@ -522,7 +516,7 @@ async def auto_score_markers(
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-    algorithm: Annotated[str, Query(description="Algorithm type")] = "sadeh_1994_actilife",
+    algorithm: Annotated[str, Query(description="Algorithm type")] = AlgorithmType.SADEH_1994_ACTILIFE,
     include_diary: Annotated[bool, Query(description="Use diary data for placement")] = True,
     onset_epochs: Annotated[int, Query(description="Min consecutive sleep epochs for onset (e.g. 3 or 5)", ge=1, le=30)] = 3,
     offset_minutes: Annotated[int, Query(description="Min consecutive minutes for offset (e.g. 5 or 10)", ge=1, le=60)] = 5,
@@ -659,8 +653,7 @@ async def auto_nonwear_markers(
         select(Marker).where(
             and_(
                 Marker.file_id == file_id,
-                Marker.marker_category == "nonwear",
-                Marker.marker_type == NonwearDataSource.SENSOR,
+                Marker.sensor_nonwear_filter(),
             )
         )
     )
@@ -692,7 +685,7 @@ async def auto_nonwear_markers(
             and_(
                 Marker.file_id == file_id,
                 Marker.analysis_date == analysis_date,
-                Marker.marker_category == "sleep",
+                Marker.marker_category == MarkerCategory.SLEEP,
                 Marker.created_by == username,
             )
         )

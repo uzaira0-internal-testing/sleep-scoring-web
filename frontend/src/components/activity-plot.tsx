@@ -3,6 +3,7 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { useQuery } from "@tanstack/react-query";
 import { useActivityData, useMarkers, useSleepScoringStore, useDates } from "@/store";
+import { useCapabilitiesStore } from "@/store/capabilities-store";
 import { useTheme } from "@/components/theme-provider";
 import { useDataSource } from "@/contexts/data-source-context";
 import { getApiBase } from "@/api/client";
@@ -53,8 +54,9 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
   const sleepDetectionRule = useSleepScoringStore((state) => state.sleepDetectionRule);
   const colorTheme = useSleepScoringStore((state) => state.colorTheme);
   const { currentDate } = useDates();
+  const serverAvailable = useCapabilitiesStore((state) => state.serverAvailable);
 
-  // Fetch markers with metrics for sleep rule arrows
+  // Fetch markers with metrics for sleep rule arrows (server-only)
   const { data: markersData } = useQuery({
     queryKey: ["markers", currentFileId, currentDate, username || "anonymous"],
     queryFn: async () => {
@@ -71,7 +73,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       if (!response.ok) throw new Error(`Failed to fetch markers: ${response.status}`);
       return response.json() as Promise<MarkersWithMetricsResponse>;
     },
-    enabled: !!currentFileId && !!currentDate,
+    enabled: serverAvailable && !!currentFileId && !!currentDate,
   });
 
   // Fetch adjacent day markers for continuity display (via DataSource for local/server parity)
@@ -99,7 +101,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       if (!response.ok) return null;
       return response.json() as Promise<ConsensusBallotResponse>;
     },
-    enabled: showComparisonMarkers && !!currentFileId && !!currentDate,
+    enabled: serverAvailable && showComparisonMarkers && !!currentFileId && !!currentDate,
     staleTime: 0,
     refetchInterval: 10_000,
   });

@@ -600,15 +600,15 @@ fn parse_time_from_bytes(bytes: &[u8]) -> Option<(i64, i64, i64, f64)> {
 /// Fast integer parsing from ASCII bytes (no allocation, no error string).
 #[inline]
 fn parse_int_fast(bytes: &[u8]) -> Option<u32> {
+    if bytes.is_empty() {
+        return None;
+    }
     let mut result: u32 = 0;
     for &b in bytes {
         if !b.is_ascii_digit() {
             return None;
         }
-        result = result * 10 + (b - b'0') as u32;
-    }
-    if bytes.is_empty() {
-        return None;
+        result = result.checked_mul(10)?.checked_add((b - b'0') as u32)?;
     }
     Some(result)
 }

@@ -14,8 +14,7 @@ Database schema with tables for:
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003 - required at runtime for SQLAlchemy Mapped types
-from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
@@ -29,17 +28,18 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
     func,
 )
-from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import (
+    Enum as SQLEnum,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from sleep_scoring_web.schemas.enums import FileStatus, MarkerCategory, MarkerType, UserRole, VerificationStatus
 
-class UserRole(str, Enum):
-    """User role for authorization."""
-
-    ADMIN = "admin"
-    ANNOTATOR = "annotator"
+if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
 
 
 class Base(DeclarativeBase):
@@ -88,7 +88,7 @@ class File(Base):
     original_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_type: Mapped[str] = mapped_column(String(50), default="csv")
     participant_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
-    status: Mapped[str] = mapped_column(String(50), default="pending")
+    status: Mapped[str] = mapped_column(String(50), default=FileStatus.PENDING)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     start_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -103,7 +103,7 @@ class File(Base):
     markers: Mapped[list[Marker]] = relationship("Marker", back_populates="file", cascade="all, delete-orphan")
     annotations: Mapped[list[UserAnnotation]] = relationship("UserAnnotation", back_populates="file", cascade="all, delete-orphan")
     sleep_metrics: Mapped[list[SleepMetric]] = relationship("SleepMetric", back_populates="file", cascade="all, delete-orphan")
-    assignments: Mapped[list["FileAssignment"]] = relationship("FileAssignment", back_populates="file", cascade="all, delete-orphan")
+    assignments: Mapped[list[FileAssignment]] = relationship("FileAssignment", back_populates="file", cascade="all, delete-orphan")
 
 
 class RawActivityData(Base):
@@ -151,6 +151,19 @@ class Marker(Base):
     # Relationships
     file: Mapped[File] = relationship("File", back_populates="markers")
 
+    @classmethod
+    def sensor_nonwear_filter(cls) -> ColumnElement[bool]:
+        """Filter condition matching sensor nonwear markers."""
+        return and_(
+            cls.marker_category == MarkerCategory.NONWEAR,
+            cls.marker_type == MarkerType.SENSOR_NONWEAR,
+        )
+
+    @classmethod
+    def exclude_sensor_nonwear_filter(cls) -> ColumnElement[bool]:
+        """Filter condition excluding sensor nonwear markers."""
+        return cls.marker_type != MarkerType.SENSOR_NONWEAR
+
     __table_args__ = (
         Index("ix_markers_file_date", "file_id", "analysis_date"),
         UniqueConstraint("file_id", "analysis_date", "created_by", "marker_category", "period_index", name="uq_marker_file_date_user_cat_period"),
@@ -179,7 +192,7 @@ class UserAnnotation(Base):
     detection_rule: Mapped[str | None] = mapped_column(String(100), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     time_spent_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
-    status: Mapped[str] = mapped_column(String(50), default="draft")  # draft, submitted
+    status: Mapped[str] = mapped_column(String(50), default=VerificationStatus.DRAFT)  # draft, submitted
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -239,7 +252,7 @@ class SleepMetric(Base):
     algorithm_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     detection_rule: Mapped[str | None] = mapped_column(String(100), nullable=True)
     scored_by: Mapped[str | None] = mapped_column(String(100), nullable=True)  # Honor-system username
-    verification_status: Mapped[str] = mapped_column(String(50), default="draft")
+    verification_status: Mapped[str] = mapped_column(String(50), default=VerificationStatus.DRAFT)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

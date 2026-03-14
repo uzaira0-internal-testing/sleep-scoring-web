@@ -357,6 +357,8 @@ async def upload_file(
     existing_file = result.scalar_one_or_none()
     if existing_file:
         if replace:
+            # Access check: user must have access to the file being replaced
+            await require_file_access(db, username, existing_file.id)
             # Delete old file record (cascade deletes activity data, markers, etc.)
             if existing_file.original_path:
                 old_path = Path(existing_file.original_path)
@@ -851,7 +853,7 @@ async def get_unassigned_files(
         .outerjoin(FileAssignment, FileModel.id == FileAssignment.file_id)
         .where(FileAssignment.id.is_(None))
         .where(~_excluded_filename_sql_filter())
-        .where(FileModel.status == "ready")
+        .where(FileModel.status == FileStatus.READY)
         .order_by(FileModel.filename)
     )
     return [
@@ -1181,7 +1183,7 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
 
     from sleep_scoring_web.db.models import DiaryEntry, Marker, NightComplexity
     from sleep_scoring_web.db.session import async_session_maker
-    from sleep_scoring_web.schemas.enums import MarkerCategory, NonwearDataSource
+    from sleep_scoring_web.schemas.enums import MarkerCategory
     from sleep_scoring_web.services.algorithms import ChoiAlgorithm, SadehAlgorithm
     from sleep_scoring_web.services.complexity import compute_pre_complexity
 
@@ -1258,8 +1260,7 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
                         select(Marker).where(
                             and_(
                                 Marker.file_id == file_id,
-                                Marker.marker_category == MarkerCategory.NONWEAR,
-                                Marker.marker_type == NonwearDataSource.SENSOR,
+                                Marker.sensor_nonwear_filter(),
                                 Marker.start_timestamp <= data_max_ts,
                                 Marker.end_timestamp >= data_min_ts,
                             )

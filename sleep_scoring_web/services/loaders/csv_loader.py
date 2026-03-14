@@ -106,11 +106,13 @@ class CSVLoaderService:
 
     @staticmethod
     def _find_geneactiv_data_start(file_path: Path) -> tuple[int, bool]:
-        """Find where data starts in a GENEActiv file.
+        """
+        Find where data starts in a GENEActiv file.
 
         Returns:
             (data_start_line, has_header_row): line index where data begins,
             and whether there's a column header row immediately before it.
+
         """
         # Timestamp pattern: YYYY-MM-DD HH:MM:SS (with optional :MMM or .MMM)
         ts_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}")

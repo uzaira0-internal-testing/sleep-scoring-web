@@ -52,6 +52,11 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: process.env.TAURI_ENV_DEBUG ? true : "hidden",
     target: "esnext",
+    rollupOptions: {
+      // Tauri-only plugins are dynamically imported and only resolve at runtime in the desktop app.
+      // Externalize them so the web/Docker build doesn't fail when they're not installed.
+      external: ["@tauri-apps/plugin-process", "@tauri-apps/plugin-updater"],
+    },
   },
   optimizeDeps: {
     exclude: ["sleep-scoring-wasm"],

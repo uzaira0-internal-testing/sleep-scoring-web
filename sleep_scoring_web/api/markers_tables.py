@@ -17,7 +17,7 @@ from sleep_scoring_web.api.access import require_file_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker, RawActivityData
-from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, NonwearDataSource
+from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory
 from sleep_scoring_web.schemas.models import (
     FullTableColumnar,
     FullTableDataPoint,
@@ -197,8 +197,7 @@ async def get_onset_offset_data(
             select(Marker).where(
                 and_(
                     Marker.file_id == file_id,
-                    Marker.marker_category == MarkerCategory.NONWEAR,
-                    Marker.marker_type == NonwearDataSource.SENSOR,
+                    Marker.sensor_nonwear_filter(),
                     Marker.start_timestamp <= table_max_ts,
                     Marker.end_timestamp >= table_min_ts,
                 )
@@ -366,8 +365,7 @@ async def get_full_table_data(
         select(Marker).where(
             and_(
                 Marker.file_id == file_id,
-                Marker.marker_category == MarkerCategory.NONWEAR,
-                Marker.marker_type == NonwearDataSource.SENSOR,
+                Marker.sensor_nonwear_filter(),
                 Marker.start_timestamp <= table_max_ts,
                 Marker.end_timestamp >= table_min_ts,
             )

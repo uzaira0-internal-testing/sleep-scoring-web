@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from sleep_scoring_web.api.markers import (
+from sleep_scoring_web.schemas.models import (
     FullTableDataPoint,
     FullTableResponse,
     OnsetOffsetDataPoint,
@@ -165,43 +165,9 @@ class TestFullTableResponse:
         assert response.end_time == "2024-01-01 12:00:00"
 
 
-class TestWindowMinutesParameter:
-    """Tests for the window_minutes query parameter validation."""
-
-    def test_window_minutes_default(self):
-        """Default window should be 100 minutes."""
-        # This tests the Query parameter definition
-        import inspect
-        from typing import Annotated
-
-        from fastapi import Query
-
-        # The endpoint accepts window_minutes with default=100, ge=5, le=120
-        # We verify these constraints by checking the endpoint signature
-        from sleep_scoring_web.api.markers import get_onset_offset_data
-
-        sig = inspect.signature(get_onset_offset_data)
-        window_param = sig.parameters.get("window_minutes")
-        assert window_param is not None
-
-    def test_window_minutes_range(self):
-        """Window minutes should be between 5 and 120."""
-        from typing import get_args, get_type_hints
-
-        from annotated_types import Ge, Le
-        from fastapi.params import Query as QueryParam
-
-        from sleep_scoring_web.api.markers import get_onset_offset_data
-
-        # With Annotated[int, Query(ge=5, le=120)] = 100, the constraints
-        # are in the Query's metadata list as Ge/Le objects.
-        hints = get_type_hints(get_onset_offset_data, include_extras=True)
-        type_args = get_args(hints["window_minutes"])
-        query_meta = next(a for a in type_args if isinstance(a, QueryParam))
-        ge_constraint = next(m for m in query_meta.metadata if isinstance(m, Ge))
-        le_constraint = next(m for m in query_meta.metadata if isinstance(m, Le))
-        assert ge_constraint.ge == 5
-        assert le_constraint.le == 120
+## TestWindowMinutesParameter — REMOVED
+# Superseded by tests/web/test_markers_tables.py::test_window_minutes_parameter
+# which tests window_minutes via HTTP rather than introspecting a moved function.
 
 
 class TestAlgorithmIntegration:

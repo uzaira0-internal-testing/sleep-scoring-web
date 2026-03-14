@@ -10,13 +10,19 @@ import csv
 import io
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, select
 
 from sleep_scoring_web.db.models import File, Marker, SleepMetric, UserAnnotation
-from sleep_scoring_web.schemas.enums import MarkerCategory, NonwearDataSource
+from sleep_scoring_web.schemas.enums import (
+    AlgorithmType,
+    MarkerCategory,
+    MarkerType,
+    SleepPeriodDetectorType,
+    VerificationStatus,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,28 +31,31 @@ logger = logging.getLogger(__name__)
 
 # Value display formatting for standardized capitalization
 _MARKER_TYPE_DISPLAY = {
-    "MAIN_SLEEP": "Main Sleep",
-    "NAP": "Nap",
-    "manual": "Manual Nonwear",
+    MarkerType.MAIN_SLEEP: "Main Sleep",
+    MarkerType.NAP: "Nap",
+    MarkerType.MANUAL_NONWEAR: "Manual Nonwear",
 }
 
 _ALGORITHM_DISPLAY = {
-    "sadeh_1994_actilife": "Sadeh 1994 (ActiLife)",
-    "SADEH_1994_ACTILIFE": "Sadeh 1994 (ActiLife)",
-    "cole_kripke_1992": "Cole-Kripke 1992",
-    "COLE_KRIPKE_1992": "Cole-Kripke 1992",
+    AlgorithmType.SADEH_1994_ACTILIFE: "Sadeh 1994 (ActiLife)",
+    AlgorithmType.SADEH_1994_ORIGINAL: "Sadeh 1994 (Original)",
+    AlgorithmType.COLE_KRIPKE_1992_ACTILIFE: "Cole-Kripke 1992 (ActiLife)",
+    AlgorithmType.COLE_KRIPKE_1992_ORIGINAL: "Cole-Kripke 1992 (Original)",
+    AlgorithmType.MANUAL: "Manual",
 }
 
 _DETECTION_RULE_DISPLAY = {
-    "consecutive_onset3s_offset5s": "3 Epochs / 5 Min",
-    "consecutive_onset5s_offset10s": "5 Epochs / 10 Min",
-    "tudor_locke_2014": "Tudor-Locke 2014",
+    SleepPeriodDetectorType.CONSECUTIVE_ONSET3S_OFFSET5S: "3 Epochs / 5 Min",
+    SleepPeriodDetectorType.CONSECUTIVE_ONSET5S_OFFSET10S: "5 Epochs / 10 Min",
+    SleepPeriodDetectorType.TUDOR_LOCKE_2014: "Tudor-Locke 2014",
 }
 
 _VERIFICATION_DISPLAY = {
-    "draft": "Draft",
-    "verified": "Verified",
-    "rejected": "Rejected",
+    VerificationStatus.DRAFT: "Draft",
+    VerificationStatus.SUBMITTED: "Submitted",
+    VerificationStatus.VERIFIED: "Verified",
+    VerificationStatus.DISPUTED: "Disputed",
+    VerificationStatus.RESOLVED: "Resolved",
 }
 
 
@@ -223,7 +232,7 @@ class ExportService:
             return result
 
         # Determine columns to export
-        export_columns = columns if columns else DEFAULT_COLUMNS
+        export_columns = columns or DEFAULT_COLUMNS
 
         # Validate columns
         valid_column_names = {col.name for col in EXPORT_COLUMNS}
@@ -287,7 +296,7 @@ class ExportService:
         nonwear_rows: list[dict[str, Any]] = []
 
         # Unpack date range once for use in both annotation and marker queries
-        start_date, end_date = date_range if date_range else (None, None)
+        start_date, end_date = date_range or (None, None)
 
         # Get files info
         files_result = await self.db.execute(select(File).where(File.id.in_(file_ids)))
@@ -297,7 +306,7 @@ class ExportService:
         ann_query = select(UserAnnotation).where(
             and_(
                 UserAnnotation.file_id.in_(file_ids),
-                UserAnnotation.status == "submitted",
+                UserAnnotation.status == VerificationStatus.SUBMITTED,
             )
         )
         if start_date and end_date:
@@ -372,8 +381,8 @@ class ExportService:
             metrics = metrics_lookup.get((marker.file_id, marker.analysis_date, marker.period_index))
 
             # Convert timestamps to datetime
-            onset_dt = datetime.fromtimestamp(marker.start_timestamp, tz=timezone.utc) if marker.start_timestamp else None
-            offset_dt = datetime.fromtimestamp(marker.end_timestamp, tz=timezone.utc) if marker.end_timestamp else None
+            onset_dt = datetime.fromtimestamp(marker.start_timestamp, tz=UTC) if marker.start_timestamp else None
+            offset_dt = datetime.fromtimestamp(marker.end_timestamp, tz=UTC) if marker.end_timestamp else None
 
             row = {
                 # File Info
@@ -417,7 +426,7 @@ class ExportService:
                         "Algorithm": _ALGORITHM_DISPLAY.get(algo_raw, algo_raw),
                         "Detection Rule": _DETECTION_RULE_DISPLAY.get(rule_raw, rule_raw),
                         "Verification Status": _VERIFICATION_DISPLAY.get(
-                            metrics.verification_status or "draft",
+                            metrics.verification_status or VerificationStatus.DRAFT,
                             metrics.verification_status or "Draft",
                         ),
                     }
@@ -435,7 +444,7 @@ class ExportService:
         nonwear_query = select(Marker).where(and_(
             Marker.file_id.in_(file_ids),
             Marker.marker_category == MarkerCategory.NONWEAR,
-            Marker.marker_type != NonwearDataSource.SENSOR,
+            Marker.exclude_sensor_nonwear_filter(),
             Marker.end_timestamp.isnot(None),
         ))
         if start_date and end_date:
@@ -458,8 +467,8 @@ class ExportService:
 
             ann = ann_lookup.get((nw.file_id, nw.analysis_date))
 
-            onset_dt = datetime.fromtimestamp(nw.start_timestamp, tz=timezone.utc) if nw.start_timestamp else None
-            offset_dt = datetime.fromtimestamp(nw.end_timestamp, tz=timezone.utc) if nw.end_timestamp else None
+            onset_dt = datetime.fromtimestamp(nw.start_timestamp, tz=UTC) if nw.start_timestamp else None
+            offset_dt = datetime.fromtimestamp(nw.end_timestamp, tz=UTC) if nw.end_timestamp else None
 
             nonwear_rows.append({
                 "Filename": file.filename,

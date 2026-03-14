@@ -73,6 +73,9 @@ services:
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
 
+      # Observability
+      SENTRY_DSN: ${SENTRY_DSN:-}
+
       # Application
       PYTHONUNBUFFERED: 1
       DEBUG: ${DEBUG:-false}
@@ -121,6 +124,7 @@ services:
       args:
         # API base URL - now uses /api without versioning
         VITE_API_BASE_URL: /api
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     container_name: sleep-scoring-frontend
     environment:
       BASE_PATH: /sleep-scoring
@@ -167,7 +171,6 @@ networks:
 volumes:
   postgres_data:
     name: sleep-scoring-web_postgres_data
-    external: true
   uploads_data:
     name: sleep-scoring-web_uploads_data
   tus_uploads_data:

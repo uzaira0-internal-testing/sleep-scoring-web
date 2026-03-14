@@ -8,10 +8,14 @@ use tauri::State;
 use crate::db;
 use crate::mdns::{self, PeerInfo};
 
+/// A swappable database handle. Readers clone the inner Arc to get a stable
+/// reference; the writer (switch_workspace) swaps the inner Arc atomically.
+pub type DbHandle = Arc<RwLock<Arc<Mutex<Connection>>>>;
+
 /// Application state managed by Tauri.
 /// group_hash and username use RwLock because they're set after login.
 pub struct AppState {
-    pub db: Arc<Mutex<Connection>>,
+    pub db: DbHandle,
     pub data_dir: PathBuf,
     pub group_hash: Arc<RwLock<String>>,
     pub instance_id: String,
@@ -124,10 +128,12 @@ pub async fn switch_workspace(
     let new_conn =
         db::open_workspace_db(&data_dir, &workspace_id).map_err(|e| e.to_string())?;
 
-    // Swap the connection
+    // Atomically swap the database handle. Ongoing operations that already
+    // cloned the old Arc<Mutex<Connection>> will finish with the old DB;
+    // new operations will pick up the new one.
     {
-        let mut conn_guard = state.db.lock().map_err(|e| e.to_string())?;
-        *conn_guard = new_conn;
+        let mut db_guard = state.db.write().map_err(|e| e.to_string())?;
+        *db_guard = Arc::new(Mutex::new(new_conn));
     }
 
     // Record active workspace
@@ -203,7 +209,14 @@ pub async fn save_markers_to_sqlite(
         return Err("Marker data exceeds maximum size".to_string());
     }
 
-    let db_arc = state.db.clone();
+    // Snapshot the current DB handle under a short read-lock, then release
+    // the RwLock before doing any blocking work. This ensures that if
+    // switch_workspace swaps the handle concurrently, we finish with the
+    // connection we started with (and new callers get the new one).
+    let db_arc = {
+        let guard = state.db.read().map_err(|e| e.to_string())?;
+        Arc::clone(&guard)
+    };
     tokio::task::spawn_blocking(move || {
         let conn = db_arc.lock().map_err(|e| e.to_string())?;
         db::upsert_markers(

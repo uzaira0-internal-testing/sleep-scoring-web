@@ -6,7 +6,8 @@ Used for ML training data, reproducibility, and session replay.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from datetime import date  # noqa: TC003 — Pydantic needs this at runtime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 from fastapi_logging import get_logger
@@ -16,12 +17,8 @@ from sqlalchemy import select as sa_select
 from sqlalchemy import tuple_
 from sqlalchemy.exc import IntegrityError
 
+from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword  # noqa: TC001 — FastAPI needs these at runtime
 from sleep_scoring_web.db.models import AuditLogEntry
-
-if TYPE_CHECKING:
-    from datetime import date
-
-    from sleep_scoring_web.api.deps import DbSession, Username
 
 logger = get_logger(__name__)
 
@@ -88,6 +85,7 @@ class AuditSummaryResponse(BaseModel):
 async def log_audit_events(
     request: AuditBatchRequest,
     db: DbSession,
+    _: VerifiedPassword,
     username: Username,
 ) -> AuditBatchResponse:
     """
@@ -169,6 +167,7 @@ async def get_audit_log(
     file_id: int,
     analysis_date: date,
     db: DbSession,
+    _: VerifiedPassword,
     username: Annotated[str | None, Query(description="Filter by username")] = None,
     session_id: Annotated[str | None, Query(description="Filter by session")] = None,
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
@@ -215,6 +214,7 @@ async def get_audit_summary(
     file_id: int,
     analysis_date: date,
     db: DbSession,
+    _: VerifiedPassword,
 ) -> AuditSummaryResponse:
     """Summary statistics for audit activity on a file/date."""
     base = sa_select(AuditLogEntry).where(

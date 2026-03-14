@@ -6,7 +6,7 @@ Tests the web backend implementation against expected behavior.
 
 import pytest
 
-from sleep_scoring_web.services.algorithms.choi import ChoiAlgorithm, ChoiParams
+from sleep_scoring_web.services.algorithms.choi import ChoiAlgorithm
 
 
 class TestChoiAlgorithm:
@@ -121,14 +121,15 @@ class TestChoiAlgorithm:
         assert sum(mask) == 0
 
 
-class TestChoiParams:
-    """Tests for Choi algorithm parameters."""
+class TestChoiDefaults:
+    """Tests for Choi algorithm default behavior matching paper parameters."""
 
-    def test_params_match_paper(self):
-        """Parameters should match validated values from paper."""
-        assert ChoiParams.MIN_PERIOD_LENGTH == 90
-        assert ChoiParams.SPIKE_TOLERANCE == 2
-        assert ChoiParams.WINDOW_SIZE == 30
+    def test_min_period_90_minutes(self):
+        """Default min period should be 90 minutes (Choi 2011)."""
+        algorithm = ChoiAlgorithm()
+        # 90 zeros detected, 89 not — validates 90-min threshold
+        assert sum(algorithm.detect_mask([0] * 90 + [100] * 10)) == 90
+        assert sum(algorithm.detect_mask([0] * 89 + [100] * 10)) == 0
 
 
 class TestChoiEdgeCases:
@@ -153,14 +154,12 @@ class TestChoiEdgeCases:
         mask = algorithm.detect_mask(activity)
         assert all(m == 1 for m in mask)
 
-    def test_negative_values_treated_as_activity(self):
-        """Negative values should be treated as activity (not zero)."""
+    def test_negative_values_raise_error(self):
+        """Negative values should raise ValueError (Choi 2011 expects counts >= 0)."""
         algorithm = ChoiAlgorithm()
-        # Mix of negative and positive values (no zeros)
         activity = [-50] * 100 + [50] * 100
-        mask = algorithm.detect_mask(activity)
-        # No zeros, so no nonwear detected
-        assert sum(mask) == 0
+        with pytest.raises(ValueError, match="negative values"):
+            algorithm.detect_mask(activity)
 
     def test_float_values(self):
         """Float values should work correctly."""

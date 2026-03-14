@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta, timezone
 from typing import Any
 
+from sleep_scoring_web.schemas.enums import MarkerCategory, MarkerType
 
 # =============================================================================
 # Configuration
@@ -57,7 +58,7 @@ class DiaryPeriod:
     """A diary-reported period (sleep, nap, or nonwear)."""
     start_time: datetime | None = None
     end_time: datetime | None = None
-    period_type: str = "sleep"
+    period_type: str = MarkerCategory.SLEEP
 
 
 @dataclass
@@ -88,7 +89,8 @@ def _find_valid_onset_near(
     target_ts: datetime,
     min_consecutive: int,
 ) -> int | None:
-    """Find the nearest valid onset point to a target timestamp.
+    """
+    Find the nearest valid onset point to a target timestamp.
 
     A valid onset is the start of min_consecutive (3) or more consecutive
     sleep epochs. Searches outward from target in both directions.
@@ -122,7 +124,7 @@ def _find_valid_onset_near(
     before = [idx for idx in valid_onsets if idx <= center]
     after = [idx for idx in valid_onsets if idx > center]
 
-    pool = before if before else after
+    pool = before or after
     best: int | None = None
     best_dist = float("inf")
     for idx in pool:
@@ -142,7 +144,8 @@ def _find_valid_offset_near(
     min_consecutive_minutes: int,
     epoch_length_seconds: int,
 ) -> int | None:
-    """Find the nearest valid offset point to a target timestamp.
+    """
+    Find the nearest valid offset point to a target timestamp.
 
     A valid offset is the end of a sleep run with min_consecutive_minutes (5)
     or more minutes of consecutive sleep. Searches outward from target.
@@ -178,7 +181,7 @@ def _find_valid_offset_near(
     after = [idx for idx in valid_offsets if idx >= center]
     before = [idx for idx in valid_offsets if idx < center]
 
-    pool = after if after else before
+    pool = after or before
     best: int | None = None
     best_dist = float("inf")
     for idx in pool:
@@ -199,7 +202,8 @@ def _find_valid_offset_near_bounded(
     epoch_length_seconds: int,
     max_forward_epochs: int = 60,
 ) -> int | None:
-    """Find the nearest valid offset near a target, with a bounded forward look.
+    """
+    Find the nearest valid offset near a target, with a bounded forward look.
 
     Like _find_valid_offset_near but limits how far PAST the target the offset
     can land.  Offsets are ALWAYS placed at actual sleep→wake transitions (the
@@ -238,7 +242,7 @@ def _find_valid_offset_near_bounded(
     after = [idx for idx in valid_offsets if idx >= center]
     before = [idx for idx in valid_offsets if idx < center]
 
-    pool = after if after else before
+    pool = after or before
     best: int | None = None
     best_dist = float("inf")
     for idx in pool:
@@ -277,7 +281,8 @@ def place_main_sleep(
     diary: DiaryDay,
     config: PlacementConfig,
 ) -> tuple[int, int] | None:
-    """Place main sleep period using diary onset/offset as reference.
+    """
+    Place main sleep period using diary onset/offset as reference.
 
     Strategy:
     1. Find nearest valid onset to diary sleep_onset (N+ consecutive sleep)
@@ -328,7 +333,8 @@ def _find_valid_onset_at_or_after(
     target: datetime,
     min_consecutive: int,
 ) -> int | None:
-    """Find the first valid onset at or after a target time.
+    """
+    Find the first valid onset at or after a target time.
 
     Only returns onsets at real W→S boundaries (the first S after a W or
     start of data).  If the target lands in the middle of a sleep run,
@@ -367,7 +373,8 @@ def _find_valid_offset_at_or_before(
     epoch_length_seconds: int,
     min_idx: int = 0,
 ) -> int | None:
-    """Find the nearest valid offset at or before max_idx.
+    """
+    Find the nearest valid offset at or before max_idx.
 
     Scans all sleep runs in [min_idx, max_idx] and returns the end of the
     run whose end is closest to (but not after) max_idx, provided the run
@@ -403,7 +410,8 @@ def _find_valid_onset_near_bounded(
     min_consecutive: int,
     max_distance_epochs: int = 60,
 ) -> int | None:
-    """Find the nearest valid onset near a target, bounded by max distance.
+    """
+    Find the nearest valid onset near a target, bounded by max distance.
 
     Like _find_valid_onset_near but only considers onsets within
     max_distance_epochs of the target. Prevents nap onsets from landing
@@ -449,7 +457,8 @@ def place_naps(
     main_offset: int | None,
     config: PlacementConfig,
 ) -> list[tuple[int, int]]:
-    """Place nap markers from diary nap periods.
+    """
+    Place nap markers from diary nap periods.
 
     For each diary nap period, find the nearest valid sleep run within
     a bounded window (60 epochs / 1 hour) of the diary times.
@@ -496,7 +505,8 @@ def place_without_diary(
     epochs: list[EpochData],
     config: PlacementConfig,
 ) -> tuple[int, int] | None:
-    """Fallback: find longest sleep period when no diary data.
+    """
+    Fallback: find longest sleep period when no diary data.
 
     Finds the longest contiguous sleep block (may include brief wake gaps
     if bounded by substantial sleep runs).
@@ -550,7 +560,7 @@ def _flip_ampm(time_str: str) -> str | None:
     if "PM" in upper:
         idx = upper.index("PM")
         return s[:idx] + "AM" + s[idx + 2:]
-    elif "AM" in upper:
+    if "AM" in upper:
         idx = upper.index("AM")
         return s[:idx] + "PM" + s[idx + 2:]
     return None
@@ -562,7 +572,8 @@ def _diary_times_plausible(
     data_start: datetime,
     data_end: datetime,
 ) -> bool:
-    """Check if diary onset/wake times are physiologically plausible.
+    """
+    Check if diary onset/wake times are physiologically plausible.
 
     Checks:
     1. Both must exist
@@ -593,7 +604,8 @@ def _try_ampm_corrections(
     data_start: datetime,
     data_end: datetime,
 ) -> tuple[datetime | None, datetime | None, datetime | None, list[str]]:
-    """Try AM/PM flips on diary onset/wake if original parse is implausible.
+    """
+    Try AM/PM flips on diary onset/wake if original parse is implausible.
 
     Returns (onset_dt, wake_dt, bed_dt, correction_notes).
     """
@@ -662,7 +674,8 @@ def _try_ampm_corrections(
 # =============================================================================
 
 def _parse_time_to_24h(time_str: str) -> tuple[int, int] | None:
-    """Parse a time string to (hour, minute) in 24-hour format.
+    """
+    Parse a time string to (hour, minute) in 24-hour format.
 
     Supports:
       - "23:30" (24-hour)
@@ -699,7 +712,8 @@ def _parse_diary_time(
     base_date: Any,
     is_evening: bool = True,
 ) -> datetime | None:
-    """Parse time string to datetime, handling overnight logic.
+    """
+    Parse time string to datetime, handling overnight logic.
 
     Supports both "HH:MM" (24h) and "H:MM AM/PM" (12h) formats.
 
@@ -708,16 +722,15 @@ def _parse_diary_time(
         base_date: Analysis date (date object)
         is_evening: If True, times < 12:00 are treated as next day (overnight)
                     If False, times < 18:00 are treated as next day (wake/end times)
+
     """
     parsed = _parse_time_to_24h(time_str)
     if parsed is None:
         return None
     h, m = parsed
     try:
-        dt = datetime(base_date.year, base_date.month, base_date.day, h, m, tzinfo=timezone.utc)
-        if is_evening and h < 12:
-            dt += timedelta(days=1)
-        elif not is_evening and h < 18:
+        dt = datetime(base_date.year, base_date.month, base_date.day, h, m, tzinfo=UTC)
+        if (is_evening and h < 12) or (not is_evening and h < 18):
             dt += timedelta(days=1)
         return dt
     except (ValueError, TypeError):
@@ -728,7 +741,8 @@ def _parse_nap_time(
     time_str: str,
     base_date: Any,
 ) -> datetime | None:
-    """Parse a nap time string to datetime on the analysis date.
+    """
+    Parse a nap time string to datetime on the analysis date.
 
     Naps happen during the day, so no overnight day-shifting is applied.
     The time is placed on the analysis date as-is.
@@ -738,7 +752,7 @@ def _parse_nap_time(
         return None
     h, m = parsed
     try:
-        return datetime(base_date.year, base_date.month, base_date.day, h, m, tzinfo=timezone.utc)
+        return datetime(base_date.year, base_date.month, base_date.day, h, m, tzinfo=UTC)
     except (ValueError, TypeError):
         return None
 
@@ -785,7 +799,7 @@ def run_auto_scoring(
     for i, ts in enumerate(timestamps):
         epochs.append(EpochData(
             index=i,
-            timestamp=datetime.fromtimestamp(ts, tz=timezone.utc),
+            timestamp=datetime.fromtimestamp(ts, tz=UTC),
             sleep_score=sleep_scores[i],
             activity=activity_counts[i],
             is_choi_nonwear=nonwear_bools[i] if i < len(nonwear_bools) else False,
@@ -834,7 +848,7 @@ def run_auto_scoring(
                 ns = _parse_diary_time(nw_start, d, is_evening=False)
                 ne = _parse_diary_time(nw_end, d, is_evening=False)
                 if ns and ne:
-                    nw_periods.append(DiaryPeriod(start_time=ns, end_time=ne, period_type="nonwear"))
+                    nw_periods.append(DiaryPeriod(start_time=ns, end_time=ne, period_type=MarkerCategory.NONWEAR))
 
         if onset_dt or wake_dt:
             diary = DiaryDay(
@@ -873,7 +887,7 @@ def run_auto_scoring(
             sleep_markers.append({
                 "onset_timestamp": onset_time.timestamp(),
                 "offset_timestamp": offset_time.timestamp(),
-                "marker_type": "MAIN_SLEEP",
+                "marker_type": MarkerType.MAIN_SLEEP,
                 "marker_index": 1,
             })
         else:
@@ -908,7 +922,7 @@ def run_auto_scoring(
             nap_markers.append({
                 "onset_timestamp": nap_onset_time.timestamp(),
                 "offset_timestamp": nap_offset_time.timestamp(),
-                "marker_type": "NAP",
+                "marker_type": MarkerType.NAP,
                 "marker_index": len(sleep_markers) + i + 1,
             })
 
@@ -968,8 +982,8 @@ def place_nonwear_markers(
         return NonwearPlacementResult(nonwear_markers=[], notes=["No activity data"])
 
     # Parse diary nonwear periods into epoch indices
-    date_obj = datetime.strptime(analysis_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    epoch_times = [datetime.fromtimestamp(ts, tz=timezone.utc) for ts in timestamps]
+    date_obj = datetime.strptime(analysis_date, "%Y-%m-%d").replace(tzinfo=UTC)
+    epoch_times = [datetime.fromtimestamp(ts, tz=UTC) for ts in timestamps]
     notes: list[str] = []
     markers: list[dict[str, Any]] = []
     min_epochs = max(1, (min_duration_minutes * 60) // epoch_length_seconds)

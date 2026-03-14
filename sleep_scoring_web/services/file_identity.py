@@ -45,9 +45,7 @@ def normalize_participant_id(value: Any) -> str | None:
 
 
 def normalize_timepoint(value: Any) -> str | None:
-    """
-    Normalize timepoint strings to canonical form (e.g. "t1", "T 1" -> "t1").
-    """
+    """Normalize timepoint strings to canonical form (e.g. "t1", "T 1" -> "t1")."""
     text = _clean_text(value)
     if text is None:
         return None
@@ -104,6 +102,7 @@ def infer_participant_id_and_timepoint_from_filename(filename: str) -> tuple[str
     - "1000 T1 G1 (2024-01-01)60sec.csv" -> ("1000", "T1")
     - "P1-1036-A-T2 (2023-07-18)60sec.csv" -> ("P1-1036-A", "T2")
     - "DEMO-001.csv" -> ("DEMO-001", None)
+
     """
     stem = PurePath(filename).stem.strip()
     if not stem:
@@ -130,7 +129,8 @@ def infer_participant_id_and_timepoint_from_filename(filename: str) -> tuple[str
 
 
 def _strip_site_suffix(pid: str | None) -> str | None:
-    """Strip trailing single-letter site/arm suffix (e.g. 'P1-1036-A' -> 'P1-1036').
+    """
+    Strip trailing single-letter site/arm suffix (e.g. 'P1-1036-A' -> 'P1-1036').
 
     Handles patterns like ``-A``, ``-B`` at the end of a PID where the suffix
     is a single letter preceded by a separator.  Returns *None* when the input
@@ -143,7 +143,8 @@ def _strip_site_suffix(pid: str | None) -> str | None:
 
 
 def _strip_rewear_suffix(pid: str | None) -> str | None:
-    """Strip RA/Rewear suffixes from PID (e.g. 'P3-3035 RA 1' -> 'P3-3035').
+    """
+    Strip RA/Rewear suffixes from PID (e.g. 'P3-3035 RA 1' -> 'P3-3035').
 
     Handles patterns like ``RA``, ``RA 1``, ``RA 2``, ``Rewear`` that indicate
     a re-application of the actigraph for the same participant.

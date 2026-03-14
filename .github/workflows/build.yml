@@ -64,7 +64,6 @@ jobs:
         working-directory: frontend
         shell: bash
         run: |
-          rm -f package-lock.json
           npm install --no-audit --no-fund
 
       - name: Build frontend
@@ -102,7 +101,7 @@ jobs:
             src-tauri/target/**/release/bundle/**/*.tar.gz
             src-tauri/target/**/release/bundle/**/*.nsis.zip
             src-tauri/target/**/release/bundle/**/*.sig
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
@@ -114,7 +113,7 @@ jobs:
             src-tauri/target/**/release/bundle/**/*.msi
             src-tauri/target/**/release/bundle/**/*.deb
             src-tauri/target/**/release/bundle/**/*.AppImage
-          if-no-files-found: warn
+          if-no-files-found: error
 
   release:
     needs: build
@@ -174,6 +173,7 @@ jobs:
           find artifacts -type f \( \
             -name '*.tar.gz' -o -name '*.sig' \
             -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \
+            -o -name '*.nsis.zip' \
             -o -name '*.deb' -o -name '*.AppImage' \
           \) -exec cp {} release-assets/ \;
           echo "Release assets:"
@@ -184,7 +184,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          REPO="uzaira0-internal-testing/sleep-scoring-web"
+          REPO="${{ github.repository }}"
           BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -200,11 +200,11 @@ jobs:
             MAC_SIG=$(cat "${MAC_TARBALL}.sig")
           fi
 
-          # --- Windows (NSIS exe) ---
-          WIN_EXE=$(ls *-setup.exe 2>/dev/null | grep -v '.sig$' | head -1 || true)
+          # --- Windows (NSIS zip for updater) ---
+          WIN_NSIS_ZIP=$(ls *.nsis.zip 2>/dev/null | grep -v '.sig$' | head -1 || true)
           WIN_SIG=""
-          if [[ -n "$WIN_EXE" && -f "${WIN_EXE}.sig" ]]; then
-            WIN_SIG=$(cat "${WIN_EXE}.sig")
+          if [[ -n "$WIN_NSIS_ZIP" && -f "${WIN_NSIS_ZIP}.sig" ]]; then
+            WIN_SIG=$(cat "${WIN_NSIS_ZIP}.sig")
           fi
 
           # --- Linux (AppImage) ---
@@ -223,8 +223,8 @@ jobs:
               \"darwin-aarch64\": { \"signature\": \"${MAC_SIG}\", \"url\": \"${MAC_URL}\" },
               \"darwin-x86_64\": { \"signature\": \"${MAC_SIG}\", \"url\": \"${MAC_URL}\" }"
           fi
-          if [[ -n "$WIN_EXE" && -n "$WIN_SIG" ]]; then
-            WIN_URL="${BASE_URL}/$(sanitize "$WIN_EXE")"
+          if [[ -n "$WIN_NSIS_ZIP" && -n "$WIN_SIG" ]]; then
+            WIN_URL="${BASE_URL}/$(sanitize "$WIN_NSIS_ZIP")"
             PLATFORMS="${PLATFORMS:+$PLATFORMS,}
               \"windows-x86_64\": { \"signature\": \"${WIN_SIG}\", \"url\": \"${WIN_URL}\" }"
           fi

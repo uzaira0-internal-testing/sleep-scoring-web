@@ -12,14 +12,10 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile,
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, select
 
-from sleep_scoring_web.api.access import require_file_access
+from sleep_scoring_web.api.access import get_accessible_files, require_file_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.db.models import DiaryEntry
 from sleep_scoring_web.db.models import File as FileModel
-from sleep_scoring_web.services.redcap_diary_converter import (
-    convert_redcap_wide_to_long,
-    is_redcap_wide_format,
-)
 from sleep_scoring_web.services.file_identity import (
     build_file_identity,
     filename_stem,
@@ -27,6 +23,10 @@ from sleep_scoring_web.services.file_identity import (
     normalize_filename,
     normalize_participant_id,
     normalize_timepoint,
+)
+from sleep_scoring_web.services.redcap_diary_converter import (
+    convert_redcap_wide_to_long,
+    is_redcap_wide_format,
 )
 
 router = APIRouter(prefix="/diary", tags=["diary"])
@@ -159,7 +159,7 @@ class DiaryUploadResponse(BaseModel):
 # =============================================================================
 
 
-@router.get("/{file_id}", response_model=list[DiaryEntryResponse])
+@router.get("/{file_id}")
 async def list_diary_entries(
     file_id: int,
     db: DbSession,
@@ -367,8 +367,7 @@ async def upload_diary_csv(
                 detail="CSV must include participant_id or filename, or upload filename must identify participant",
             )
 
-    files_result = await db.execute(select(FileModel))
-    all_files = [f for f in files_result.scalars().all() if not is_excluded_file_obj(f)]
+    all_files = await get_accessible_files(db, username)
     identities = [build_file_identity(f) for f in all_files]
 
     filename_to_files: dict[str, list[FileModel]] = {}
@@ -734,7 +733,8 @@ def _parse_date(date_str: str) -> date | None:
 
 
 def _files_covering_date(candidates: list, row_date: date | None) -> list:
-    """Return all files whose start_time..end_time range contains row_date.
+    """
+    Return all files whose start_time..end_time range contains row_date.
 
     ``candidates`` may be FileModel objects or FileIdentity objects (uses ``.file``).
     If row_date is None, returns an empty list.

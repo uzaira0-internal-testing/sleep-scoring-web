@@ -26,12 +26,10 @@ class TestGetSettings:
         assert data["skip_rows"] == 10
         assert data["view_mode_hours"] == 24
 
-    async def test_works_without_auth_in_dev_mode(self, client: AsyncClient):
-        """With empty site_password (dev mode), requests without auth should succeed."""
+    async def test_unauthenticated_request_returns_401(self, client: AsyncClient):
+        """Requests without auth should be rejected by session middleware."""
         response = await client.get("/api/v1/settings")
-
-        # In dev mode (no site_password configured), auth is not enforced
-        assert response.status_code == 200
+        assert response.status_code == 401
 
 
 @pytest.mark.asyncio

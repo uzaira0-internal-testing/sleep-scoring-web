@@ -82,7 +82,8 @@ def _total_sleep_period_hours(
     end: int,
     min_run: int = 3,
 ) -> float:
-    """Duration of total sleep period (first valid onset to last valid offset) in hours.
+    """
+    Duration of total sleep period (first valid onset to last valid offset) in hours.
 
     Uses first-to-last sleep run boundaries (runs >= min_run epochs) to measure
     the overall sleep period span. This reflects total sleep duration rather than
@@ -368,7 +369,7 @@ def _candidate_ambiguity_penalty(
 
     # Rule 8: algorithm onset before diary onset → scorer must use in-bed time instead
     # Check nearest onset candidate (even outside 30 min window)
-    candidates_for_r8 = onset_near if onset_near else onsets
+    candidates_for_r8 = onset_near or onsets
     algo_before_diary = any(t < diary_onset_ts - 60 for t in candidates_for_r8)
     if algo_before_diary:
         penalty += 3.0
@@ -409,7 +410,8 @@ def _nearest_sleep_boundary_ts(
     search_window_sec: float = 7200.0,
     min_run: int = 3,
 ) -> float | None:
-    """Find the nearest sleep run boundary (onset or offset) within ±search_window of diary_ts.
+    """
+    Find the nearest sleep run boundary (onset or offset) within ±search_window of diary_ts.
 
     boundary_type: 'onset' returns start-of-run timestamps,
                    'offset' returns end-of-run timestamps.

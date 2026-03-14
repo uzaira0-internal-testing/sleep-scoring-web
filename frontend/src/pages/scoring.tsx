@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
 import { Panel, Group, Separator, useDefaultLayout } from "react-resizable-panels";
-import { ChevronLeft, ChevronRight, Loader2, Moon, Watch, Trash2, FileText, X, Ban, Check, CircleDot, GripVertical, GripHorizontal, Wand2, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Moon, Watch, Trash2, FileText, X, Ban, Check, CircleDot, AlertCircle, GripVertical, GripHorizontal, Wand2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -136,6 +136,7 @@ export function ScoringPage() {
     selectedPeriodIndex,
     isDirty,
     isSaving,
+    saveError,
     isNoSleep,
     needsConsensus,
     setMarkerMode,
@@ -971,6 +972,11 @@ export function ScoringPage() {
             <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400">
               <Loader2 className="h-3 w-3 animate-spin" />
               Saving
+            </span>
+          ) : saveError ? (
+            <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400" title={saveError}>
+              <AlertCircle className="h-3 w-3" />
+              Save failed
             </span>
           ) : isDirty ? (
             <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-muted border border-border text-muted-foreground">

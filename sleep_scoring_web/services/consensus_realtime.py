@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from asyncio import Lock
 from collections import defaultdict
-from datetime import date, datetime, timezone
-from typing import Any
+from datetime import UTC, date, datetime, timezone
+from typing import TYPE_CHECKING, Any
 
-from fastapi import WebSocket
+if TYPE_CHECKING:
+    from fastapi import WebSocket
 
 
 class ConsensusRealtimeBroker:
@@ -78,7 +79,7 @@ async def broadcast_consensus_update(
         "file_id": file_id,
         "analysis_date": analysis_date.isoformat(),
         "event": event,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
     if username:
         payload["username"] = username

@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use axum::{
     extract::{Path, State},
@@ -8,16 +8,16 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use rusqlite::Connection;
 use serde::Serialize;
 
+use crate::commands::DbHandle;
 use crate::db;
 
 /// Shared state for the axum server.
 /// group_hash uses RwLock so it can be updated after user login.
 #[derive(Clone)]
 pub struct ServerState {
-    pub db: Arc<Mutex<Connection>>,
+    pub db: DbHandle,
     pub group_hash: Arc<RwLock<String>>,
     pub username: Arc<RwLock<String>>,
     pub instance_id: String,
@@ -75,11 +75,16 @@ fn verify_auth(state: &ServerState, headers: &HeaderMap) -> Result<(), StatusCod
 }
 
 /// Run a blocking DB query, handling lock poisoning and join failures.
+/// Snapshots the current DB handle under a short read-lock so that
+/// workspace swaps don't affect in-flight queries.
 async fn db_query<T: Send + 'static>(
     state: &ServerState,
     f: impl FnOnce(&rusqlite::Connection) -> rusqlite::Result<T> + Send + 'static,
 ) -> Result<T, StatusCode> {
-    let db = state.db.clone();
+    let db = {
+        let guard = state.db.read().map_err(|e| internal_err("DB RwLock poisoned", e))?;
+        Arc::clone(&guard)
+    };
     tokio::task::spawn_blocking(move || {
         let conn = db.lock().map_err(|e| internal_err("DB mutex poisoned", e))?;
         f(&conn).map_err(|e| internal_err("SQLite query failed", e))
@@ -174,7 +179,7 @@ pub fn build_router(state: ServerState) -> Router {
 
 /// Start the server on a random port (for testing). Returns the bound address.
 pub async fn start_on_random_port(
-    db: Arc<Mutex<Connection>>,
+    db: DbHandle,
     group_hash: &str,
     username: &str,
     instance_id: &str,

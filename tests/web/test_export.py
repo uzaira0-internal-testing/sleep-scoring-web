@@ -28,7 +28,7 @@ class TestColumnRegistry:
             assert col.name, "Column name should not be empty"
             assert col.category, "Column category should not be empty"
             assert col.description, "Column description should not be empty"
-            assert col.data_type in ["string", "number", "datetime"]
+            assert col.data_type in ["string", "number", "datetime", "boolean"]
 
     def test_column_categories_match_columns(self):
         """All columns in categories should exist in EXPORT_COLUMNS."""
@@ -64,7 +64,7 @@ class TestColumnRegistry:
 
         expected_columns = [
             "Filename",
-            "Analysis Date",
+            "Study Date",
             "Onset Time",
             "Offset Time",
             "Total Sleep Time (min)",

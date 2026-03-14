@@ -69,6 +69,7 @@ services:
       SITE_PASSWORD: ${SITE_PASSWORD:?SITE_PASSWORD must be set}
       UPLOAD_API_KEY: ${UPLOAD_API_KEY:?UPLOAD_API_KEY must be set}
       ADMIN_USERNAMES: ${ADMIN_USERNAMES:-admin}
+      SENTRY_DSN: ${SENTRY_DSN:-}
       DEBUG: ${DEBUG:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       RATE_LIMIT_DEFAULT: ${RATE_LIMIT_DEFAULT:-100/minute}
@@ -112,7 +113,7 @@ services:
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -125,7 +126,7 @@ services:
       - "traefik.docker.network=traefik-apps"
       - "traefik.http.routers.sleep-scoring-fe.rule=PathPrefix(`/sleep-scoring`)"
       - "traefik.http.routers.sleep-scoring-fe.entrypoints=web"
-      - "traefik.http.services.sleep-scoring-fe.loadbalancer.server.port=80"
+      - "traefik.http.services.sleep-scoring-fe.loadbalancer.server.port=8080"
       - "traefik.http.middlewares.sleep-scoring-fe-strip.stripprefix.prefixes=/sleep-scoring"
       - "traefik.http.routers.sleep-scoring-fe.middlewares=sleep-scoring-fe-strip"
       - "traefik.http.routers.sleep-scoring-fe.priority=1"

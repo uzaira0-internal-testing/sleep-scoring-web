@@ -1,0 +1,161 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --group dev
+      - run: uv run ruff check sleep_scoring_web/
+      - run: uv run ruff format --check sleep_scoring_web/
+
+  backend-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --group dev
+      - run: uv run basedpyright sleep_scoring_web/
+
+  backend-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --group dev --group web
+      - name: Run backend tests
+        run: uv run pytest tests/web/ tests/unit/ -v --randomly-seed=last --tb=short --cov=sleep_scoring_web --cov-report=xml --cov-branch
+        env:
+          SITE_PASSWORD: testpass
+          ADMIN_USERNAMES: testadmin
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  backend-schema-fuzzing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --group dev --group web
+      - name: Run Schemathesis API fuzzing
+        run: uv run pytest tests/web/test_schema_fuzzing.py -v --tb=short
+        env:
+          SITE_PASSWORD: testpass
+          ADMIN_USERNAMES: testadmin
+
+  frontend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd frontend && npm ci
+      - run: cd frontend && npx eslint src/
+
+  frontend-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd frontend && npm ci
+      - name: Create WASM stub for module resolution
+        run: mkdir -p frontend/src/wasm/pkg && echo "export {};" > frontend/src/wasm/pkg/sleep_scoring_wasm.js
+      - run: cd frontend && npx tsc --noEmit
+
+  frontend-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd frontend && bun install
+      - run: cd frontend && bun test
+
+  mutation-testing:
+    runs-on: ubuntu-latest
+    needs: [backend-unit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --group dev --group web
+      - name: Run mutation tests
+        run: |
+          uv run mutmut run \
+            --paths-to-mutate "sleep_scoring_web/services/algorithms/" \
+            --tests-dir "tests/unit/" \
+            --runner "uv run pytest tests/unit/test_algorithm_properties.py -x -q --tb=no"
+          uv run mutmut results
+        continue-on-error: true
+
+  chromatic:
+    runs-on: ubuntu-latest
+    needs: [frontend-unit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd frontend && npm ci
+      - name: Build Storybook and publish to Chromatic
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+        run: cd frontend && npx chromatic --project-token="$CHROMATIC_PROJECT_TOKEN" --auto-accept-changes=main
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend-unit, frontend-unit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd frontend && npm ci
+      - run: cd frontend && npx playwright install --with-deps chromium
+      - name: Create external network for Docker Compose
+        run: docker network create traefik-apps || true
+      - name: Start Docker stack
+        run: |
+          cd docker
+          docker compose -f docker-compose.local.yml up -d --build
+          # Wait for backend health (fail if not ready after 2 min)
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8500/health && exit 0
+            sleep 2
+          done
+          echo "Backend failed to start within 120s"
+          docker compose -f docker-compose.local.yml logs backend
+          exit 1
+        env:
+          POSTGRES_PASSWORD: ci_test_password
+          SITE_PASSWORD: testpass
+          ADMIN_USERNAMES: testadmin
+      - name: Check contract drift (reuses running Docker stack)
+        run: bash scripts/check-contract-drift.sh http://localhost:8500
+      - name: Run E2E tests
+        run: cd frontend && npx playwright test --reporter=list
+      - name: Stop Docker stack
+        if: always()
+        run: cd docker && docker compose -f docker-compose.local.yml down
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: frontend/test-results/

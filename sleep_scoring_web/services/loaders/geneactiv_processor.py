@@ -1,4 +1,5 @@
-"""Chunked GENEActiv raw data processor with agcounts conversion.
+"""
+Chunked GENEActiv raw data processor with agcounts conversion.
 
 Processes multi-GB raw GENEActiv CSV files (100Hz, 7 columns) in chunks,
 converting raw accelerometer data to 60-second epoch activity counts using
@@ -9,14 +10,17 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from agcounts.extract import get_counts
 
 from .csv_loader import CSVLoaderService
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +36,8 @@ def process_raw_geneactiv(
     insert_fn: Callable,
     progress_callback: Callable[[str, float, int], None] | None = None,
 ) -> dict:
-    """Process a raw GENEActiv CSV file in chunks, converting to epoch counts.
+    """
+    Process a raw GENEActiv CSV file in chunks, converting to epoch counts.
 
     Args:
         file_path: Path to the raw GENEActiv CSV file
@@ -43,6 +48,7 @@ def process_raw_geneactiv(
 
     Returns:
         dict with total_epochs, start_time, end_time, sample_rate
+
     """
     # Parse header to find data start and measurement frequency
     data_start, has_header = CSVLoaderService._find_geneactiv_data_start(file_path)
@@ -222,7 +228,8 @@ def process_raw_geneactiv(
 
 
 def _detect_frequency(file_path: Path) -> int:
-    """Detect measurement frequency from GENEActiv header.
+    """
+    Detect measurement frequency from GENEActiv header.
 
     Looks for lines like 'Measurement Frequency,100 Hz' in the header.
     Defaults to 100 Hz if not found.
@@ -260,7 +267,7 @@ def is_raw_geneactiv(file_path: Path) -> bool:
     if not CSVLoaderService.detect_geneactiv(file_path):
         return False
 
-    data_start, has_header = CSVLoaderService._find_geneactiv_data_start(file_path)
+    data_start, _has_header = CSVLoaderService._find_geneactiv_data_start(file_path)
 
     with open(file_path, encoding="utf-8", errors="ignore") as f:
         for i, line in enumerate(f):

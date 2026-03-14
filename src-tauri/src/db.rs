@@ -69,6 +69,12 @@ pub fn init_db_conn(conn: &Connection) -> Result<()> {
 /// Initialize a new SQLite database at the given path.
 pub fn init_db(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)?;
+    // WAL mode allows concurrent readers + single writer without blocking.
+    // busy_timeout prevents SQLITE_BUSY errors by retrying for up to 5 seconds.
+    conn.execute_batch(
+        "PRAGMA journal_mode=WAL;
+         PRAGMA busy_timeout=5000;",
+    )?;
     init_db_conn(&conn)?;
     Ok(conn)
 }
@@ -106,8 +112,13 @@ pub fn migrate_legacy_db(data_dir: &Path, workspace_id: &str) -> Result<bool> {
 
     if legacy_path.exists() && !ws_db_path.exists() {
         ensure_dir(&ws_dir)?;
-        std::fs::copy(&legacy_path, &ws_db_path)
-            .map_err(|e| io_to_sqlite_err("Failed to copy legacy database", e))?;
+        // Copy to a temp file then atomic-rename to prevent corruption if
+        // the process crashes mid-copy.
+        let tmp_path = ws_db_path.with_extension("db.tmp");
+        std::fs::copy(&legacy_path, &tmp_path)
+            .map_err(|e| io_to_sqlite_err("Failed to copy legacy database to temp file", e))?;
+        std::fs::rename(&tmp_path, &ws_db_path)
+            .map_err(|e| io_to_sqlite_err("Failed to rename temp file to workspace database", e))?;
         Ok(true)
     } else {
         Ok(false)

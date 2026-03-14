@@ -25,18 +25,41 @@ pub fn epoch_raw_data(
     axis_y: &[f64],
     axis_z: &[f64],
     sample_freq: u32,
-) -> EpochResult {
+) -> Result<EpochResult, String> {
     let samples_per_epoch = sample_freq as usize * EPOCH_SECONDS;
     let n = axis_x.len();
 
+    // Validate all input arrays have the same length to prevent out-of-bounds panics
+    if timestamps_ms.len() != n {
+        return Err(format!(
+            "timestamps_ms length ({}) must match axis_x length ({})",
+            timestamps_ms.len(),
+            n
+        ));
+    }
+    if axis_y.len() != n {
+        return Err(format!(
+            "axis_y length ({}) must match axis_x length ({})",
+            axis_y.len(),
+            n
+        ));
+    }
+    if axis_z.len() != n {
+        return Err(format!(
+            "axis_z length ({}) must match axis_x length ({})",
+            axis_z.len(),
+            n
+        ));
+    }
+
     if n == 0 || samples_per_epoch == 0 {
-        return EpochResult {
+        return Ok(EpochResult {
             timestamps_ms: Vec::new(),
             axis_y: Vec::new(),
             axis_x: Vec::new(),
             axis_z: Vec::new(),
             vector_magnitude: Vec::new(),
-        };
+        });
     }
 
     let n_epochs = n / samples_per_epoch;
@@ -69,13 +92,13 @@ pub fn epoch_raw_data(
         epoch_vm.push((sum_x * sum_x + sum_y * sum_y + sum_z * sum_z).sqrt());
     }
 
-    EpochResult {
+    Ok(EpochResult {
         timestamps_ms: epoch_timestamps,
         axis_x: epoch_x,
         axis_y: epoch_y,
         axis_z: epoch_z,
         vector_magnitude: epoch_vm,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -84,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_empty_input() {
-        let result = epoch_raw_data(&[], &[], &[], &[], 100);
+        let result = epoch_raw_data(&[], &[], &[], &[], 100).unwrap();
         assert!(result.timestamps_ms.is_empty());
     }
 
@@ -98,7 +121,7 @@ mod tests {
         let axis_y = vec![2.0; n];
         let axis_z = vec![0.5; n];
 
-        let result = epoch_raw_data(&timestamps, &axis_x, &axis_y, &axis_z, 100);
+        let result = epoch_raw_data(&timestamps, &axis_x, &axis_y, &axis_z, 100).unwrap();
 
         assert_eq!(result.timestamps_ms.len(), 1);
         assert_eq!(result.axis_x[0], 6000.0); // sum of abs(1.0) * 6000
@@ -117,7 +140,14 @@ mod tests {
         let axis_y = vec![1.0; n];
         let axis_z = vec![1.0; n];
 
-        let result = epoch_raw_data(&timestamps, &axis_x, &axis_y, &axis_z, 100);
+        let result = epoch_raw_data(&timestamps, &axis_x, &axis_y, &axis_z, 100).unwrap();
         assert_eq!(result.timestamps_ms.len(), 1);
+    }
+
+    #[test]
+    fn test_mismatched_lengths_returns_error() {
+        let result = epoch_raw_data(&[1.0, 2.0], &[1.0], &[1.0], &[1.0], 100);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("timestamps_ms length"));
     }
 }

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import datetime
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from sqlalchemy import Date as SQLDate
-from sqlalchemy import cast, func, select
+from sqlalchemy import func, select
 
 from sleep_scoring_web.api.access import get_assigned_file_ids, is_admin_user
-from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
+from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword  # noqa: TC001 — FastAPI needs these at runtime
 from sleep_scoring_web.db.models import DiaryEntry, File, Marker, RawActivityData, SleepMetric, UserAnnotation
+from sleep_scoring_web.schemas.enums import FileStatus, MarkerCategory, MarkerType
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -47,17 +49,16 @@ async def get_analysis_summary(
     username: Username,
 ) -> AnalysisSummaryResponse:
     """Get cross-file summary statistics and scoring progress."""
-
     # Apply assignment visibility for non-admin users.
     if is_admin_user(username):
-        files_result = await db.execute(select(File).where(File.status == "ready"))
+        files_result = await db.execute(select(File).where(File.status == FileStatus.READY))
     else:
         assigned_ids = await get_assigned_file_ids(db, username)
         if not assigned_ids:
             return AnalysisSummaryResponse()
         files_result = await db.execute(
             select(File).where(
-                File.status == "ready",
+                File.status == FileStatus.READY,
                 File.id.in_(assigned_ids),
             )
         )
@@ -94,14 +95,18 @@ async def get_analysis_summary(
     activity_dates_result = await db.execute(
         select(
             RawActivityData.file_id,
-            cast(RawActivityData.timestamp, SQLDate).label("activity_date"),
+            func.date(RawActivityData.timestamp).label("activity_date"),
         )
         .where(RawActivityData.file_id.in_(file_ids))
-        .group_by(RawActivityData.file_id, cast(RawActivityData.timestamp, SQLDate))
+        .group_by(RawActivityData.file_id, func.date(RawActivityData.timestamp))
     )
     activity_dates_by_file: dict[int, set] = {}
     for row in activity_dates_result.all():
-        activity_dates_by_file.setdefault(row.file_id, set()).add(row.activity_date)
+        ad = row.activity_date
+        # func.date() returns str in SQLite but date in PostgreSQL; normalise.
+        if isinstance(ad, str):
+            ad = datetime.date.fromisoformat(ad)
+        activity_dates_by_file.setdefault(row.file_id, set()).add(ad)
 
     # Diary-date sets per file
     diary_dates_result = await db.execute(
@@ -166,7 +171,7 @@ async def get_analysis_summary(
     sleep_count_result = await db.execute(
         select(func.count()).select_from(Marker).where(
             Marker.file_id.in_(file_ids),
-            Marker.marker_category == "sleep",
+            Marker.marker_category == MarkerCategory.SLEEP,
             Marker.created_by == username,
         )
     )
@@ -176,8 +181,8 @@ async def get_analysis_summary(
     nap_count_result = await db.execute(
         select(func.count()).select_from(Marker).where(
             Marker.file_id.in_(file_ids),
-            Marker.marker_category == "sleep",
-            Marker.marker_type == "NAP",
+            Marker.marker_category == MarkerCategory.SLEEP,
+            Marker.marker_type == MarkerType.NAP,
             Marker.created_by == username,
         )
     )

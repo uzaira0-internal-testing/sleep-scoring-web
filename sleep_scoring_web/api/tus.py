@@ -1,4 +1,5 @@
-"""TUS resumable upload router and processing status endpoint.
+"""
+TUS resumable upload router and processing status endpoint.
 
 Uses tuspyserver to handle chunked resumable uploads via the TUS protocol.
 After upload completes, spawns a background task to process the file.
@@ -9,12 +10,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
-
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 from tuspyserver import create_tus_router
 
-from sleep_scoring_web.api.deps import DbSession, VerifiedPassword
 from sleep_scoring_web.config import settings
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.session import async_session_maker
@@ -23,6 +22,8 @@ from sleep_scoring_web.schemas.models import ProcessingStatusResponse
 from sleep_scoring_web.services.file_identity import infer_participant_id_and_timepoint_from_filename
 from sleep_scoring_web.services.processing_tracker import get_progress
 from sleep_scoring_web.services.upload_processor import process_uploaded_file
+
+from sleep_scoring_web.api.deps import DbSession, VerifiedPassword  # noqa: TC001, E402 — FastAPI needs these at runtime
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,8 @@ _background_tasks: set[asyncio.Task] = set()
 
 
 def _on_upload_complete(file_path: str, metadata: dict) -> None:
-    """Called by tuspyserver when a file upload is fully complete.
+    """
+    Called by tuspyserver when a file upload is fully complete.
 
     Creates a FileModel in the database and spawns background processing.
     """
@@ -122,7 +124,8 @@ async def _create_and_process(
 
 
 def _pre_create_hook(metadata: dict, upload_info: dict) -> None:
-    """Validate upload before accepting it.
+    """
+    Validate upload before accepting it.
 
     Checks filename extension and auth metadata.
     """

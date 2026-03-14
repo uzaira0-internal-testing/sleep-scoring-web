@@ -43,7 +43,7 @@ class TestExportColumns:
         data = response.json()
         column_names = [c["name"] for c in data["columns"]]
         assert "Filename" in column_names
-        assert "Analysis Date" in column_names
+        assert "Study Date" in column_names
 
 
 @pytest.mark.asyncio

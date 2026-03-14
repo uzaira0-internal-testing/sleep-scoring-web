@@ -66,7 +66,10 @@ pub fn detect(counts: &[f64]) -> Vec<u8> {
             let nonzero_count =
                 prefix_nonzero[window_end] - prefix_nonzero[window_start];
 
-            if nonzero_count > SPIKE_TOLERANCE {
+            // Subtract 1 to exclude the current epoch (which we know is non-zero)
+            // from the spike count — we're checking whether the *surrounding* window
+            // has too many non-zero epochs, not the epoch itself.
+            if nonzero_count.saturating_sub(1) > SPIKE_TOLERANCE {
                 break;
             }
 

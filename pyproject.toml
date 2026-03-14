@@ -68,6 +68,7 @@ web = [
     "fastapi-tasks>=0.1.0",
     "agcounts>=0.2.0",
     "tuspyserver>=4.2.3",
+    "sentry-sdk[fastapi]>=2.0.0",
 ]
 # Development dependencies - testing and code quality tools
 dev = [
@@ -80,6 +81,12 @@ dev = [
     "ruff>=0.1.0",
     "basedpyright>=1.18.0",
     "pre-commit>=3.0.0",
+    "schemathesis>=3.0",
+    "hypothesis>=6.0",
+    "pytest-randomly>=3.0",
+    "pytest-xdist>=3.0",
+    "mutmut>=2.0",
+    "testcontainers[postgres]>=4.0",
 ]
 # Build dependencies - for creating distributable packages
 build = [
@@ -292,21 +299,30 @@ fastapi-tasks = { workspace = true }
 
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/web", "tests/unit"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 addopts = "-v --tb=short --strict-markers"
+# Parallel execution: invoke with `pytest -n auto` to use pytest-xdist.
+# Not enabled by default in addopts because some tests may not be isolation-safe.
 markers = [
     "demo_data: Tests that use demo data files",
     "gui: GUI tests requiring Qt",
     "unit: Unit tests",
     "integration: Integration tests",
     "e2e: End-to-end tests",
+    "slow: Slow tests that benefit from parallel execution",
 ]
 
+[tool.mutmut]
+paths_to_mutate = ["sleep_scoring_web/services/algorithms/"]
+tests_dir = ["tests/unit/"]
+runner = "python -m pytest tests/unit/test_algorithm_properties.py -x -q --tb=no"
+
 [tool.coverage.run]
-source = ["sleep_scoring_app"]
+branch = true
+source = ["sleep_scoring_web"]
 omit = ["tests/*", "*/migrations/*"]
 
 [tool.coverage.report]

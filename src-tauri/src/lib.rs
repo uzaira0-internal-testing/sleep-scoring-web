@@ -46,7 +46,7 @@ pub fn run() {
 
             let db_path = data_dir.join("sleep-scoring.db");
             let conn = db::init_db(&db_path).expect("failed to initialize SQLite database");
-            let db_arc = Arc::new(Mutex::new(conn));
+            let db_arc = Arc::new(RwLock::new(Arc::new(Mutex::new(conn))));
 
             let instance_id = uuid::Uuid::new_v4().to_string();
 
@@ -85,6 +85,8 @@ pub fn run() {
                     }
                 };
                 rt.block_on(async {
+                    // Bind to 0.0.0.0 so LAN peers discovered via mDNS can connect.
+                    // Auth is enforced via X-Group-Hash header on every request.
                     let listener = match tokio::net::TcpListener::bind("0.0.0.0:0").await {
                         Ok(l) => l,
                         Err(e) => {

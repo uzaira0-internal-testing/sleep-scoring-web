@@ -9,8 +9,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_, func, select, tuple_
+from sqlalchemy.exc import IntegrityError
 
 from sleep_scoring_web.api.access import (
     get_assigned_file_ids,
@@ -18,22 +18,26 @@ from sleep_scoring_web.api.access import (
     require_file_access,
     user_can_access_file,
 )
-from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.config import get_settings
 from sleep_scoring_web.db.models import (
     ConsensusCandidate,
     ConsensusResult,
     ConsensusVote,
-    File as FileModel,
     Marker,
     ResolvedAnnotation,
     UserAnnotation,
 )
+from sleep_scoring_web.db.models import (
+    File as FileModel,
+)
+from sleep_scoring_web.schemas.enums import VerificationStatus
 from sleep_scoring_web.services.consensus import compute_candidate_hash
 from sleep_scoring_web.services.consensus_realtime import (
     broadcast_consensus_update,
     consensus_realtime_broker,
 )
+
+from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword  # noqa: TC001, E402 — FastAPI needs these at runtime
 
 router = APIRouter(prefix="/consensus", tags=["consensus"])
 
@@ -51,7 +55,7 @@ class AnnotationSummary(BaseModel):
     nonwear_markers_json: list[dict[str, Any]] | None = None
     is_no_sleep: bool = False
     algorithm_used: str | None = None
-    status: str = "draft"
+    status: str = VerificationStatus.DRAFT
     notes: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
@@ -173,7 +177,7 @@ async def _backfill_candidates_from_annotations(
             and_(
                 UserAnnotation.file_id == file_id,
                 UserAnnotation.analysis_date == analysis_date,
-                UserAnnotation.status == "submitted",
+                UserAnnotation.status == VerificationStatus.SUBMITTED,
             )
         )
     )
@@ -446,7 +450,7 @@ async def get_consensus_overview(
             UserAnnotation.analysis_date,
             func.count(UserAnnotation.id).label("annotation_count"),
         )
-        .where(UserAnnotation.status == "submitted")
+        .where(UserAnnotation.status == VerificationStatus.SUBMITTED)
         .group_by(UserAnnotation.file_id, UserAnnotation.analysis_date)
         .having(func.count(UserAnnotation.id) >= 2)
         .subquery()
@@ -484,7 +488,7 @@ async def get_consensus_overview(
             UserAnnotation.username,
         ).where(
             and_(
-                UserAnnotation.status == "submitted",
+                UserAnnotation.status == VerificationStatus.SUBMITTED,
                 # Filter to exact (file_id, analysis_date) pairs — not just file_id
                 tuple_(UserAnnotation.file_id, UserAnnotation.analysis_date).in_(
                     file_date_pairs

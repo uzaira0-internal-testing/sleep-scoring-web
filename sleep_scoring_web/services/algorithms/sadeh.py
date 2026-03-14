@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from sleep_scoring_app.core.algorithms.sleep_wake.sadeh import sadeh_score
+from sleep_scoring_web.schemas.enums import AlgorithmOutputColumn
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -45,4 +46,4 @@ class SadehAlgorithm:
         )
 
         result_df = sadeh_score(df, threshold=self._threshold)
-        return result_df["Sleep Score"].tolist()
+        return result_df[AlgorithmOutputColumn.SLEEP_SCORE].tolist()

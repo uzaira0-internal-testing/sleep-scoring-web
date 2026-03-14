@@ -1,4 +1,5 @@
-"""Convert REDCap wide-format sleep diary exports to long format.
+"""
+Convert REDCap wide-format sleep diary exports to long format.
 
 REDCap exports GNSM sleep diaries as one row per participant with 20 study days
 spread across 107-column blocks (suffixed _v1 through _v20). This module pivots
@@ -60,7 +61,8 @@ def is_redcap_wide_format(columns: list[str]) -> bool:
 
 
 def convert_redcap_wide_to_long(df: pl.DataFrame) -> pl.DataFrame:
-    """Pivot REDCap wide diary into long format matching existing importer expectations.
+    """
+    Pivot REDCap wide diary into long format matching existing importer expectations.
 
     Each input row = one participant with up to 20 study days in 107-column blocks.
     Each output row = one participant-day with standard column names that match
@@ -196,7 +198,8 @@ def _combine_time(
     ampm_col: str,
     col_set: set[str],
 ) -> str | None:
-    """Combine hour/minute/ampm fields into HH:MM (24h) string.
+    """
+    Combine hour/minute/ampm fields into HH:MM (24h) string.
 
     AM/PM codes: 1=AM, 2=PM.
     """

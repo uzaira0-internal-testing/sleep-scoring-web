@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from sleep_scoring_web.schemas.enums import AlgorithmType
+
 from .params import PipelineParams
 from .protocols import RawDiaryInput
 
@@ -17,7 +19,7 @@ def run_via_pipeline(
     timestamps: list[float],
     activity_counts: list[float],
     *,
-    algorithm: str = "sadeh_1994_actilife",
+    algorithm: str = AlgorithmType.SADEH_1994_ACTILIFE,
     diary_bed_time: str | None = None,
     diary_onset_time: str | None = None,
     diary_wake_time: str | None = None,

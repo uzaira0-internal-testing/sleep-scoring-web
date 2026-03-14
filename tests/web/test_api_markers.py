@@ -158,6 +158,14 @@ class TestSaveMarkers:
         """Saving as one scorer should not overwrite another scorer's markers."""
         file_id, analysis_date = await _upload_and_get_date(client, admin_auth_headers, sample_csv_content, "markers_user_iso.csv")
 
+        # Assign file to annotator so they have access
+        assign_resp = await client.post(
+            "/api/v1/files/assignments",
+            headers=admin_auth_headers,
+            json={"file_ids": [file_id], "username": "testannotator"},
+        )
+        assert assign_resp.status_code == 200
+
         # Admin saves marker A
         resp_a = await client.put(
             f"/api/v1/markers/{file_id}/{analysis_date}",
@@ -257,6 +265,14 @@ class TestDeleteMarker:
     ):
         """Deleting marker as one scorer should not delete another scorer's marker."""
         file_id, analysis_date = await _upload_and_get_date(client, admin_auth_headers, sample_csv_content, "markers_del_user_iso.csv")
+
+        # Assign file to annotator so they have access
+        assign_resp = await client.post(
+            "/api/v1/files/assignments",
+            headers=admin_auth_headers,
+            json={"file_ids": [file_id], "username": "testannotator"},
+        )
+        assert assign_resp.status_code == 200
 
         await client.put(
             f"/api/v1/markers/{file_id}/{analysis_date}",
@@ -374,11 +390,15 @@ class TestAutoScore:
         client: AsyncClient,
         admin_auth_headers: dict,
         sample_csv_content: str,
+        test_session_maker,
     ):
         """
         If auto-score produces no markers, any previously saved auto_score result
         for that date should be removed to prevent stale Accept Auto behavior.
         """
+        from sleep_scoring_web.db.models import UserAnnotation
+        from sleep_scoring_web.schemas.enums import VerificationStatus
+
         file_id, analysis_date = await _upload_and_get_date(
             client,
             admin_auth_headers,
@@ -396,17 +416,17 @@ class TestAutoScore:
         onset_ts = timestamps[10]
         offset_ts = timestamps[50]
 
-        auto_score_headers = {
-            **admin_auth_headers,
-            "X-Username": "auto_score",
-        }
-
-        # Seed a stale auto_score result via marker save as auto_score user.
-        seed_resp = await client.put(
-            f"/api/v1/markers/{file_id}/{analysis_date}",
-            headers=auto_score_headers,
-            json={
-                "sleep_markers": [
+        # Seed a stale auto_score result directly in the DB.
+        # The auto_score pseudo-user is not a real user with file access,
+        # so we insert the UserAnnotation row that the auto-score-result
+        # endpoint reads.
+        analysis_date_obj = date.fromisoformat(analysis_date)
+        async with test_session_maker() as session:
+            annotation = UserAnnotation(
+                file_id=file_id,
+                analysis_date=analysis_date_obj,
+                username="auto_score",
+                sleep_markers_json=[
                     {
                         "onset_timestamp": onset_ts,
                         "offset_timestamp": offset_ts,
@@ -414,10 +434,13 @@ class TestAutoScore:
                         "marker_type": "MAIN_SLEEP",
                     }
                 ],
-                "nonwear_markers": [],
-            },
-        )
-        assert seed_resp.status_code == 200
+                nonwear_markers_json=None,
+                is_no_sleep=False,
+                needs_consensus=False,
+                status=VerificationStatus.SUBMITTED,
+            )
+            session.add(annotation)
+            await session.commit()
 
         # Confirm stale result exists before re-running auto-score.
         pre = await client.get(

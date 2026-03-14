@@ -10,7 +10,7 @@ annotations. Using Annotated types requires runtime resolution.
 
 import logging
 from datetime import UTC, date, datetime, timedelta, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +23,88 @@ from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.db.models import ConsensusCandidate, DiaryEntry, Marker, RawActivityData, SleepMetric, UserAnnotation
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.schemas import ManualNonwearPeriod, MarkerUpdateRequest, SleepMetrics, SleepPeriod
-from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, MarkerType, NonwearDataSource, VerificationStatus
+from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, MarkerType, VerificationStatus
 from sleep_scoring_web.services.consensus import compute_candidate_hash
 from sleep_scoring_web.services.consensus_realtime import broadcast_consensus_update
 from sleep_scoring_web.services.file_identity import is_excluded_file_obj
 from sleep_scoring_web.utils import naive_to_unix
 
 router = APIRouter()
+
+# Sentinel for "field not provided" (distinct from None which is a valid value)
+_UNSET: Final = object()
+
+
+async def upsert_user_annotation(
+    db: DbSession,
+    *,
+    file_id: int,
+    analysis_date: date,
+    username: str,
+    sleep_markers_json: list[dict[str, Any]] | None | Any = _UNSET,
+    nonwear_markers_json: list[dict[str, Any]] | None | Any = _UNSET,
+    is_no_sleep: bool | Any = _UNSET,
+    needs_consensus: bool | Any = _UNSET,
+    algorithm_used: str | None | Any = _UNSET,
+    detection_rule: str | None | Any = _UNSET,
+    notes: str | None | Any = _UNSET,
+    with_for_update: bool = False,
+) -> UserAnnotation:
+    """
+    Query-or-create a UserAnnotation and set provided fields.
+
+    Fields left as ``_UNSET`` are not touched on an existing row.  On a
+    *new* row, unset fields fall back to model defaults (``None`` / ``False``).
+    Always sets ``status = VerificationStatus.SUBMITTED``.
+
+    Returns the (possibly new) annotation; caller is responsible for
+    ``db.commit()`` / ``db.add()`` is handled here.
+    """
+    stmt = select(UserAnnotation).where(
+        and_(
+            UserAnnotation.file_id == file_id,
+            UserAnnotation.analysis_date == analysis_date,
+            UserAnnotation.username == username,
+        )
+    )
+    if with_for_update:
+        stmt = stmt.with_for_update()
+
+    result = await db.execute(stmt)
+    annotation = result.scalar_one_or_none()
+
+    # Collect fields to set (only those explicitly provided)
+    fields: dict[str, Any] = {}
+    if sleep_markers_json is not _UNSET:
+        fields["sleep_markers_json"] = sleep_markers_json
+    if nonwear_markers_json is not _UNSET:
+        fields["nonwear_markers_json"] = nonwear_markers_json
+    if is_no_sleep is not _UNSET:
+        fields["is_no_sleep"] = is_no_sleep
+    if needs_consensus is not _UNSET:
+        fields["needs_consensus"] = needs_consensus
+    if algorithm_used is not _UNSET:
+        fields["algorithm_used"] = algorithm_used
+    if detection_rule is not _UNSET:
+        fields["detection_rule"] = detection_rule
+    if notes is not _UNSET:
+        fields["notes"] = notes
+
+    if annotation:
+        for key, value in fields.items():
+            setattr(annotation, key, value)
+        annotation.status = VerificationStatus.SUBMITTED
+    else:
+        annotation = UserAnnotation(
+            file_id=file_id,
+            analysis_date=analysis_date,
+            username=username,
+            status=VerificationStatus.SUBMITTED,
+            **fields,
+        )
+        db.add(annotation)
+
+    return annotation
 
 
 async def _upsert_consensus_candidate_snapshot(
@@ -159,7 +234,7 @@ async def get_markers(
                     Marker.file_id == file_id,
                     Marker.analysis_date == analysis_date,
                     Marker.created_by == username,
-                    Marker.marker_type != NonwearDataSource.SENSOR,
+                    Marker.exclude_sensor_nonwear_filter(),
                 )
             )
         )
@@ -171,7 +246,7 @@ async def get_markers(
                         Marker.file_id == file_id,
                         Marker.analysis_date == analysis_date,
                         Marker.created_by.is_(None),
-                        Marker.marker_type != NonwearDataSource.SENSOR,
+                        Marker.exclude_sensor_nonwear_filter(),
                     )
                 )
             )
@@ -224,7 +299,7 @@ async def get_markers(
                     marker_type=MarkerType(marker.marker_type) if marker.marker_type else MarkerType.MAIN_SLEEP,
                 )
             )
-        elif marker.marker_category == MarkerCategory.NONWEAR and marker.marker_type != NonwearDataSource.SENSOR:
+        elif marker.marker_category == MarkerCategory.NONWEAR and marker.marker_type != MarkerType.SENSOR_NONWEAR:
             nonwear_markers.append(
                 ManualNonwearPeriod(
                     start_timestamp=marker.start_timestamp,
@@ -303,7 +378,7 @@ async def get_markers(
                 )
             )
             _anno = _anno_result.scalar_one_or_none()
-            algo_name = _anno.algorithm_used if _anno and _anno.algorithm_used else "sadeh_1994_actilife"
+            algo_name = _anno.algorithm_used if _anno and _anno.algorithm_used else AlgorithmType.SADEH_1994_ACTILIFE
 
             axis_y_data = [row.axis_y or 0 for row in activity_rows]
             timestamps_float = [naive_to_unix(row.timestamp) for row in activity_rows]
@@ -439,7 +514,7 @@ async def save_markers(
                 Marker.file_id == file_id,
                 Marker.analysis_date == analysis_date,
                 or_(Marker.created_by == username, Marker.created_by.is_(None)),
-                Marker.marker_type != NonwearDataSource.SENSOR,
+                Marker.exclude_sensor_nonwear_filter(),
             )
         )
     )
@@ -472,7 +547,7 @@ async def save_markers(
                     file_id=file_id,
                     analysis_date=analysis_date,
                     marker_category=MarkerCategory.NONWEAR,
-                    marker_type="manual",
+                    marker_type=MarkerType.MANUAL_NONWEAR,
                     start_timestamp=marker.start_timestamp,
                     end_timestamp=marker.end_timestamp,
                     period_index=marker.marker_index if marker.marker_index is not None else (i + 1),
@@ -485,44 +560,23 @@ async def save_markers(
     # GET endpoint sees them immediately.  Background tasks run AFTER the
     # response, so navigating away and back before the task completes would
     # return stale values — causing consensus flags to appear to not persist.
-    existing_annotation = await db.execute(
-        select(UserAnnotation).where(
-            and_(
-                UserAnnotation.file_id == file_id,
-                UserAnnotation.analysis_date == analysis_date,
-                UserAnnotation.username == username,
-            )
-        )
-    )
-    annotation = existing_annotation.scalar_one_or_none()
-
     sleep_json = [m.model_dump() for m in request.sleep_markers] if request.sleep_markers else None
     nonwear_json = [m.model_dump() for m in request.nonwear_markers] if request.nonwear_markers else None
+    algo_str = request.algorithm_used.value if request.algorithm_used else None
 
-    if annotation:
-        annotation.sleep_markers_json = sleep_json
-        annotation.nonwear_markers_json = nonwear_json
-        annotation.is_no_sleep = request.is_no_sleep
-        annotation.needs_consensus = request.needs_consensus
-        annotation.algorithm_used = request.algorithm_used.value if request.algorithm_used else None
-        annotation.detection_rule = request.detection_rule
-        annotation.notes = request.notes
-        annotation.status = "submitted"
-    else:
-        annotation = UserAnnotation(
-            file_id=file_id,
-            analysis_date=analysis_date,
-            username=username,
-            sleep_markers_json=sleep_json,
-            nonwear_markers_json=nonwear_json,
-            is_no_sleep=request.is_no_sleep,
-            needs_consensus=request.needs_consensus,
-            algorithm_used=request.algorithm_used.value if request.algorithm_used else None,
-            detection_rule=request.detection_rule,
-            notes=request.notes,
-            status="submitted",
-        )
-        db.add(annotation)
+    await upsert_user_annotation(
+        db,
+        file_id=file_id,
+        analysis_date=analysis_date,
+        username=username,
+        sleep_markers_json=sleep_json,
+        nonwear_markers_json=nonwear_json,
+        is_no_sleep=request.is_no_sleep,
+        needs_consensus=request.needs_consensus,
+        algorithm_used=algo_str,
+        detection_rule=request.detection_rule,
+        notes=request.notes,
+    )
 
     await _upsert_consensus_candidate_snapshot(
         db,
@@ -532,7 +586,7 @@ async def save_markers(
         sleep_markers_json=sleep_json,
         nonwear_markers_json=nonwear_json,
         is_no_sleep=request.is_no_sleep,
-        algorithm_used=request.algorithm_used.value if request.algorithm_used else None,
+        algorithm_used=algo_str,
         notes=request.notes,
     )
 
@@ -733,44 +787,22 @@ async def _update_user_annotation(
     from sleep_scoring_web.db.session import async_session_maker
 
     async with async_session_maker() as db:
-        # Convert markers to dicts
         sleep_json = [m.model_dump() for m in sleep_markers] if sleep_markers else None
         nonwear_json = [m.model_dump() for m in nonwear_markers] if nonwear_markers else None
+        algo_str = algorithm_used.value if algorithm_used else None
 
-        # Upsert annotation
-        existing = await db.execute(
-            select(UserAnnotation).where(
-                and_(
-                    UserAnnotation.file_id == file_id,
-                    UserAnnotation.analysis_date == analysis_date,
-                    UserAnnotation.username == username,
-                )
-            )
+        await upsert_user_annotation(
+            db,
+            file_id=file_id,
+            analysis_date=analysis_date,
+            username=username,
+            sleep_markers_json=sleep_json,
+            nonwear_markers_json=nonwear_json,
+            is_no_sleep=is_no_sleep,
+            needs_consensus=needs_consensus,
+            algorithm_used=algo_str,
+            notes=notes,
         )
-        annotation = existing.scalar_one_or_none()
-
-        if annotation:
-            annotation.sleep_markers_json = sleep_json
-            annotation.nonwear_markers_json = nonwear_json
-            annotation.is_no_sleep = is_no_sleep
-            annotation.needs_consensus = needs_consensus
-            annotation.algorithm_used = algorithm_used.value if algorithm_used else None
-            annotation.notes = notes
-            annotation.status = "submitted"
-        else:
-            annotation = UserAnnotation(
-                file_id=file_id,
-                analysis_date=analysis_date,
-                username=username,
-                sleep_markers_json=sleep_json,
-                nonwear_markers_json=nonwear_json,
-                is_no_sleep=is_no_sleep,
-                needs_consensus=needs_consensus,
-                algorithm_used=algorithm_used.value if algorithm_used else None,
-                notes=notes,
-                status="submitted",
-            )
-            db.add(annotation)
 
         # Also upsert consensus candidate so imported markers appear in consensus voting
         await _upsert_consensus_candidate_snapshot(
@@ -781,7 +813,7 @@ async def _update_user_annotation(
             sleep_markers_json=sleep_json,
             nonwear_markers_json=nonwear_json,
             is_no_sleep=is_no_sleep,
-            algorithm_used=algorithm_used.value if algorithm_used else None,
+            algorithm_used=algo_str,
             notes=notes,
         )
 
@@ -803,39 +835,19 @@ async def _patch_sleep_annotation(
     sleep_json = [m.model_dump() for m in sleep_markers] if sleep_markers else None
 
     async with async_session_maker() as db:
-        existing = await db.execute(
-            select(UserAnnotation)
-            .where(
-                and_(
-                    UserAnnotation.file_id == file_id,
-                    UserAnnotation.analysis_date == analysis_date,
-                    UserAnnotation.username == username,
-                )
-            )
-            .with_for_update()
+        annotation = await upsert_user_annotation(
+            db,
+            file_id=file_id,
+            analysis_date=analysis_date,
+            username=username,
+            sleep_markers_json=sleep_json,
+            is_no_sleep=is_no_sleep,
+            needs_consensus=needs_consensus,
+            notes=notes,
+            with_for_update=True,
         )
-        annotation = existing.scalar_one_or_none()
-        existing_nonwear_json = None
-
-        if annotation:
-            existing_nonwear_json = annotation.nonwear_markers_json
-            annotation.sleep_markers_json = sleep_json
-            annotation.is_no_sleep = is_no_sleep
-            annotation.needs_consensus = needs_consensus
-            annotation.notes = notes
-            annotation.status = "submitted"
-        else:
-            annotation = UserAnnotation(
-                file_id=file_id,
-                analysis_date=analysis_date,
-                username=username,
-                sleep_markers_json=sleep_json,
-                is_no_sleep=is_no_sleep,
-                needs_consensus=needs_consensus,
-                notes=notes,
-                status="submitted",
-            )
-            db.add(annotation)
+        # Preserve existing nonwear for consensus snapshot
+        existing_nonwear_json = annotation.nonwear_markers_json
 
         await _upsert_consensus_candidate_snapshot(
             db,
@@ -896,7 +908,7 @@ async def _patch_nonwear_annotation(
                 nonwear_markers_json=nonwear_json,
                 notes=notes,
                 needs_consensus=needs_consensus,
-                status="submitted",
+                status=VerificationStatus.SUBMITTED,
             )
             db.add(annotation)
 
@@ -1107,8 +1119,7 @@ async def _calculate_and_store_metrics(
                     select(Marker).where(
                         and_(
                             Marker.file_id == file_id,
-                            Marker.marker_category == MarkerCategory.NONWEAR,
-                            Marker.marker_type == NonwearDataSource.SENSOR,
+                            Marker.sensor_nonwear_filter(),
                             Marker.start_timestamp <= data_max_ts,
                             Marker.end_timestamp >= data_min_ts,
                         )

@@ -71,6 +71,7 @@ pub fn epoch_raw_data(
     axis_z: &[f64],
     sample_freq: u32,
 ) -> Result<JsValue, JsValue> {
-    let result = epoching::epoch_raw_data(timestamps_ms, axis_x, axis_y, axis_z, sample_freq);
+    let result = epoching::epoch_raw_data(timestamps_ms, axis_x, axis_y, axis_z, sample_freq)
+        .map_err(|e| JsValue::from_str(&e))?;
     serde_wasm_bindgen::to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))
 }

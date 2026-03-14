@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from sleep_scoring_web.schemas.enums import FileStatus
+
 _MAX_ENTRIES = 100
 _STALE_THRESHOLD = timedelta(hours=1)
 
@@ -14,7 +16,7 @@ class ProcessingProgress:
     """Track background file processing progress."""
 
     file_id: int
-    status: str = "processing"
+    status: str = FileStatus.PROCESSING
     phase: str = ""  # "decompressing" / "reading_csv" / "converting_counts" / "inserting_db"
     percent: float = 0.0
     rows_processed: int = 0

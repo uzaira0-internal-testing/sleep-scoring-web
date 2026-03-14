@@ -1,4 +1,5 @@
-"""Background processor for TUS-uploaded files.
+"""
+Background processor for TUS-uploaded files.
 
 Handles decompression, format detection, chunked processing for raw GENEActiv
 files, and standard loading for epoch/ActiGraph files.
@@ -37,7 +38,8 @@ async def process_uploaded_file(
     skip_rows: int = 10,
     device_preset: str | None = None,
 ) -> None:
-    """Process a TUS-uploaded file in the background.
+    """
+    Process a TUS-uploaded file in the background.
 
     1. Decompress if gzipped (streaming, never loads full file)
     2. Detect file type
@@ -138,7 +140,7 @@ async def process_uploaded_file(
                     "epoch_length_seconds": metadata.get("epoch_length_seconds", 60),
                 }
 
-            update_progress(file_id, phase="inserting_db", percent=100.0, status="ready")
+            update_progress(file_id, phase="inserting_db", percent=100.0, status=FileStatus.READY)
             await db.commit()
             logger.info(
                 "File %d (%s) processed: %d epochs inserted",
@@ -150,7 +152,7 @@ async def process_uploaded_file(
     except Exception as exc:
         logger.exception("Failed to process file %d (%s)", file_id, original_filename)
         error_msg = str(exc)
-        update_progress(file_id, status="failed", error=error_msg)
+        update_progress(file_id, status=FileStatus.FAILED, error=error_msg)
 
         # Cleanup partial data and mark as failed
         try:

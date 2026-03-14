@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
+from sleep_scoring_web.schemas.enums import AlgorithmType
+
 from .cole_kripke import ColeKripkeAlgorithm
 from .sadeh import SadehAlgorithm
 
@@ -22,15 +24,6 @@ class SleepScoringAlgorithm(Protocol):
     def score(self, activity_counts: Sequence[int | float]) -> list[int]:
         """Score epochs as sleep (1) or wake (0)."""
         ...
-
-
-class AlgorithmType:
-    """Algorithm type identifiers matching frontend constants."""
-
-    SADEH_1994_ACTILIFE = "sadeh_1994_actilife"
-    SADEH_1994_ORIGINAL = "sadeh_1994_original"
-    COLE_KRIPKE_1992_ACTILIFE = "cole_kripke_1992_actilife"
-    COLE_KRIPKE_1992_ORIGINAL = "cole_kripke_1992_original"
 
 
 # All available algorithm types
