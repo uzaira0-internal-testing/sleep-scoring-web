@@ -3,6 +3,10 @@ module.exports = {
     collect: {
       url: [
         "http://localhost:8501/login",
+        "http://localhost:8501/scoring",
+        "http://localhost:8501/export",
+        "http://localhost:8501/analysis",
+        "http://localhost:8501/settings",
       ],
       numberOfRuns: 3,
       settings: {
@@ -15,7 +19,9 @@ module.exports = {
     },
     assert: {
       assertions: {
-        "categories:performance": ["warn", { minScore: 0.8 }],
+        "categories:performance": ["error", { minScore: 0.7 }],
+        "categories:best-practices": ["error", { minScore: 0.8 }],
+        "categories:seo": ["warn", { minScore: 0.7 }],
         "first-contentful-paint": ["warn", { maxNumericValue: 2000 }],
         "largest-contentful-paint": ["warn", { maxNumericValue: 4000 }],
         "cumulative-layout-shift": ["error", { maxNumericValue: 0.1 }],

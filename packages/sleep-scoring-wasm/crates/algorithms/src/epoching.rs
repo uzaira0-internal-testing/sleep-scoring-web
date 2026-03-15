@@ -1,8 +1,8 @@
-/// Epoching: Convert raw high-frequency accelerometer data to 60-second epoch counts.
-///
-/// Implements a simplified agcounts-like conversion:
-/// - Sum of absolute values per axis per epoch
-/// - Vector magnitude: sqrt(x^2 + y^2 + z^2)
+//! Epoching: Convert raw high-frequency accelerometer data to 60-second epoch counts.
+//!
+//! Implements a simplified agcounts-like conversion:
+//! - Sum of absolute values per axis per epoch
+//! - Vector magnitude: sqrt(x^2 + y^2 + z^2)
 
 use crate::types::EpochResult;
 
@@ -149,5 +149,107 @@ mod tests {
         let result = epoch_raw_data(&[1.0, 2.0], &[1.0], &[1.0], &[1.0], 100);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("timestamps_ms length"));
+    }
+
+    #[test]
+    fn test_mismatched_axis_y_returns_error() {
+        let result = epoch_raw_data(&[1.0], &[1.0], &[1.0, 2.0], &[1.0], 100);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("axis_y length"));
+    }
+
+    #[test]
+    fn test_mismatched_axis_z_returns_error() {
+        let result = epoch_raw_data(&[1.0], &[1.0], &[1.0], &[1.0, 2.0], 100);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("axis_z length"));
+    }
+
+    #[test]
+    fn test_multiple_epochs() {
+        let samples_per_epoch = 100 * 60; // 6000 samples
+        let n = samples_per_epoch * 3; // 3 full epochs
+
+        let timestamps: Vec<f64> = (0..n).map(|i| i as f64 * 10.0).collect();
+        let axis_x = vec![1.0; n];
+        let axis_y = vec![1.0; n];
+        let axis_z = vec![1.0; n];
+
+        let result = epoch_raw_data(&timestamps, &axis_x, &axis_y, &axis_z, 100).unwrap();
+
+        assert_eq!(result.timestamps_ms.len(), 3);
+        assert_eq!(result.axis_x.len(), 3);
+        // Each epoch: sum of abs(1.0) * 6000 = 6000
+        assert_eq!(result.axis_x[0], 6000.0);
+        assert_eq!(result.axis_x[1], 6000.0);
+        assert_eq!(result.axis_x[2], 6000.0);
+        // Timestamps should be first sample of each epoch
+        assert_eq!(result.timestamps_ms[0], 0.0);
+        assert_eq!(result.timestamps_ms[1], 60000.0);
+        assert_eq!(result.timestamps_ms[2], 120000.0);
+    }
+
+    #[test]
+    fn test_vector_magnitude_calculation() {
+        let samples_per_epoch = 100 * 60;
+        let n = samples_per_epoch;
+
+        let timestamps: Vec<f64> = (0..n).map(|i| i as f64 * 10.0).collect();
+        let axis_x = vec![3.0; n];
+        let axis_y = vec![4.0; n];
+        let axis_z = vec![0.0; n];
+
+        let result = epoch_raw_data(&timestamps, &axis_x, &axis_y, &axis_z, 100).unwrap();
+
+        // sum_x = 3*6000 = 18000, sum_y = 4*6000 = 24000, sum_z = 0
+        // VM = sqrt(18000^2 + 24000^2) = sqrt(324M + 576M) = sqrt(900M) = 30000
+        assert!((result.vector_magnitude[0] - 30000.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_negative_values_use_abs() {
+        let samples_per_epoch = 100 * 60;
+        let n = samples_per_epoch;
+
+        let timestamps: Vec<f64> = (0..n).map(|i| i as f64 * 10.0).collect();
+        let axis_x = vec![-1.0; n];
+        let axis_y = vec![-2.0; n];
+        let axis_z = vec![-0.5; n];
+
+        let result = epoch_raw_data(&timestamps, &axis_x, &axis_y, &axis_z, 100).unwrap();
+
+        // abs(-1.0) * 6000 = 6000
+        assert_eq!(result.axis_x[0], 6000.0);
+        assert_eq!(result.axis_y[0], 12000.0);
+        assert_eq!(result.axis_z[0], 3000.0);
+    }
+
+    #[test]
+    fn test_different_sample_rates() {
+        // 50 Hz: 50 * 60 = 3000 samples per epoch
+        let samples_per_epoch = 50 * 60;
+        let n = samples_per_epoch;
+
+        let timestamps: Vec<f64> = (0..n).map(|i| i as f64 * 20.0).collect();
+        let axis_x = vec![1.0; n];
+        let axis_y = vec![1.0; n];
+        let axis_z = vec![1.0; n];
+
+        let result = epoch_raw_data(&timestamps, &axis_x, &axis_y, &axis_z, 50).unwrap();
+
+        assert_eq!(result.timestamps_ms.len(), 1);
+        assert_eq!(result.axis_x[0], 3000.0);
+    }
+
+    #[test]
+    fn test_fewer_samples_than_one_epoch() {
+        // Less than one epoch worth of data → 0 epochs
+        let timestamps = vec![0.0; 100];
+        let axis_x = vec![1.0; 100];
+        let axis_y = vec![1.0; 100];
+        let axis_z = vec![1.0; 100];
+
+        let result = epoch_raw_data(&timestamps, &axis_x, &axis_y, &axis_z, 100).unwrap();
+        assert!(result.timestamps_ms.is_empty());
     }
 }

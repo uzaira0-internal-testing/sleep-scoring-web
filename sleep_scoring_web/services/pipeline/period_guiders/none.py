@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from sleep_scoring_web.services.pipeline.registry import register
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from sleep_scoring_web.services.pipeline.params import PeriodGuiderParams
     from sleep_scoring_web.services.pipeline.protocols import Bout, ClassifiedEpochs, DiaryInput, EpochSeries, GuideWindow, NapGuideWindow
 

@@ -11,6 +11,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  rust-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Run clippy
+        run: cd packages/sleep-scoring-wasm && cargo clippy -- -D warnings
+
+  rust-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run Rust tests
+        run: cd packages/sleep-scoring-wasm && cargo test
+
   backend-lint:
     runs-on: ubuntu-latest
     steps:
@@ -308,6 +326,18 @@ jobs:
         run: mkdir -p frontend/src/wasm/pkg && echo "export {};" > frontend/src/wasm/pkg/sleep_scoring_wasm.js
       - name: Build and check bundle size
         run: cd frontend && npx vite build && npx size-limit
+
+  dependency-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd frontend && npm ci
+      - name: Check for unused npm dependencies
+        run: cd frontend && npx depcheck --ignores="@types/*,tailwindcss,@tailwindcss/*,autoprefixer,postcss"
+        continue-on-error: true
 
   dead-code:
     runs-on: ubuntu-latest

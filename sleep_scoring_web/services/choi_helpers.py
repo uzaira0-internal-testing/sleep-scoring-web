@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sleep_scoring_web.db.models import UserSettings
 from sleep_scoring_web.schemas.enums import ActivityDataPreference
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from sleep_scoring_web.db.models import RawActivityData

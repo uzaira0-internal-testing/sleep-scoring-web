@@ -28,7 +28,7 @@ from sleep_scoring_web.sentry_setup import init_sentry
 # Initialize Sentry before app creation (no-op if SENTRY_DSN not set)
 init_sentry()
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import AsyncGenerator
 
 # Configure structured logging (JSON in production, text in development)

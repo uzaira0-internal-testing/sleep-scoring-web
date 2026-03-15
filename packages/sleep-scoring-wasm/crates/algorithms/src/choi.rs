@@ -1,11 +1,11 @@
-/// Choi (2011) nonwear detection algorithm.
-///
-/// Ports the Python implementation exactly:
-/// - Finds consecutive zero-count periods
-/// - Allows spikes of up to spike_tolerance (2) non-zero minutes within a window
-/// - Minimum period length: 90 minutes
-/// - Window size for spike checking: 30 minutes
-/// - Merges adjacent periods within 1 minute
+//! Choi (2011) nonwear detection algorithm.
+//!
+//! Ports the Python implementation exactly:
+//! - Finds consecutive zero-count periods
+//! - Allows spikes of up to spike_tolerance (2) non-zero minutes within a window
+//! - Minimum period length: 90 minutes
+//! - Window size for spike checking: 30 minutes
+//! - Merges adjacent periods within 1 minute
 
 const MIN_PERIOD_LENGTH: usize = 90;
 const SPIKE_TOLERANCE: usize = 2;
@@ -56,11 +56,7 @@ pub fn detect(counts: &[f64]) -> Vec<u8> {
             }
 
             // Check spike tolerance using prefix sum (O(1) per query)
-            let window_start = if continuation >= WINDOW_SIZE {
-                continuation - WINDOW_SIZE
-            } else {
-                0
-            };
+            let window_start = continuation.saturating_sub(WINDOW_SIZE);
             let window_end = (continuation + WINDOW_SIZE).min(n);
 
             let nonzero_count =
@@ -171,5 +167,104 @@ mod tests {
 
         let result = detect(&counts);
         assert!(result.iter().all(|&v| v == 0), "Short zero period = wear");
+    }
+
+    #[test]
+    fn test_single_epoch() {
+        // Single zero → too short for nonwear
+        assert_eq!(detect(&[0.0]), vec![0]);
+        // Single non-zero → wear
+        assert_eq!(detect(&[100.0]), vec![0]);
+    }
+
+    #[test]
+    fn test_output_length_matches_input() {
+        for n in [1, 50, 90, 91, 200] {
+            let counts = vec![0.0; n];
+            let result = detect(&counts);
+            assert_eq!(result.len(), n, "Output length must match input for n={}", n);
+        }
+    }
+
+    #[test]
+    fn test_output_only_binary() {
+        let mut counts = vec![100.0; 10];
+        counts.extend(vec![0.0; 100]);
+        counts.extend(vec![100.0; 10]);
+        let result = detect(&counts);
+        assert!(
+            result.iter().all(|&v| v == 0 || v == 1),
+            "Output must only contain 0 or 1"
+        );
+    }
+
+    #[test]
+    fn test_exact_90_is_nonwear() {
+        // Exactly 90 zeros should be detected as nonwear (>= 90)
+        let mut counts = vec![100.0; 10];
+        counts.extend(vec![0.0; 90]);
+        counts.extend(vec![100.0; 10]);
+        let result = detect(&counts);
+        assert!(result[10..100].iter().all(|&v| v == 1), "Exactly 90 zeros = nonwear");
+        assert!(result[..10].iter().all(|&v| v == 0));
+        assert!(result[100..].iter().all(|&v| v == 0));
+    }
+
+    #[test]
+    fn test_89_zeros_not_nonwear() {
+        // 89 zeros < 90 → not nonwear
+        let mut counts = vec![100.0; 10];
+        counts.extend(vec![0.0; 89]);
+        counts.extend(vec![100.0; 10]);
+        let result = detect(&counts);
+        assert!(result.iter().all(|&v| v == 0), "89 zeros = wear");
+    }
+
+    #[test]
+    fn test_all_zeros_is_nonwear() {
+        // All zeros, 100 epochs → entire array is nonwear
+        let counts = vec![0.0; 100];
+        let result = detect(&counts);
+        assert!(result.iter().all(|&v| v == 1), "All zeros (100) = nonwear");
+    }
+
+    #[test]
+    fn test_spike_within_nonwear_tolerated() {
+        // 90+ zeros with a single spike in the middle should still detect nonwear
+        // because spike tolerance allows up to 2 non-zero minutes in a 30-min window
+        let mut counts = vec![0.0; 100];
+        counts[50] = 5.0; // single spike
+        let result = detect(&counts);
+        // The period should still be detected (spike tolerance)
+        let nonwear_count: usize = result.iter().filter(|&&v| v == 1).count();
+        assert!(nonwear_count >= 90, "Single spike should be tolerated: got {} nonwear", nonwear_count);
+    }
+
+    #[test]
+    fn test_multiple_nonwear_periods() {
+        // Two separate nonwear periods
+        let mut counts = vec![0.0; 95];
+        counts.extend(vec![100.0; 20]);
+        counts.extend(vec![0.0; 95]);
+        let result = detect(&counts);
+        // First period: nonwear
+        assert!(result[..95].iter().all(|&v| v == 1), "First period should be nonwear");
+        // Gap: wear
+        assert!(result[95..115].iter().all(|&v| v == 0), "Gap should be wear");
+        // Second period: nonwear
+        assert!(result[115..210].iter().all(|&v| v == 1), "Second period should be nonwear");
+    }
+
+    #[test]
+    fn test_merge_adjacent_periods() {
+        // Two zero periods separated by a single non-zero epoch
+        // They should be handled by merge logic (gap <= 1)
+        let mut counts = vec![0.0; 95];
+        counts.push(5.0); // single non-zero gap
+        counts.extend(vec![0.0; 95]);
+        let result = detect(&counts);
+        // Due to spike tolerance and merging, the whole area should be nonwear
+        let nonwear_count: usize = result.iter().filter(|&&v| v == 1).count();
+        assert!(nonwear_count > 95, "Adjacent periods should merge: got {} nonwear", nonwear_count);
     }
 }

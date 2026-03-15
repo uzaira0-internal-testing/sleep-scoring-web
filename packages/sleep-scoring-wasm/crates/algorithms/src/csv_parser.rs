@@ -1,10 +1,10 @@
-/// CSV parser for actigraphy data files.
-///
-/// Handles:
-/// - ActiGraph CSV (configurable header skip, auto-detect columns)
-/// - GENEActiv raw CSV (7-column 100Hz format with header detection)
-/// - Automatic column detection (datetime, axis, vector magnitude)
-/// - Timestamp parsing to epoch milliseconds
+//! CSV parser for actigraphy data files.
+//!
+//! Handles:
+//! - ActiGraph CSV (configurable header skip, auto-detect columns)
+//! - GENEActiv raw CSV (7-column 100Hz format with header detection)
+//! - Automatic column detection (datetime, axis, vector magnitude)
+//! - Timestamp parsing to epoch milliseconds
 
 use crate::types::CsvParseResult;
 
@@ -63,7 +63,7 @@ pub fn detect_frequency(content: &str) -> u32 {
         }
         let lower = line.to_lowercase();
         if lower.contains("measurement frequency") || lower.contains("sample rate") {
-            for part in line.split(|c: char| c == ',' || c == ':' || c == '\t') {
+            for part in line.split([',', ':', '\t']) {
                 let trimmed = part.trim().trim_end_matches(" hz").trim_end_matches("hz");
                 if let Ok(freq) = trimmed.parse::<u32>() {
                     if freq > 0 {
@@ -621,7 +621,7 @@ fn memchr_byte(needle: u8, haystack: &[u8]) -> Option<usize> {
 
 /// Days since Unix epoch (1970-01-01).
 fn days_since_epoch(year: i64, month: i64, day: i64) -> Option<i64> {
-    if month < 1 || month > 12 || day < 1 || day > 31 {
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
     let (y, m) = if month <= 2 {
@@ -676,5 +676,218 @@ mod tests {
     fn test_detect_frequency() {
         let header = "Device Type,GENEActiv\nMeasurement Frequency,100 Hz\nData:";
         assert_eq!(detect_frequency(header), 100);
+    }
+
+    #[test]
+    fn test_detect_frequency_sample_rate() {
+        let header = "Device Type,GENEActiv\nSample Rate,50 hz\nData:";
+        assert_eq!(detect_frequency(header), 50);
+    }
+
+    #[test]
+    fn test_detect_frequency_default() {
+        let header = "Device Type,GENEActiv\nSome Other Header\n";
+        assert_eq!(detect_frequency(header), 100); // Default
+    }
+
+    #[test]
+    fn test_is_geneactiv_empty() {
+        assert!(!is_geneactiv(""));
+    }
+
+    #[test]
+    fn test_is_geneactiv_case_insensitive() {
+        assert!(is_geneactiv("device type,GENEACTIV\n"));
+        assert!(is_geneactiv("Device Type,GeneActiv\n"));
+    }
+
+    #[test]
+    fn test_parse_us_datetime() {
+        let ms = parse_timestamp_ms("01/01/2024 00:00:00").unwrap();
+        assert!((ms - 1704067200000.0).abs() < 1000.0);
+    }
+
+    #[test]
+    fn test_parse_timestamp_invalid() {
+        assert!(parse_timestamp_ms("not a date").is_none());
+        assert!(parse_timestamp_ms("").is_none());
+        assert!(parse_timestamp_ms("2024").is_none());
+    }
+
+    #[test]
+    fn test_parse_actigraph_csv_basic() {
+        let csv = "Header line 1\nHeader line 2\nDatetime,Axis1,Axis2,Axis3\n\
+                   2024-01-01 00:00:00,100,50,25\n\
+                   2024-01-01 00:01:00,200,75,30\n";
+        let result = parse_actigraph_csv(csv, 2).unwrap();
+        assert_eq!(result.axis_y.len(), 2);
+        assert_eq!(result.axis_y[0], 100.0);
+        assert_eq!(result.axis_y[1], 200.0);
+        assert_eq!(result.axis_x[0], 50.0);
+        assert_eq!(result.axis_z[0], 25.0);
+        assert!(!result.is_raw);
+    }
+
+    #[test]
+    fn test_parse_actigraph_csv_tab_separated() {
+        let csv = "Datetime\tAxis1\n\
+                   2024-01-01 00:00:00\t100\n\
+                   2024-01-01 00:01:00\t200\n";
+        let result = parse_actigraph_csv(csv, 0).unwrap();
+        assert_eq!(result.axis_y.len(), 2);
+        assert_eq!(result.axis_y[0], 100.0);
+        assert_eq!(result.axis_y[1], 200.0);
+    }
+
+    #[test]
+    fn test_parse_actigraph_csv_empty_lines_skipped() {
+        let csv = "Datetime,Axis1\n\
+                   2024-01-01 00:00:00,100\n\
+                   \n\
+                   2024-01-01 00:01:00,200\n";
+        let result = parse_actigraph_csv(csv, 0).unwrap();
+        assert_eq!(result.axis_y.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_actigraph_csv_with_vm_column() {
+        let csv = "Datetime,Axis1,Vector Magnitude\n\
+                   2024-01-01 00:00:00,100,150.5\n\
+                   2024-01-01 00:01:00,200,250.0\n";
+        let result = parse_actigraph_csv(csv, 0).unwrap();
+        assert_eq!(result.vector_magnitude.len(), 2);
+        assert_eq!(result.vector_magnitude[0], 150.5);
+    }
+
+    #[test]
+    fn test_parse_actigraph_csv_no_datetime_column() {
+        let csv = "Axis1,Axis2\n100,50\n200,75\n";
+        let result = parse_actigraph_csv(csv, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_actigraph_csv_no_axis1_column() {
+        let csv = "Datetime,SomeOther\n2024-01-01 00:00:00,50\n";
+        let result = parse_actigraph_csv(csv, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_actigraph_csv_too_many_skip_rows() {
+        let csv = "one line\n";
+        let result = parse_actigraph_csv(csv, 5);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_actigraph_csv_date_time_separate_columns() {
+        let csv = "Date,Time,Axis1\n\
+                   01/15/2024,10:30:00,100\n\
+                   01/15/2024,10:31:00,200\n";
+        let result = parse_actigraph_csv(csv, 0).unwrap();
+        assert_eq!(result.axis_y.len(), 2);
+    }
+
+    #[test]
+    fn test_fix_geneactiv_timestamp_no_change() {
+        // Already correct format
+        assert_eq!(
+            fix_geneactiv_timestamp("2025-06-12 13:20:18.500"),
+            "2025-06-12 13:20:18.500"
+        );
+    }
+
+    #[test]
+    fn test_fix_geneactiv_timestamp_short_string() {
+        // Too short to match the pattern
+        assert_eq!(fix_geneactiv_timestamp("abc"), "abc");
+    }
+
+    #[test]
+    fn test_extract_fields_basic() {
+        let result = extract_fields("a,b,c,d", ',', &[0, 2, 3]);
+        assert_eq!(result[0], Some("a"));
+        assert_eq!(result[1], Some("c"));
+        assert_eq!(result[2], Some("d"));
+    }
+
+    #[test]
+    fn test_extract_fields_out_of_range() {
+        let result = extract_fields("a,b", ',', &[0, 5]);
+        assert_eq!(result[0], Some("a"));
+        assert_eq!(result[1], None);
+    }
+
+    #[test]
+    fn test_count_fields_empty() {
+        assert_eq!(count_fields("", ','), 0);
+    }
+
+    #[test]
+    fn test_count_fields_basic() {
+        assert_eq!(count_fields("a,b,c", ','), 3);
+        assert_eq!(count_fields("a\tb\tc", '\t'), 3);
+    }
+
+    #[test]
+    fn test_parse_f64_invalid() {
+        assert_eq!(parse_f64("not_a_number"), 0.0);
+        assert_eq!(parse_f64(""), 0.0);
+    }
+
+    #[test]
+    fn test_parse_f64_with_quotes() {
+        assert_eq!(parse_f64("\"42.5\""), 42.5);
+    }
+
+    #[test]
+    fn test_days_since_epoch_invalid() {
+        assert!(days_since_epoch(2024, 0, 1).is_none());  // month < 1
+        assert!(days_since_epoch(2024, 13, 1).is_none()); // month > 12
+        assert!(days_since_epoch(2024, 1, 0).is_none());  // day < 1
+        assert!(days_since_epoch(2024, 1, 32).is_none()); // day > 31
+    }
+
+    #[test]
+    fn test_find_geneactiv_data_start_with_header() {
+        let content = "Device Type,GENEActiv\nMeasurement Frequency,100 Hz\n\
+                       Timestamp,X,Y,Z,Lux,Button,Temp\n\
+                       2025-01-01 00:00:00.000,0.1,0.2,0.3,100,0,25.0\n";
+        let (start, has_header) = find_geneactiv_data_start(content);
+        assert_eq!(start, 3);
+        assert!(has_header);
+    }
+
+    #[test]
+    fn test_parse_geneactiv_csv_basic() {
+        let content = "Device Type,GENEActiv\n\
+                       Measurement Frequency,100 Hz\n\
+                       Timestamp,X,Y,Z,Lux,Button,Temp\n\
+                       2025-01-01 00:00:00.000,0.1,0.2,0.3,100,0,25.0\n\
+                       2025-01-01 00:00:00.010,0.4,0.5,0.6,100,0,25.0\n";
+        let result = parse_geneactiv_csv(content).unwrap();
+        assert_eq!(result.axis_x.len(), 2);
+        assert_eq!(result.axis_x[0], 0.1);
+        assert_eq!(result.axis_y[0], 0.2);
+        assert_eq!(result.axis_z[0], 0.3);
+        assert!(result.is_raw);
+        assert_eq!(result.sample_frequency, 100);
+    }
+
+    #[test]
+    fn test_parse_int_fast_basic() {
+        assert_eq!(parse_int_fast(b"123"), Some(123));
+        assert_eq!(parse_int_fast(b"0"), Some(0));
+        assert_eq!(parse_int_fast(b""), None);
+        assert_eq!(parse_int_fast(b"abc"), None);
+        assert_eq!(parse_int_fast(b"12a3"), None);
+    }
+
+    #[test]
+    fn test_memchr_byte_basic() {
+        assert_eq!(memchr_byte(b',', b"hello,world"), Some(5));
+        assert_eq!(memchr_byte(b'x', b"hello"), None);
+        assert_eq!(memchr_byte(b'h', b"hello"), Some(0));
     }
 }

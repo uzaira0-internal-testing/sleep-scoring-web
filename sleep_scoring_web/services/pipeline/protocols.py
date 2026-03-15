@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from datetime import datetime
 
     from sleep_scoring_web.schemas.enums import MarkerType
@@ -171,7 +171,7 @@ class PipelineResult:
 
 
 @runtime_checkable
-class EpochClassifier(Protocol):
+class EpochClassifier(Protocol):  # pragma: no cover
     """Per-epoch sleep/wake classification. GGIR equivalent: HASIB."""
 
     @property
@@ -186,7 +186,7 @@ class EpochClassifier(Protocol):
 
 
 @runtime_checkable
-class BoutDetector(Protocol):
+class BoutDetector(Protocol):  # pragma: no cover
     """Sustained-state bout detection. GGIR equivalent: HASPT."""
 
     @property
@@ -201,7 +201,7 @@ class BoutDetector(Protocol):
 
 
 @runtime_checkable
-class PeriodGuider(Protocol):
+class PeriodGuider(Protocol):  # pragma: no cover
     """Anchors SPT window search. GGIR equivalent: guider (diary/HDCZA/L5+6)."""
 
     @property
@@ -219,7 +219,7 @@ class PeriodGuider(Protocol):
 
 
 @runtime_checkable
-class PeriodConstructor(Protocol):
+class PeriodConstructor(Protocol):  # pragma: no cover
     """Assembles final sleep periods. GGIR equivalent: SPT-window construction."""
 
     @property
@@ -238,7 +238,7 @@ class PeriodConstructor(Protocol):
 
 
 @runtime_checkable
-class NonwearDetector(Protocol):
+class NonwearDetector(Protocol):  # pragma: no cover
     """Nonwear period detection."""
 
     @property
@@ -255,7 +255,7 @@ class NonwearDetector(Protocol):
 
 
 @runtime_checkable
-class DiaryPreprocessor(Protocol):
+class DiaryPreprocessor(Protocol):  # pragma: no cover
     """Validates/corrects diary inputs."""
 
     @property

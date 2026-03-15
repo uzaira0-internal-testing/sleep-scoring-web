@@ -24,7 +24,7 @@ from sleep_scoring_web.schemas.enums import (
     VerificationStatus,
 )
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)

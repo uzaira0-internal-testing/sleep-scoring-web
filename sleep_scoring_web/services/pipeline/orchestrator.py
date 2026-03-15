@@ -23,7 +23,7 @@ from .protocols import (
 )
 from .registry import get_component
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from .params import PipelineParams
 
 

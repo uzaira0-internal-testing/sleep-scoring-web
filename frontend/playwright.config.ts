@@ -37,6 +37,14 @@ export default defineConfig({
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
     },
+    {
+      name: "mobile-chrome",
+      use: { ...devices["Pixel 5"] },
+    },
+    {
+      name: "tablet",
+      use: { viewport: { width: 768, height: 1024 } },
+    },
   ],
 
   // No webServer - Docker must be started manually before running tests

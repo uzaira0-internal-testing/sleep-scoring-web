@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from sleep_scoring_app.core.algorithms.sleep_wake.cole_kripke import score_activity_cole_kripke
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import Sequence
 
 

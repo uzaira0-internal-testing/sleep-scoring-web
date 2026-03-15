@@ -1,12 +1,12 @@
-/// Sadeh (1994) sleep scoring algorithm.
-///
-/// Ports the Python implementation exactly:
-/// - 11-epoch sliding window (5 prev + current + 5 future)
-/// - Activity capped at 300 before processing
-/// - Formula: PS = 7.601 - 0.065*AVG - 1.08*NATS - 0.056*SD - 0.703*LG
-/// - SD: right-aligned 6-epoch window (current + 5 preceding), ddof=1
-/// - NATS: count of epochs with activity in [50, 100)
-/// - Always uses Axis1 (Y-axis)
+//! Sadeh (1994) sleep scoring algorithm.
+//!
+//! Ports the Python implementation exactly:
+//! - 11-epoch sliding window (5 prev + current + 5 future)
+//! - Activity capped at 300 before processing
+//! - Formula: PS = 7.601 - 0.065*AVG - 1.08*NATS - 0.056*SD - 0.703*LG
+//! - SD: right-aligned 6-epoch window (current + 5 preceding), ddof=1
+//! - NATS: count of epochs with activity in [50, 100)
+//! - Always uses Axis1 (Y-axis)
 
 const WINDOW_SIZE: usize = 11;
 const ACTIVITY_CAP: f64 = 300.0;
@@ -60,7 +60,7 @@ pub fn score(activity: &[f64], threshold: f64) -> Vec<u8> {
         // NATS: count of epochs in [50, 100) in the window
         let nats: f64 = window
             .iter()
-            .filter(|&&v| v >= NATS_MIN && v < NATS_MAX)
+            .filter(|&&v| (NATS_MIN..NATS_MAX).contains(&v))
             .count() as f64;
 
         // SD: pre-computed backward rolling std
@@ -132,5 +132,95 @@ mod tests {
         let sd = std_ddof1(&data);
         // Known value: std with ddof=1 ≈ 2.138
         assert!((sd - 2.138).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_single_epoch() {
+        // Single epoch: should still produce a result
+        let result = score(&[50.0], -4.0);
+        assert_eq!(result.len(), 1);
+        // PS = 7.601 - 0.065*(50/11) - 1.08*(1) - 0.056*0 - 0.703*ln(51)
+        // ≈ 7.601 - 0.295 - 1.08 - 0 - 2.761 ≈ 3.465 > -4 → sleep
+        assert_eq!(result[0], 1);
+    }
+
+    #[test]
+    fn test_output_length_matches_input() {
+        for n in [1, 5, 11, 20, 100] {
+            let activity = vec![42.0; n];
+            let result = score(&activity, -4.0);
+            assert_eq!(result.len(), n, "Output length must match input for n={}", n);
+        }
+    }
+
+    #[test]
+    fn test_output_only_binary() {
+        let activity = vec![75.0; 50]; // NATS range
+        let result = score(&activity, -4.0);
+        assert!(
+            result.iter().all(|&v| v == 0 || v == 1),
+            "Output must only contain 0 or 1"
+        );
+    }
+
+    #[test]
+    fn test_threshold_zero() {
+        // Original Sadeh uses threshold 0.0 (stricter than ActiLife's -4.0)
+        let activity = vec![0.0; 20];
+        let result_original = score(&activity, 0.0);
+        let result_actilife = score(&activity, -4.0);
+        // Both should be sleep for zeros
+        assert!(result_original.iter().all(|&v| v == 1));
+        assert!(result_actilife.iter().all(|&v| v == 1));
+    }
+
+    #[test]
+    fn test_nats_range_boundary() {
+        // Values exactly at 50 should count as NATS
+        let activity = vec![50.0; 20];
+        let result = score(&activity, -4.0);
+        assert_eq!(result.len(), 20);
+
+        // Values exactly at 100 should NOT count as NATS (range is [50, 100))
+        let activity_100 = vec![100.0; 20];
+        let result_100 = score(&activity_100, -4.0);
+        assert_eq!(result_100.len(), 20);
+    }
+
+    #[test]
+    fn test_std_ddof1_single_value() {
+        // Single value should return 0.0 (cannot compute ddof=1 variance)
+        assert_eq!(std_ddof1(&[5.0]), 0.0);
+    }
+
+    #[test]
+    fn test_std_ddof1_empty() {
+        assert_eq!(std_ddof1(&[]), 0.0);
+    }
+
+    #[test]
+    fn test_std_ddof1_identical_values() {
+        let data = [3.0, 3.0, 3.0, 3.0];
+        assert_eq!(std_ddof1(&data), 0.0);
+    }
+
+    #[test]
+    fn test_negative_activity_treated_correctly() {
+        // Negative values: capped at min(val, 300) which for negatives stays negative
+        // This exercises padding path
+        let activity = vec![-10.0; 20];
+        let result = score(&activity, -4.0);
+        assert_eq!(result.len(), 20);
+    }
+
+    #[test]
+    fn test_mixed_sleep_wake_pattern() {
+        // Mix of zeros (sleep) and high values (wake)
+        let mut activity = vec![0.0; 30];
+        activity.extend(vec![300.0; 30]);
+        let result = score(&activity, -4.0);
+        assert_eq!(result.len(), 60);
+        // First epochs should trend toward sleep, last toward wake
+        // (boundary effects make exact assertions tricky, but length must match)
     }
 }

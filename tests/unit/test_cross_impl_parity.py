@@ -404,3 +404,125 @@ class TestWebWrappers:
             result = algo.score(VECTOR_ALL_ZEROS)
             assert len(result) == 20
             assert all(s == 1 for s in result), f"{algo_type} failed on all-zeros"
+
+
+# ===========================================================================
+# Choi Nonwear Parity Tests
+# ===========================================================================
+
+
+# Choi canonical test vectors — shared with Rust tests in choi.rs
+CHOI_VECTOR_EMPTY: list[float] = []
+CHOI_VECTOR_ALL_ACTIVE = [100.0] * 200
+CHOI_VECTOR_LONG_ZERO_PERIOD = [100.0] * 10 + [0.0] * 100 + [100.0] * 10
+CHOI_VECTOR_SHORT_ZERO = [100.0] * 10 + [0.0] * 80 + [100.0] * 10
+
+
+def _run_choi(counts: list[float]) -> list[int]:
+    """Run Python Choi nonwear detection and return mask."""
+    from sleep_scoring_web.services.algorithms.choi import ChoiAlgorithm
+
+    algo = ChoiAlgorithm()
+    return algo.detect_mask(counts)
+
+
+class TestChoiParity:
+    """Choi nonwear algorithm parity tests with canonical vectors.
+
+    Rust counterparts live in:
+      packages/sleep-scoring-wasm/crates/algorithms/src/choi.rs (mod tests)
+
+    Intentional differences documented:
+    - None known. Both implementations follow the same Choi 2011 algorithm
+      with min_period=90, spike_tolerance=2, window_size=30.
+    """
+
+    def test_empty_input(self) -> None:
+        """Empty input => empty output (matches Rust: test_empty_input)."""
+        result = _run_choi(CHOI_VECTOR_EMPTY)
+        assert result == []
+
+    def test_all_active_no_nonwear(self) -> None:
+        """All active => all wear (matches Rust: test_all_active_no_nonwear).
+
+        No zero-count periods, so nothing is detected as nonwear.
+        """
+        result = _run_choi(CHOI_VECTOR_ALL_ACTIVE)
+        assert len(result) == 200
+        assert all(v == 0 for v in result), "All active should be all wear"
+
+    def test_long_zero_period_detected(self) -> None:
+        """100-minute zero period => nonwear (matches Rust: test_long_zero_period).
+
+        100 consecutive zeros >= 90-min threshold => nonwear mask = 1.
+        """
+        result = _run_choi(CHOI_VECTOR_LONG_ZERO_PERIOD)
+        assert len(result) == 120
+
+        # First 10 epochs: active => wear (0)
+        assert all(v == 0 for v in result[:10]), "Active prefix should be wear"
+        # Middle 100 epochs: zeros => nonwear (1)
+        assert all(v == 1 for v in result[10:110]), "Long zero period should be nonwear"
+        # Last 10 epochs: active => wear (0)
+        assert all(v == 0 for v in result[110:]), "Active suffix should be wear"
+
+    def test_short_zero_period_not_detected(self) -> None:
+        """80-minute zero period < 90-min threshold => wear (matches Rust: test_short_zero_period_not_nonwear)."""
+        result = _run_choi(CHOI_VECTOR_SHORT_ZERO)
+        assert len(result) == 100
+        assert all(v == 0 for v in result), "Short zero period should be all wear"
+
+    def test_output_length_matches_input(self) -> None:
+        """Output mask length always equals input length."""
+        for vec in [CHOI_VECTOR_ALL_ACTIVE, CHOI_VECTOR_LONG_ZERO_PERIOD, CHOI_VECTOR_SHORT_ZERO]:
+            result = _run_choi(vec)
+            assert len(result) == len(vec)
+
+    def test_output_values_binary(self) -> None:
+        """All output values are 0 or 1."""
+        result = _run_choi(CHOI_VECTOR_LONG_ZERO_PERIOD)
+        assert all(v in (0, 1) for v in result)
+
+    def test_exactly_90_minutes_detected(self) -> None:
+        """Exactly 90 zeros should be detected as nonwear (boundary case).
+
+        Choi min_period_length = 90, so 90 consecutive zeros should qualify.
+        """
+        counts = [100.0] * 5 + [0.0] * 90 + [100.0] * 5
+        result = _run_choi(counts)
+        # The 90-zero block should be marked nonwear
+        assert all(v == 1 for v in result[5:95]), "Exactly 90 zeros should be nonwear"
+
+    def test_89_minutes_not_detected(self) -> None:
+        """89 zeros < 90-min threshold => wear."""
+        counts = [100.0] * 5 + [0.0] * 89 + [100.0] * 5
+        result = _run_choi(counts)
+        assert all(v == 0 for v in result), "89 zeros should be all wear"
+
+    def test_spike_within_tolerance(self) -> None:
+        """A small spike (1-2 non-zero epochs) within a long zero period
+        should NOT break the nonwear detection.
+
+        Choi allows up to spike_tolerance=2 non-zero epochs within the
+        spike window of 30 minutes.
+        """
+        # 50 zeros, 1 spike, 50 zeros = 101 total (>= 90 consecutive zeros around spike)
+        counts = [0.0] * 50 + [5.0] + [0.0] * 50
+        result = _run_choi(counts)
+        # The entire period should be detected as nonwear (spike tolerated)
+        nonwear_count = sum(1 for v in result if v == 1)
+        # At minimum, the 50+50 zero regions should be nonwear
+        assert nonwear_count >= 90, (
+            f"Expected >= 90 nonwear epochs with spike tolerance, got {nonwear_count}"
+        )
+
+    def test_multiple_nonwear_periods(self) -> None:
+        """Two separate long zero periods should be detected independently."""
+        counts = [100.0] * 5 + [0.0] * 95 + [100.0] * 10 + [0.0] * 95 + [100.0] * 5
+        result = _run_choi(counts)
+        # First nonwear block
+        assert all(v == 1 for v in result[5:100]), "First nonwear block"
+        # Gap (active)
+        assert all(v == 0 for v in result[100:110]), "Active gap"
+        # Second nonwear block
+        assert all(v == 1 for v in result[110:205]), "Second nonwear block"
