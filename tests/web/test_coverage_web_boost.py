@@ -20,11 +20,6 @@ from tests.web.conftest import upload_and_get_date
 # =============================================================================
 
 
-async def _ensure_file(client, admin_auth_headers, sample_csv_content, filename):
-    """Upload a file and return (file_id, analysis_date)."""
-    return await upload_and_get_date(client, admin_auth_headers, sample_csv_content, filename=filename)
-
-
 # =============================================================================
 # api/audit.py — Test audit summary and integrity error
 # =============================================================================
@@ -38,7 +33,7 @@ class TestAuditCoverage:
         self, client: AsyncClient, admin_auth_headers, sample_csv_content
     ):
         """Test logging events then getting summary."""
-        file_id, analysis_date = await _ensure_file(
+        file_id, analysis_date = await upload_and_get_date(
             client, admin_auth_headers, sample_csv_content, "audit_cov_1.csv"
         )
 
@@ -83,7 +78,7 @@ class TestAuditCoverage:
         self, client: AsyncClient, admin_auth_headers, sample_csv_content
     ):
         """Test idempotent logging."""
-        file_id, analysis_date = await _ensure_file(
+        file_id, analysis_date = await upload_and_get_date(
             client, admin_auth_headers, sample_csv_content, "audit_cov_2.csv"
         )
 
@@ -113,7 +108,7 @@ class TestAuditCoverage:
         self, client: AsyncClient, admin_auth_headers, sample_csv_content
     ):
         """Test audit log with session_id filter."""
-        file_id, analysis_date = await _ensure_file(
+        file_id, analysis_date = await upload_and_get_date(
             client, admin_auth_headers, sample_csv_content, "audit_cov_3.csv"
         )
 
@@ -142,7 +137,7 @@ class TestAuditCoverage:
         self, client: AsyncClient, admin_auth_headers, sample_csv_content
     ):
         """Test audit log with username filter (line 194)."""
-        file_id, analysis_date = await _ensure_file(
+        file_id, analysis_date = await upload_and_get_date(
             client, admin_auth_headers, sample_csv_content, "audit_cov_4.csv"
         )
 
@@ -170,7 +165,7 @@ class TestAuditCoverage:
         self, client: AsyncClient, admin_auth_headers, sample_csv_content
     ):
         """Test audit summary returns zeros for a file with no audit events."""
-        file_id, analysis_date = await _ensure_file(
+        file_id, analysis_date = await upload_and_get_date(
             client, admin_auth_headers, sample_csv_content, "audit_cov_empty.csv"
         )
 
@@ -410,7 +405,7 @@ class TestExportWithDataCoverage:
         self, client: AsyncClient, admin_auth_headers, sample_csv_content
     ):
         """Upload file, add markers + nonwear, then export."""
-        file_id, analysis_date = await _ensure_file(
+        file_id, analysis_date = await upload_and_get_date(
             client, admin_auth_headers, sample_csv_content, "export_data_cov.csv"
         )
 
@@ -467,7 +462,7 @@ class TestExportWithDataCoverage:
         self, client: AsyncClient, admin_auth_headers, sample_csv_content
     ):
         """Export a date marked as no-sleep to cover no-sleep row generation."""
-        file_id, analysis_date = await _ensure_file(
+        file_id, analysis_date = await upload_and_get_date(
             client, admin_auth_headers, sample_csv_content, "export_nosleep_cov.csv"
         )
 
@@ -496,7 +491,7 @@ class TestExportWithDataCoverage:
         self, client: AsyncClient, admin_auth_headers, sample_csv_content
     ):
         """Quick export with real file ID."""
-        file_id, _ = await _ensure_file(
+        file_id, _ = await upload_and_get_date(
             client, admin_auth_headers, sample_csv_content, "export_quick_cov.csv"
         )
 

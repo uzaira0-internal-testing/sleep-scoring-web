@@ -160,6 +160,7 @@ async def setup_db(test_session_maker):
     import tempfile
     original_upload_dir = settings.upload_dir
     original_tus_dir = settings.tus_upload_dir
+    original_admin_usernames = settings.ADMIN_USERNAMES
     _tmp_uploads = tempfile.mkdtemp(prefix="test_uploads_")
     _tmp_tus = tempfile.mkdtemp(prefix="test_tus_")
     settings.upload_dir = _tmp_uploads
@@ -192,6 +193,9 @@ async def setup_db(test_session_maker):
     session_module.async_session_maker = original_session_maker
     settings.upload_dir = original_upload_dir
     settings.tus_upload_dir = original_tus_dir
+    settings.ADMIN_USERNAMES = original_admin_usernames
+    if "admin_usernames_list" in settings.__dict__:
+        del settings.__dict__["admin_usernames_list"]
     shutil.rmtree(_tmp_uploads, ignore_errors=True)
     shutil.rmtree(_tmp_tus, ignore_errors=True)
 

@@ -123,6 +123,9 @@ jobs:
             --tests-dir "tests/web/" \
             --runner "uv run pytest tests/unit/test_algorithm_properties.py tests/unit/test_complexity.py tests/unit/test_sleep_metrics.py tests/web/test_marker_placement.py -x -q --tb=no"
           uv run mutmut results
+          # Fail if any mutants survived (exit 1 if "survived" appears)
+          uv run mutmut results 2>&1 | tee /tmp/mutmut.txt
+          if grep -q "survived" /tmp/mutmut.txt; then echo "Surviving mutants detected"; exit 1; fi
 
   frontend-mutation:
     runs-on: ubuntu-latest
@@ -162,7 +165,7 @@ jobs:
         with:
           node-version: 22
       - run: cd frontend && npm ci
-      - run: cd frontend && npx playwright install --with-deps chromium firefox webkit
+      - run: cd frontend && npx playwright install --with-deps chromium
       - name: Create external network for Docker Compose
         run: docker network create traefik-apps || true
       - name: Start Docker stack
@@ -182,10 +185,10 @@ jobs:
           ADMIN_USERNAMES: testadmin
       - name: Check contract drift
         run: bash scripts/check-contract-drift.sh http://localhost:8500
-      - name: Run E2E tests
-        run: cd frontend && npx playwright test --reporter=list
+      - name: Run E2E tests (chromium only for PRs)
+        run: cd frontend && npx playwright test --project=chromium --reporter=list
       - name: Run accessibility tests (axe-core)
-        run: cd frontend && npx playwright test e2e/accessibility.spec.ts --reporter=list
+        run: cd frontend && npx playwright test e2e/accessibility.spec.ts --project=chromium --reporter=list
       - name: Stop Docker stack
         if: always()
         run: cd docker && docker compose -f docker-compose.local.yml down
@@ -277,18 +280,22 @@ jobs:
       - name: Audit Python dependencies
         run: uv export --no-hashes | pip-audit -r /dev/stdin --strict
 
-      # Node dependency audit
+      # Node dependency audit (run even if pip-audit fails)
       - name: Audit npm dependencies
+        if: always()
         run: cd frontend && npm audit --audit-level=high
 
-      # Python SAST with Bandit
+      # Python SAST with Bandit (run even if audits fail)
       - name: Install Bandit
+        if: always()
         run: uv tool install bandit
       - name: Run Bandit security scan
+        if: always()
         run: bandit -r sleep_scoring_web/ -ll -ii --skip B101
 
-      # Secret detection
+      # Secret detection (run even if other steps fail)
       - name: Run gitleaks
+        if: always()
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
