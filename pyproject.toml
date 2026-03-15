@@ -316,9 +316,14 @@ markers = [
 ]
 
 [tool.mutmut]
-paths_to_mutate = ["sleep_scoring_web/services/algorithms/"]
-tests_dir = ["tests/unit/"]
-runner = "python -m pytest tests/unit/test_algorithm_properties.py -x -q --tb=no"
+paths_to_mutate = [
+    "sleep_scoring_web/services/algorithms/",
+    "sleep_scoring_web/services/marker_placement.py",
+    "sleep_scoring_web/services/complexity.py",
+    "sleep_scoring_web/services/metrics.py",
+]
+tests_dir = ["tests/unit/", "tests/web/"]
+runner = "python -m pytest tests/unit/test_algorithm_properties.py tests/unit/test_complexity.py tests/unit/test_sleep_metrics.py tests/web/test_marker_placement.py -x -q --tb=no"
 
 [tool.coverage.run]
 branch = true

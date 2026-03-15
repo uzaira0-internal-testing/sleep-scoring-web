@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker/master/packages/core/schema/stryker-core.schema.json",
+  "mutate": [
+    "src/services/marker-placement.ts",
+    "src/services/complexity.ts",
+    "src/utils/*.ts",
+    "src/lib/sleep-metrics.ts",
+    "!src/**/*.test.ts",
+    "!src/**/*.stories.tsx"
+  ],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun test"
+  },
+  "reporters": ["html", "clear-text", "progress"],
+  "coverageAnalysis": "off",
+  "timeoutMS": 30000
+}

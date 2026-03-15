@@ -476,7 +476,7 @@ class TestNonwearCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 1
-        assert data["dates_skipped"] >= 1
+        assert data["dates_skipped"] == 1
 
     async def test_nonwear_invalid_date_skipped(
         self,
@@ -499,8 +499,8 @@ class TestNonwearCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 0
-        assert data["dates_skipped"] >= 1
-        assert len(data["errors"]) >= 1
+        assert data["dates_skipped"] == 1
+        assert len(data["errors"]) == 1
 
     async def test_nonwear_invalid_time_skipped(
         self,
@@ -523,8 +523,8 @@ class TestNonwearCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 0
-        assert data["dates_skipped"] >= 1
-        assert len(data["errors"]) >= 1
+        assert data["dates_skipped"] == 1
+        assert len(data["errors"]) == 1
 
     async def test_nonwear_cross_midnight(
         self,
@@ -580,8 +580,8 @@ class TestNonwearCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
-        assert data["matched_rows"] >= 1
+        assert data["markers_created"] == 1
+        assert data["matched_rows"] == 1
 
     async def test_nonwear_study_wide_pid_with_timepoint(
         self,
@@ -614,7 +614,7 @@ class TestNonwearCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_nonwear_study_wide_filename_pid_fallback(
         self,
@@ -643,7 +643,7 @@ class TestNonwearCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_nonwear_study_wide_no_pid_no_filename_error(
         self,
@@ -689,7 +689,7 @@ class TestNonwearCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 0
-        assert data["dates_skipped"] >= 1
+        assert data["dates_skipped"] == 1
 
     async def test_nonwear_study_wide_pid_none_skipped(
         self,
@@ -710,7 +710,7 @@ class TestNonwearCoverageExtended:
             files={"file": ("study_nw.csv", io.BytesIO(csv_bytes), "text/csv")},
         )
         assert resp.status_code == 200, resp.text
-        assert resp.json()["dates_skipped"] >= 1
+        assert resp.json()["dates_skipped"] == 1
 
     async def test_nonwear_study_wide_ambiguous_pid(
         self,
@@ -745,7 +745,7 @@ class TestNonwearCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 0
-        assert data["dates_skipped"] >= 1
+        assert data["dates_skipped"] == 1
 
     async def test_nonwear_study_wide_filename_col_none_value_skipped(
         self,
@@ -766,7 +766,7 @@ class TestNonwearCoverageExtended:
             files={"file": ("study_nw.csv", io.BytesIO(csv_bytes), "text/csv")},
         )
         assert resp.status_code == 200, resp.text
-        assert resp.json()["dates_skipped"] >= 1
+        assert resp.json()["dates_skipped"] == 1
 
     async def test_nonwear_study_wide_filename_fuzzy_match(
         self,
@@ -793,7 +793,7 @@ class TestNonwearCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         # Should match via fuzzy stem matching
-        assert resp.json()["markers_created"] >= 1
+        assert resp.json()["markers_created"] == 1
 
     async def test_nonwear_mm_dd_yyyy_date_format(
         self,
@@ -836,7 +836,7 @@ class TestNonwearCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["markers_created"] == 0
-        assert resp.json()["dates_skipped"] >= 1
+        assert resp.json()["dates_skipped"] == 1
 
     async def test_nonwear_study_wide_ambiguous_filename(
         self,
@@ -872,7 +872,7 @@ class TestNonwearCoverageExtended:
         data = resp.json()
         assert data["markers_created"] == 0
         # Ambiguous or unmatched depending on fuzzy logic
-        assert data["dates_skipped"] >= 1
+        assert data["dates_skipped"] == 1
 
     async def test_nonwear_study_wide_filename_covering_date(
         self,
@@ -905,7 +905,7 @@ class TestNonwearCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
 
 @pytest.mark.asyncio
@@ -938,7 +938,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_nap_type(
         self,
@@ -966,7 +966,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
         markers = await _get_markers(
             test_session_maker, file_id, category=MarkerCategory.SLEEP,
@@ -999,7 +999,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["nonwear_markers_created"] >= 1
+        assert data["nonwear_markers_created"] == 1
 
     async def test_sleep_import_no_sleep_sentinel(
         self,
@@ -1027,7 +1027,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["no_sleep_dates"] >= 1
+        assert data["no_sleep_dates"] == 1
 
     async def test_sleep_import_is_no_sleep_column(
         self,
@@ -1056,7 +1056,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["no_sleep_dates"] >= 1
+        assert data["no_sleep_dates"] == 1
 
     async def test_sleep_import_needs_consensus_column(
         self,
@@ -1085,7 +1085,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_marker_index_column(
         self,
@@ -1114,7 +1114,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
         markers = await _get_markers(
             test_session_maker, file_id, category=MarkerCategory.SLEEP,
@@ -1187,7 +1187,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_pid_with_timepoint(
         self,
@@ -1221,7 +1221,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_invalid_date_skipped(
         self,
@@ -1249,8 +1249,8 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["dates_skipped"] >= 1
-        assert len(data["errors"]) >= 1
+        assert data["dates_skipped"] == 1
+        assert len(data["errors"]) == 1
 
     async def test_sleep_import_nan_onset_offset_skipped(
         self,
@@ -1278,7 +1278,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["dates_skipped"] >= 1
+        assert data["dates_skipped"] == 1
 
     async def test_sleep_import_invalid_onset_time(
         self,
@@ -1306,8 +1306,8 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["dates_skipped"] >= 1
-        assert len(data["errors"]) >= 1
+        assert data["dates_skipped"] == 1
+        assert len(data["errors"]) == 1
 
     async def test_sleep_import_invalid_offset_time(
         self,
@@ -1335,8 +1335,8 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["dates_skipped"] >= 1
-        assert len(data["errors"]) >= 1
+        assert data["dates_skipped"] == 1
+        assert len(data["errors"]) == 1
 
     async def test_sleep_import_onset_before_noon_wraps(
         self,
@@ -1364,7 +1364,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_unmatched_filename(
         self,
@@ -1391,7 +1391,7 @@ class TestSleepImportCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 0
-        assert len(data["unmatched_identifiers"]) >= 1
+        assert len(data["unmatched_identifiers"]) == 1
 
     async def test_sleep_import_unmatched_pid(
         self,
@@ -1418,7 +1418,7 @@ class TestSleepImportCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 0
-        assert data["dates_skipped"] >= 1
+        assert data["dates_skipped"] == 1
 
     async def test_sleep_import_ambiguous_pid(
         self,
@@ -1458,7 +1458,7 @@ class TestSleepImportCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 0
-        assert data["dates_skipped"] >= 1
+        assert data["dates_skipped"] == 1
 
     async def test_sleep_import_ambiguous_filename(
         self,
@@ -1497,7 +1497,7 @@ class TestSleepImportCoverageExtended:
         data = resp.json()
         assert data["markers_created"] == 0
         # Ambiguous or unmatched depending on fuzzy logic
-        assert data["dates_skipped"] >= 1
+        assert data["dates_skipped"] == 1
 
     async def test_sleep_import_no_sleep_with_consensus(
         self,
@@ -1526,7 +1526,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["no_sleep_dates"] >= 1
+        assert data["no_sleep_dates"] == 1
 
     async def test_sleep_import_is_no_sleep_with_consensus(
         self,
@@ -1556,7 +1556,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["no_sleep_dates"] >= 1
+        assert data["no_sleep_dates"] == 1
 
     async def test_sleep_import_no_sleep_with_naps(
         self,
@@ -1592,8 +1592,8 @@ class TestSleepImportCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         # One date is no-sleep, the NAP should still be imported
-        assert data["no_sleep_dates"] >= 1
-        assert data["markers_created"] >= 1
+        assert data["no_sleep_dates"] == 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_no_sleep_with_nonwear(
         self,
@@ -1628,8 +1628,8 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["no_sleep_dates"] >= 1
-        assert data["nonwear_markers_created"] >= 1
+        assert data["no_sleep_dates"] == 1
+        assert data["nonwear_markers_created"] == 1
 
     async def test_sleep_import_sleep_and_nonwear_same_date(
         self,
@@ -1664,8 +1664,8 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
-        assert data["nonwear_markers_created"] >= 1
+        assert data["markers_created"] == 1
+        assert data["nonwear_markers_created"] == 1
 
     async def test_sleep_import_nonwear_only_date(
         self,
@@ -1693,9 +1693,9 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["nonwear_markers_created"] >= 1
+        assert data["nonwear_markers_created"] == 1
         # Date should be counted as imported even though it's nonwear-only
-        assert data["dates_imported"] >= 1
+        assert data["dates_imported"] == 1
 
     async def test_sleep_import_onset_date_column(
         self,
@@ -1724,7 +1724,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_offset_date_column(
         self,
@@ -1753,7 +1753,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_missing_offset_column(
         self,
@@ -1798,7 +1798,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_filename_pid_fallback(
         self,
@@ -1832,7 +1832,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_empty_csv(
         self,
@@ -1876,7 +1876,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_filename_none_value_skipped(
         self,
@@ -1903,7 +1903,7 @@ class TestSleepImportCoverageExtended:
             files={"file": ("sleep.csv", io.BytesIO(csv_bytes), "text/csv")},
         )
         assert resp.status_code == 200, resp.text
-        assert resp.json()["dates_skipped"] >= 1
+        assert resp.json()["dates_skipped"] == 1
 
     async def test_sleep_import_pid_none_skipped(
         self,
@@ -1928,7 +1928,7 @@ class TestSleepImportCoverageExtended:
             files={"file": ("sleep.csv", io.BytesIO(csv_bytes), "text/csv")},
         )
         assert resp.status_code == 200, resp.text
-        assert resp.json()["dates_skipped"] >= 1
+        assert resp.json()["dates_skipped"] == 1
 
     async def test_sleep_import_onset_datetime_nan_fallback_to_time(
         self,
@@ -1958,7 +1958,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_invalid_marker_index(
         self,
@@ -1987,7 +1987,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_float_marker_index(
         self,
@@ -2016,7 +2016,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
         markers = await _get_markers(
             test_session_maker, file_id, category=MarkerCategory.SLEEP,
@@ -2050,8 +2050,8 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["dates_skipped"] >= 1
-        assert len(data["errors"]) >= 1
+        assert data["dates_skipped"] == 1
+        assert len(data["errors"]) == 1
 
     async def test_sleep_import_fuzzy_filename_match(
         self,
@@ -2083,7 +2083,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_nonwear_only_date_counts_imported(
         self,
@@ -2111,8 +2111,8 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["nonwear_markers_created"] >= 1
-        assert data["dates_imported"] >= 1
+        assert data["nonwear_markers_created"] == 1
+        assert data["dates_imported"] == 1
 
     async def test_sleep_import_offset_before_onset_wraps(
         self,
@@ -2140,12 +2140,12 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
         markers = await _get_markers(
             test_session_maker, file_id, category=MarkerCategory.SLEEP,
         )
-        assert len(markers) >= 1
+        assert len(markers) == 1
         assert markers[0].end_timestamp > markers[0].start_timestamp
 
     async def test_sleep_import_no_pid_no_filename_col_null_filename(
@@ -2172,7 +2172,7 @@ class TestSleepImportCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 0
-        assert data["dates_skipped"] >= 1
+        assert data["dates_skipped"] == 1
 
     async def test_sleep_import_with_offset_date_col_no_onset_date(
         self,
@@ -2201,7 +2201,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_analysis_date_column(
         self,
@@ -2229,7 +2229,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_pid_timepoint_fallback_to_pool(
         self,
@@ -2263,7 +2263,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_malformed_csv_returns_400(
         self,
@@ -2330,7 +2330,7 @@ class TestSleepImportCoverageExtended:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["no_sleep_dates"] == 0
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_no_sleep_consensus_false(
         self,
@@ -2359,7 +2359,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["no_sleep_dates"] >= 1
+        assert data["no_sleep_dates"] == 1
 
     async def test_sleep_import_short_pid_matching(
         self,
@@ -2392,7 +2392,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_nonwear_short_pid_matching(
         self,
@@ -2424,7 +2424,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_nonwear_no_pid_no_filename_col_empty_stem(
         self,
@@ -2472,7 +2472,7 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1
 
     async def test_sleep_import_offset_date_bad_date(
         self,
@@ -2501,4 +2501,4 @@ class TestSleepImportCoverageExtended:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
+        assert data["markers_created"] == 1

@@ -51,6 +51,7 @@ class TestNoSleepSemantics:
             },
         )
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
         # Verify MAIN_SLEEP is present
         get_resp = await client.get(
@@ -70,6 +71,7 @@ class TestNoSleepSemantics:
             },
         )
         assert resp2.status_code == 200
+        assert resp2.json()["success"] is True
 
         # Verify MAIN_SLEEP markers are gone
         get_resp2 = await client.get(

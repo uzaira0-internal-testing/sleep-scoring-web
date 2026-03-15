@@ -360,8 +360,8 @@ class TestUploadProcessing:
 
         assert resp.status_code == 200
         dates = resp.json()
-        assert isinstance(dates, list)
-        assert len(dates) >= 1
+        assert type(dates) is list
+        assert len(dates) == 1
 
     async def test_delete_file_cascade(
         self,

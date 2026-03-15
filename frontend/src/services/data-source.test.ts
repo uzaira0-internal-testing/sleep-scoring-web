@@ -25,25 +25,10 @@ mock.module("@/api/client", () => ({
 // Mock @/db — LocalDataSource calls into IndexedDB; not under test here.
 mock.module("@/db", () => ({}));
 
-// Mock @/services/marker-placement — heavy WASM dependency
-mock.module("@/services/marker-placement", () => ({
-  runAutoScoring: mock(() => ({ sleep_markers: [], nap_markers: [], notes: [] })),
-  placeNonwearMarkers: mock(() => ({ nonwear_markers: [], notes: [] })),
-}));
-
-// Mock @/services/complexity
-mock.module("@/services/complexity", () => ({
-  computePreComplexity: mock(() => ({ score: 0, features: {} })),
-  computePostComplexity: mock(() => ({ score: 0 })),
-}));
-
-// Mock @/constants/options
-mock.module("@/constants/options", () => ({
-  getDetectionRuleParams: (rule: string) => {
-    if (rule === "tudor_locke_2014") return { onsetN: 5, offsetN: 10 };
-    return { onsetN: 3, offsetN: 5 };
-  },
-}));
+// Note: We intentionally do NOT mock @/services/marker-placement,
+// @/services/complexity, or @/constants/options here. Bun's mock.module
+// contaminates globally and breaks tests in those modules. Instead, we
+// only mock what ServerDataSource actually uses (fetch, @/api/client, @/db).
 
 // ---------------------------------------------------------------------------
 // Helpers to capture fetch calls

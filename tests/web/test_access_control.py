@@ -393,14 +393,14 @@ class TestAssignmentProgress:
         resp = await client.get("/api/v1/files/assignments/progress", headers=admin_auth_headers)
         assert resp.status_code == 200
         progress = resp.json()
-        assert isinstance(progress, list)
-        assert len(progress) >= 1
+        assert type(progress) is list
+        assert len(progress) == 1
 
         # Find the testannotator entry
         annotator_progress = [p for p in progress if p["username"] == "testannotator"]
         assert len(annotator_progress) == 1
         entry = annotator_progress[0]
-        assert entry["total_files"] >= 1
+        assert entry["total_files"] == 1
         # scored_dates should be 0 since no markers were placed
         file_entry = [f for f in entry["files"] if f["file_id"] == file_id]
         assert len(file_entry) == 1

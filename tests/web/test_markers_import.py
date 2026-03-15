@@ -198,8 +198,8 @@ class TestMarkersImport:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["matched_rows"] >= 1
-        assert data["markers_created"] >= 1
+        assert data["matched_rows"] == 1
+        assert data["markers_created"] == 1
 
     # 4. Study-wide nonwear upload with unmatched identifier
     async def test_nonwear_upload_study_wide_unmatched(
@@ -229,8 +229,9 @@ class TestMarkersImport:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["markers_created"] == 0
-        assert data["dates_skipped"] >= 1
-        assert len(data["unmatched_identifiers"]) >= 1
+        assert data["dates_skipped"] == 1
+        assert len(data["unmatched_identifiers"]) == 1
+        assert "nonexistent_file.csv" in data["unmatched_identifiers"]
 
     # 5. File-specific nonwear upload: file not found -> 404
     async def test_nonwear_upload_file_not_found(
@@ -351,14 +352,14 @@ class TestMarkersImport:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["markers_created"] >= 1
-        assert data["dates_imported"] >= 1
+        assert data["markers_created"] == 1
+        assert data["dates_imported"] == 1
 
         # Verify markers in DB
         count = await _count_markers(
             test_session_maker, file_id, category=MarkerCategory.SLEEP,
         )
-        assert count >= 1
+        assert count == 1
 
     # 9. Sleep marker CSV with missing onset column -> 400
     async def test_sleep_import_missing_onset_column(
@@ -411,7 +412,7 @@ class TestMarkersImport:
             files={"file": ("latin1.csv", io.BytesIO(csv_bytes), "text/csv")},
         )
         assert resp.status_code == 200, resp.text
-        assert resp.json()["markers_created"] >= 1
+        assert resp.json()["markers_created"] == 1
 
     # 11. Sleep marker CSV with missing date column -> 400
     async def test_sleep_import_missing_date_column(

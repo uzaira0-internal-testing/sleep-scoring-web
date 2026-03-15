@@ -80,12 +80,18 @@ class TestMarkersAutoscore:
         )
         assert resp.status_code == 200
         body = resp.json()
+        # Verify response structure and value types
         assert "sleep_markers" in body
         assert "nap_markers" in body
         assert "notes" in body
-        assert isinstance(body["sleep_markers"], list)
-        assert isinstance(body["nap_markers"], list)
-        assert isinstance(body["notes"], list)
+        assert type(body["sleep_markers"]) is list
+        assert type(body["nap_markers"]) is list
+        assert type(body["notes"]) is list
+        # Every sleep marker must have onset/offset timestamps
+        for m in body["sleep_markers"]:
+            assert "onset_timestamp" in m
+            assert "offset_timestamp" in m
+            assert m["offset_timestamp"] > m["onset_timestamp"]
 
     # 2. Auto-score on a date with no activity data returns a note
     async def test_auto_score_no_activity_data(
@@ -135,7 +141,9 @@ class TestMarkersAutoscore:
         assert resp.status_code == 200
         body = resp.json()
         assert "sleep_markers" in body
-        assert isinstance(body["sleep_markers"], list)
+        assert type(body["sleep_markers"]) is list
+        assert "nap_markers" in body
+        assert "notes" in body
 
     # 4. Access control: annotator cannot auto-score unassigned file
     async def test_annotator_cannot_autoscore_unassigned_file(
@@ -292,8 +300,12 @@ class TestMarkersAutoscore:
         body = resp.json()
         assert "nonwear_markers" in body
         assert "notes" in body
-        assert isinstance(body["nonwear_markers"], list)
-        assert isinstance(body["notes"], list)
+        assert type(body["nonwear_markers"]) is list
+        assert type(body["notes"]) is list
+        # Every nonwear marker must have start/end timestamps
+        for m in body["nonwear_markers"]:
+            assert "start_timestamp" in m
+            assert "end_timestamp" in m
 
     # 10. Batch auto-score status endpoint returns valid response
     async def test_batch_auto_score_status(
@@ -309,9 +321,15 @@ class TestMarkersAutoscore:
         assert resp.status_code == 200
         body = resp.json()
         assert "is_running" in body
+        assert body["is_running"] is False  # no batch running
         assert "total_dates" in body
+        assert body["total_dates"] == 0
         assert "processed_dates" in body
+        assert body["processed_dates"] == 0
         assert "scored_dates" in body
+        assert body["scored_dates"] == 0
         assert "skipped_existing" in body
+        assert body["skipped_existing"] == 0
         assert "failed_dates" in body
-        assert isinstance(body["errors"], list)
+        assert body["failed_dates"] == 0
+        assert body["errors"] == []

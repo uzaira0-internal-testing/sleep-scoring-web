@@ -197,7 +197,7 @@ class TestAssignments:
         # List assignments
         resp3 = await client.get("/api/v1/files/assignments", headers=admin_auth_headers)
         assignments = resp3.json()
-        assert len(assignments) >= 1
+        assert len(assignments) == 1
         assert assignments[0]["username"] == "testannotator"
 
     async def test_create_assignment_missing_fields(
@@ -237,7 +237,7 @@ class TestAssignments:
             "/api/v1/files/assignments/testannotator", headers=admin_auth_headers
         )
         assert resp.status_code == 200
-        assert resp.json()["deleted"] >= 1
+        assert resp.json()["deleted"] == 1
 
     async def test_delete_single_file_assignment(
         self,
@@ -315,10 +315,10 @@ class TestAssignmentProgress:
         resp = await client.get("/api/v1/files/assignments/progress", headers=admin_auth_headers)
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) >= 1
+        assert len(data) == 1
         user_entry = data[0]
         assert user_entry["username"] == "testannotator"
-        assert user_entry["total_files"] >= 1
+        assert user_entry["total_files"] == 1
 
     async def test_non_admin_cannot_get_progress(
         self, client: AsyncClient, annotator_auth_headers: dict
@@ -447,7 +447,7 @@ class TestBackfillParticipantIds:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["updated"] >= 1
+        assert body["updated"] == 1
 
     async def test_backfill_non_admin(self, client: AsyncClient, annotator_auth_headers: dict):
         resp = await client.post(
@@ -476,7 +476,7 @@ class TestDeleteAllFiles:
         resp = await client.delete("/api/v1/files", headers=admin_auth_headers)
         assert resp.status_code == 200
         body = resp.json()
-        assert body["deleted_count"] >= 2
+        assert body["deleted_count"] == 2
 
     async def test_delete_by_status_filter(
         self,
@@ -502,7 +502,7 @@ class TestDeleteAllFiles:
             "/api/v1/files?status_filter=failed", headers=admin_auth_headers
         )
         assert resp.status_code == 200
-        assert resp.json()["deleted_count"] >= 1
+        assert resp.json()["deleted_count"] == 1
 
         # The ready file should still exist
         list_resp = await client.get("/api/v1/files", headers=admin_auth_headers)
@@ -600,13 +600,16 @@ class TestDateStatus:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data, list)
+        assert type(data) is list
         assert len(data) >= 1
         first = data[0]
         assert "date" in first
         assert "has_markers" in first
+        assert first["has_markers"] is False  # no markers placed yet
         assert "is_no_sleep" in first
+        assert first["is_no_sleep"] is False
         assert "has_auto_score" in first
+        assert first["has_auto_score"] is False
 
     async def test_dates_status_not_found(self, client: AsyncClient, admin_auth_headers: dict):
         resp = await client.get(
@@ -695,7 +698,7 @@ class TestDatesWithDiary:
             f"/api/v1/files/{file_id}/dates", headers=admin_auth_headers
         )
         all_dates = resp_all.json()
-        assert len(all_dates) >= 1
+        assert len(all_dates) == 1
 
         # Add diary entry for only the first date
         first_date = all_dates[0]
@@ -742,7 +745,7 @@ class TestComplexity:
         assert resp.status_code == 200
         body = resp.json()
         assert "date_count" in body
-        assert body["date_count"] >= 1
+        assert body["date_count"] == 1
 
     async def test_compute_complexity_not_found(
         self, client: AsyncClient, admin_auth_headers: dict
@@ -842,7 +845,7 @@ class TestPurgeExcluded:
 
         resp = await client.post("/api/v1/files/purge-excluded", headers=admin_auth_headers)
         assert resp.status_code == 200
-        assert resp.json()["deleted_count"] >= 1
+        assert resp.json()["deleted_count"] == 1
 
     async def test_purge_non_admin(self, client: AsyncClient, annotator_auth_headers: dict):
         resp = await client.post(

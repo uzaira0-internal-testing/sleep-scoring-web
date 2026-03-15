@@ -80,7 +80,7 @@ class TestDefaultColumns:
         assert resp.status_code == 200
         data = resp.json()
         assert "columns" in data
-        assert isinstance(data["columns"], list)
+        assert type(data["columns"]) is list
         assert len(data["columns"]) > 0
 
         # Each column should have required fields
@@ -114,7 +114,7 @@ class TestColumnCategoriesGrouped:
         data = resp.json()
 
         categories = data["categories"]
-        assert isinstance(categories, list)
+        assert type(categories) is list
         assert len(categories) > 0
 
         # Each category must have a name and a non-empty columns list
@@ -122,7 +122,7 @@ class TestColumnCategoriesGrouped:
         for cat in categories:
             assert "name" in cat
             assert "columns" in cat
-            assert isinstance(cat["columns"], list)
+            assert type(cat["columns"]) is list
             assert len(cat["columns"]) > 0, f"Category '{cat['name']}' has no columns"
             category_names.add(cat["name"])
 

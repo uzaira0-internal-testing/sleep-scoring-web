@@ -375,7 +375,8 @@ class TestMarkersCoverageMetricsOnTheFly:
         data = get_resp.json()
         # algorithm_results should be present (list of ints)
         assert data["algorithm_results"] is not None
-        assert isinstance(data["algorithm_results"], list)
+        assert type(data["algorithm_results"]) is list
+        assert len(data["algorithm_results"]) > 0
 
 
 @pytest.mark.asyncio
@@ -719,7 +720,7 @@ class TestAutoscoreCoverageAutoNonwear:
         assert resp.status_code == 200
         body = resp.json()
         assert "nonwear_markers" in body
-        assert isinstance(body["notes"], list)
+        assert type(body["notes"]) is list
 
 
 @pytest.mark.asyncio
@@ -1315,7 +1316,8 @@ class TestTablesColumnarCoverage:
         assert "algorithm_result" in onset
         assert "choi_result" in onset
         assert "is_nonwear" in onset
-        assert isinstance(onset["timestamps"], list)
+        assert type(onset["timestamps"]) is list
+        assert len(onset["timestamps"]) > 0
 
     async def test_onset_offset_columnar_with_explicit_timestamps(
         self,
@@ -1366,7 +1368,8 @@ class TestTablesColumnarCoverage:
         assert "is_nonwear" in data
         assert "total_rows" in data
         assert data["total_rows"] > 0
-        assert isinstance(data["timestamps"], list)
+        assert type(data["timestamps"]) is list
+        assert len(data["timestamps"]) > 0
 
     async def test_full_table_columnar_empty_date(
         self,
