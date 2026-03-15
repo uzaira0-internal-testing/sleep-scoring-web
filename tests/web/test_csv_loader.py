@@ -252,3 +252,383 @@ class TestLoadActigraph:
         assert len(df) == 3
         assert "axis_y" in df.columns
         assert df["axis_y"].iloc[0] == 100.0  # Axis1 value
+
+
+# ---------------------------------------------------------------------------
+# Error path and edge-case tests (targeting uncovered lines)
+# ---------------------------------------------------------------------------
+
+
+class TestDetectGeneactivErrors:
+    """Test detect_geneactiv error/edge paths."""
+
+    def test_nonexistent_file_returns_false(self, tmp_path: Path) -> None:
+        """Line 104-105: exception branch in detect_geneactiv."""
+        missing = tmp_path / "nonexistent.csv"
+        assert CSVLoaderService.detect_geneactiv(missing) is False
+
+
+class TestFindDataStartFallback:
+    """Test _find_geneactiv_data_start fallback behavior."""
+
+    def test_no_timestamp_found_returns_default(self, tmp_path: Path) -> None:
+        """Lines 144-145: fallback when no timestamp found within 120 lines."""
+        lines = ["some random text"] * 130
+        file_path = tmp_path / "no_timestamp.csv"
+        file_path.write_text("\n".join(lines))
+        data_start, has_header = CSVLoaderService._find_geneactiv_data_start(file_path)
+        assert data_start == 100
+        assert has_header is False
+
+    def test_first_line_is_timestamp_no_header(self, tmp_path: Path) -> None:
+        """Lines 131->141: data starts at line 0, so i==0, no prev line check."""
+        lines = [
+            "2025-06-12 13:20:18:000\t0.86\t0.18\t0.10\t388\t0\t26",
+            "2025-06-12 13:20:19:000\t0.85\t0.17\t0.11\t388\t0\t26",
+        ]
+        file_path = tmp_path / "ts_at_line0.csv"
+        file_path.write_text("\n".join(lines))
+        data_start, has_header = CSVLoaderService._find_geneactiv_data_start(file_path)
+        assert data_start == 0
+        assert has_header is False
+
+
+class TestLoadGeneactivExtraCols:
+    """Test GENEActiv files with more than 12 columns (extra_N naming)."""
+
+    def test_extra_columns_beyond_epoch(self, tmp_path: Path) -> None:
+        """Line 173: extra columns beyond GENEACTIV_EPOCH_COLUMNS."""
+        lines: list[str] = []
+        lines.append("Device Type\tGENEActiv")
+        for _ in range(1, 100):
+            lines.append("")
+        # 14 columns — 12 epoch + 2 extra
+        data = "2025-06-12 13:20:18:000\t0.86\t0.18\t0.10\t388\t0\t26\t154\t0.39\t0.14\t0.24\t9510\t99\t88"
+        lines.append(data)
+        file_path = tmp_path / "extra_cols.csv"
+        file_path.write_text("\n".join(lines) + "\n")
+
+        loader = CSVLoaderService(device_preset="geneactiv")
+        result = loader.load_file(file_path)
+        df = result["activity_data"]
+        assert len(df) == 1
+
+
+class TestLoadGeneactivCSVDelimiter:
+    """Test GENEActiv CSV with comma delimiter and for-else branch."""
+
+    def test_comma_delimited_geneactiv(self, tmp_path: Path) -> None:
+        """Lines 159-160: for-else branch when data_start line not found."""
+        lines: list[str] = []
+        lines.append("Device Type,GENEActiv")
+        for _ in range(1, 100):
+            lines.append("")
+        # Comma-separated data at line 100
+        lines.append("2025-06-12 13:20:18:000,0.86,0.18,0.10,388,0,26")
+        lines.append("2025-06-12 13:20:19:000,0.85,0.17,0.11,388,0,26")
+        file_path = tmp_path / "comma_geneactiv.csv"
+        file_path.write_text("\n".join(lines) + "\n")
+
+        loader = CSVLoaderService(device_preset="geneactiv")
+        result = loader.load_file(file_path)
+        df = result["activity_data"]
+        assert len(df) == 2
+
+
+class TestLoadFileErrors:
+    """Test load_file error paths."""
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        """Lines 231-232: FileNotFoundError."""
+        loader = CSVLoaderService()
+        with pytest.raises(FileNotFoundError, match="File not found"):
+            loader.load_file(tmp_path / "nonexistent.csv")
+
+    def test_unsupported_extension(self, tmp_path: Path) -> None:
+        """Lines 236-237: ValueError for unsupported extension."""
+        bad_file = tmp_path / "data.json"
+        bad_file.write_text("{}")
+        loader = CSVLoaderService()
+        with pytest.raises(ValueError, match="Unsupported file extension"):
+            loader.load_file(bad_file)
+
+    def test_file_too_large(self, tmp_path: Path) -> None:
+        """Lines 244-245: ValueError for oversized file."""
+        csv_file = tmp_path / "big.csv"
+        csv_file.write_text("a,b\n1,2\n")
+        loader = CSVLoaderService()
+        loader.max_file_size = 1  # 1 byte limit
+        with pytest.raises(ValueError, match="File too large"):
+            loader.load_file(csv_file)
+
+    def test_empty_csv_raises(self, tmp_path: Path) -> None:
+        """Lines 260-262: pd.errors.EmptyDataError caught as ValueError."""
+        header = ["--- header ---"] * 10
+        csv_file = tmp_path / "empty.csv"
+        csv_file.write_text("\n".join(header) + "\n")
+        loader = CSVLoaderService(skip_rows=10)
+        with pytest.raises(ValueError, match="Empty data file|No columns to parse"):
+            loader.load_file(csv_file)
+
+    def test_no_data_rows_raises(self, tmp_path: Path) -> None:
+        """Lines 268-269: empty DataFrame after parsing."""
+        header = ["--- header ---"] * 10
+        header.append("Date,Time,Axis1")
+        csv_file = tmp_path / "nodata.csv"
+        csv_file.write_text("\n".join(header) + "\n")
+        loader = CSVLoaderService(skip_rows=10)
+        with pytest.raises(ValueError, match="No data in file"):
+            loader.load_file(csv_file)
+
+    def test_excel_file_loads(self, tmp_path: Path) -> None:
+        """Line 259: Excel loading branch."""
+        import pandas as pd
+
+        df = pd.DataFrame({
+            "Date": ["01/15/2025", "01/15/2025"],
+            "Time": ["22:00:00", "22:01:00"],
+            "Axis1": [100, 80],
+        })
+        xlsx_file = tmp_path / "test.xlsx"
+        df.to_excel(xlsx_file, index=False)
+        loader = CSVLoaderService(skip_rows=0)
+        result = loader.load_file(xlsx_file)
+        assert len(result["activity_data"]) == 2
+
+    def test_invalid_column_mapping_raises(self, tmp_path: Path) -> None:
+        """Lines 283-284: validation failure when columns not found."""
+        header = ["--- header ---"] * 10
+        header.append("ColA,ColB,ColC")
+        data = ["aaa,bbb,ccc", "ddd,eee,fff"]
+        csv_file = tmp_path / "badcols.csv"
+        csv_file.write_text("\n".join(header + data) + "\n")
+        loader = CSVLoaderService(skip_rows=10)
+        with pytest.raises(ValueError, match="Invalid column mapping"):
+            loader.load_file(csv_file)
+
+
+class TestCustomColumnMapping:
+    """Test _create_custom_mapping with various custom_columns specs."""
+
+    def test_datetime_combined_mapping(self, tmp_path: Path) -> None:
+        """Lines 374-377: datetime_combined=True branch."""
+        header = ["--- header ---"] * 10
+        header.append("Timestamp,Activity")
+        data = ["2025-01-15 22:00:00,100", "2025-01-15 22:01:00,80"]
+        csv_file = tmp_path / "custom.csv"
+        csv_file.write_text("\n".join(header + data) + "\n")
+        loader = CSVLoaderService(skip_rows=10)
+        result = loader.load_file(
+            csv_file,
+            custom_columns={"datetime_combined": True, "date": "Timestamp", "activity": "Activity"},
+        )
+        df = result["activity_data"]
+        assert len(df) == 2
+        assert "timestamp" in df.columns
+
+    def test_separate_date_time_mapping(self, tmp_path: Path) -> None:
+        """Lines 378-384: separate date/time columns without datetime_combined."""
+        header = ["--- header ---"] * 10
+        header.append("MyDate,MyTime,MyActivity")
+        data = ["01/15/2025,22:00:00,100", "01/15/2025,22:01:00,80"]
+        csv_file = tmp_path / "custom_sep.csv"
+        csv_file.write_text("\n".join(header + data) + "\n")
+        loader = CSVLoaderService(skip_rows=10)
+        result = loader.load_file(
+            csv_file,
+            custom_columns={"date": "MyDate", "time": "MyTime", "activity": "MyActivity"},
+        )
+        df = result["activity_data"]
+        assert len(df) == 2
+
+    def test_axis_y_fallback_as_activity(self, tmp_path: Path) -> None:
+        """Lines 390-392: axis_y used as fallback for activity_column."""
+        header = ["--- header ---"] * 10
+        header.append("Timestamp,Ydata,Xdata,Zdata")
+        data = ["2025-01-15 22:00:00,100,50,30", "2025-01-15 22:01:00,80,40,20"]
+        csv_file = tmp_path / "axisy.csv"
+        csv_file.write_text("\n".join(header + data) + "\n")
+        loader = CSVLoaderService(skip_rows=10)
+        result = loader.load_file(
+            csv_file,
+            custom_columns={
+                "datetime_combined": True,
+                "date": "Timestamp",
+                "axis_y": "Ydata",
+                "axis_x": "Xdata",
+                "axis_z": "Zdata",
+            },
+        )
+        df = result["activity_data"]
+        assert df["axis_y"].iloc[0] == 100.0
+
+    def test_vector_magnitude_custom(self, tmp_path: Path) -> None:
+        """Lines 402-404: custom vector_magnitude mapping."""
+        header = ["--- header ---"] * 10
+        header.append("Timestamp,Activity,VM")
+        data = ["2025-01-15 22:00:00,100,115.0", "2025-01-15 22:01:00,80,95.0"]
+        csv_file = tmp_path / "custom_vm.csv"
+        csv_file.write_text("\n".join(header + data) + "\n")
+        loader = CSVLoaderService(skip_rows=10)
+        result = loader.load_file(
+            csv_file,
+            custom_columns={
+                "datetime_combined": True,
+                "date": "Timestamp",
+                "activity": "Activity",
+                "vector_magnitude": "VM",
+            },
+        )
+        df = result["activity_data"]
+        assert "vector_magnitude" in df.columns
+        assert df["vector_magnitude"].iloc[0] == pytest.approx(115.0)
+
+
+class TestColumnDetection:
+    """Test detect_columns with different column naming conventions."""
+
+    def test_detects_datetime_column(self) -> None:
+        """Lines 327-331: detect combined 'datetime' or 'timestamp' columns."""
+        import pandas as pd
+
+        df = pd.DataFrame({"datetime": ["2025-01-15"], "y": [100]})
+        loader = CSVLoaderService()
+        mapping = loader.detect_columns(df)
+        assert mapping.datetime_column == "datetime"
+
+    def test_detects_separate_date_time(self) -> None:
+        """Lines 334-340: detect separate date and time columns."""
+        import pandas as pd
+
+        df = pd.DataFrame({"date_col": ["2025-01-15"], "time_col": ["22:00"], "axis1": [100]})
+        loader = CSVLoaderService()
+        mapping = loader.detect_columns(df)
+        assert mapping.date_column == "date_col"
+        assert mapping.time_column == "time_col"
+
+    def test_detects_vm_as_fallback_activity(self) -> None:
+        """Lines 360-364: vector magnitude column used as fallback activity."""
+        import pandas as pd
+
+        df = pd.DataFrame({"timestamp": ["2025-01-15"], "vector_magnitude": [100.0]})
+        loader = CSVLoaderService()
+        mapping = loader.detect_columns(df)
+        assert mapping.vector_magnitude_column == "vector_magnitude"
+        assert mapping.activity_column == "vector_magnitude"
+
+    def test_y_axis_variants(self) -> None:
+        """Lines 343-346: detect y-axis with different names."""
+        import pandas as pd
+
+        for col_name in ("axis_y", "axis1", "y", "axis 1", "y-axis"):
+            df = pd.DataFrame({"timestamp": ["2025-01-15"], col_name: [100]})
+            loader = CSVLoaderService()
+            mapping = loader.detect_columns(df)
+            assert mapping.activity_column == col_name, f"Failed for column name: {col_name}"
+
+
+class TestValidateColumnMapping:
+    """Test _validate_column_mapping."""
+
+    def test_missing_timestamp(self) -> None:
+        """Line 413: error when no timestamp column."""
+        from sleep_scoring_web.services.loaders.csv_loader import ColumnMapping
+
+        loader = CSVLoaderService()
+        mapping = ColumnMapping(activity_column="axis1")
+        is_valid, errors = loader._validate_column_mapping(mapping)
+        assert not is_valid
+        assert "Missing timestamp column" in errors
+
+    def test_missing_activity(self) -> None:
+        """Line 416: error when no activity column."""
+        from sleep_scoring_web.services.loaders.csv_loader import ColumnMapping
+
+        loader = CSVLoaderService()
+        mapping = ColumnMapping(datetime_column="timestamp")
+        is_valid, errors = loader._validate_column_mapping(mapping)
+        assert not is_valid
+        assert "Missing activity column" in errors
+
+
+class TestValidateData:
+    """Test validate_data method."""
+
+    def test_missing_timestamp_column(self) -> None:
+        """Line 461: error when DataFrame lacks timestamp."""
+        import pandas as pd
+
+        loader = CSVLoaderService()
+        df = pd.DataFrame({"axis_y": [100]})
+        is_valid, errors = loader.validate_data(df)
+        assert not is_valid
+        assert "Missing timestamp column" in errors
+
+    def test_missing_axis_y_column(self) -> None:
+        """Line 464: error when DataFrame lacks axis_y."""
+        import pandas as pd
+
+        loader = CSVLoaderService()
+        df = pd.DataFrame({"timestamp": ["2025-01-15"]})
+        is_valid, errors = loader.validate_data(df)
+        assert not is_valid
+        assert "Missing axis_y column" in errors
+
+    def test_empty_dataframe(self) -> None:
+        """Line 467: error when DataFrame is empty."""
+        import pandas as pd
+
+        loader = CSVLoaderService()
+        df = pd.DataFrame({"timestamp": [], "axis_y": []})
+        is_valid, errors = loader.validate_data(df)
+        assert not is_valid
+        assert "DataFrame is empty" in errors
+
+
+class TestStandardizeColumns:
+    """Test _standardize_columns edge cases."""
+
+    def test_date_only_without_time(self, tmp_path: Path) -> None:
+        """Lines 427-432: date column without time column."""
+        header = ["--- header ---"] * 10
+        header.append("date,Axis1")
+        data = ["2025-01-15,100", "2025-01-16,80"]
+        csv_file = tmp_path / "dateonly.csv"
+        csv_file.write_text("\n".join(header + data) + "\n")
+        loader = CSVLoaderService(skip_rows=10)
+        result = loader.load_file(csv_file)
+        df = result["activity_data"]
+        assert len(df) == 2
+        assert "timestamp" in df.columns
+
+
+class TestFileMetadata:
+    """Test get_file_metadata."""
+
+    def test_default_device_type(self, tmp_path: Path) -> None:
+        """Line 474: default device type is 'actigraph'."""
+        csv_file = tmp_path / "test.csv"
+        csv_file.write_text("dummy")
+        loader = CSVLoaderService()
+        metadata = loader.get_file_metadata(csv_file)
+        assert metadata["device_type"] == "actigraph"
+        assert metadata["epoch_length_seconds"] == 60
+
+    def test_geneactiv_device_type(self, tmp_path: Path) -> None:
+        """Line 474: preset overrides default."""
+        csv_file = tmp_path / "test.csv"
+        csv_file.write_text("dummy")
+        loader = CSVLoaderService(device_preset="geneactiv")
+        metadata = loader.get_file_metadata(csv_file)
+        assert metadata["device_type"] == "geneactiv"
+
+
+class TestSampleRate:
+    """Test sample rate inference from timestamps."""
+
+    def test_sample_rate_computed(self, actigraph_file: Path) -> None:
+        """Lines 300-303: sample rate from adjacent timestamps."""
+        loader = CSVLoaderService(skip_rows=10)
+        result = loader.load_file(actigraph_file)
+        # 60-second epochs -> sample_rate = 1/60
+        assert result["metadata"]["sample_rate"] == pytest.approx(1 / 60.0)

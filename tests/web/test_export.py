@@ -215,3 +215,304 @@ class TestCSVGeneration:
 
         assert "A,C" in lines[0]
         assert "B" not in lines[0]
+
+
+# =============================================================================
+# Additional export service tests for higher coverage
+# =============================================================================
+
+
+class TestEmptyMetricFields:
+    """Tests for _empty_metric_fields helper."""
+
+    def test_default_empty_fields(self):
+        from sleep_scoring_web.services.export_service import _empty_metric_fields
+
+        fields = _empty_metric_fields()
+        assert fields["Time in Bed (min)"] == ""
+        assert fields["Total Sleep Time (min)"] == ""
+        assert fields["WASO (min)"] == ""
+        assert fields["Sleep Onset Latency (min)"] == ""
+        assert fields["Number of Awakenings"] == ""
+        assert fields["Avg Awakening Length (min)"] == ""
+        assert fields["Sleep Efficiency (%)"] == ""
+        assert fields["Movement Index"] == ""
+        assert fields["Fragmentation Index"] == ""
+        assert fields["Sleep Fragmentation Index"] == ""
+        assert fields["Total Activity Counts"] == ""
+        assert fields["Non-zero Epochs"] == ""
+        assert fields["Algorithm"] == ""
+        assert fields["Detection Rule"] == ""
+        assert fields["Verification Status"] == ""
+
+    def test_custom_detection_rule(self):
+        from sleep_scoring_web.services.export_service import _empty_metric_fields
+
+        fields = _empty_metric_fields(detection_rule="3 Epochs / 5 Min")
+        assert fields["Detection Rule"] == "3 Epochs / 5 Min"
+
+    def test_custom_verification_status(self):
+        from sleep_scoring_web.services.export_service import _empty_metric_fields
+
+        fields = _empty_metric_fields(verification_status="Verified")
+        assert fields["Verification Status"] == "Verified"
+
+
+class TestDisplayMaps:
+    """Tests for display mapping dictionaries."""
+
+    def test_marker_type_display(self):
+        from sleep_scoring_web.services.export_service import _MARKER_TYPE_DISPLAY
+
+        from sleep_scoring_web.schemas.enums import MarkerType
+
+        assert _MARKER_TYPE_DISPLAY[MarkerType.MAIN_SLEEP] == "Main Sleep"
+        assert _MARKER_TYPE_DISPLAY[MarkerType.NAP] == "Nap"
+        assert _MARKER_TYPE_DISPLAY[MarkerType.MANUAL_NONWEAR] == "Manual Nonwear"
+
+    def test_algorithm_display(self):
+        from sleep_scoring_web.services.export_service import _ALGORITHM_DISPLAY
+
+        from sleep_scoring_web.schemas.enums import AlgorithmType
+
+        assert _ALGORITHM_DISPLAY[AlgorithmType.SADEH_1994_ACTILIFE] == "Sadeh 1994 (ActiLife)"
+        assert _ALGORITHM_DISPLAY[AlgorithmType.COLE_KRIPKE_1992_ORIGINAL] == "Cole-Kripke 1992 (Original)"
+        assert _ALGORITHM_DISPLAY[AlgorithmType.MANUAL] == "Manual"
+
+    def test_detection_rule_display(self):
+        from sleep_scoring_web.services.export_service import _DETECTION_RULE_DISPLAY
+
+        from sleep_scoring_web.schemas.enums import SleepPeriodDetectorType
+
+        assert _DETECTION_RULE_DISPLAY[SleepPeriodDetectorType.CONSECUTIVE_ONSET3S_OFFSET5S] == "3 Epochs / 5 Min"
+        assert _DETECTION_RULE_DISPLAY[SleepPeriodDetectorType.TUDOR_LOCKE_2014] == "Tudor-Locke 2014"
+
+    def test_verification_display(self):
+        from sleep_scoring_web.services.export_service import _VERIFICATION_DISPLAY
+
+        from sleep_scoring_web.schemas.enums import VerificationStatus
+
+        assert _VERIFICATION_DISPLAY[VerificationStatus.DRAFT] == "Draft"
+        assert _VERIFICATION_DISPLAY[VerificationStatus.SUBMITTED] == "Submitted"
+        assert _VERIFICATION_DISPLAY[VerificationStatus.VERIFIED] == "Verified"
+        assert _VERIFICATION_DISPLAY[VerificationStatus.DISPUTED] == "Disputed"
+        assert _VERIFICATION_DISPLAY[VerificationStatus.RESOLVED] == "Resolved"
+
+
+class TestExportResultDataclass:
+    """Tests for ExportResult dataclass."""
+
+    def test_default_values(self):
+        from sleep_scoring_web.services.export_service import ExportResult
+
+        result = ExportResult(success=False)
+        assert result.success is False
+        assert result.csv_content == ""
+        assert result.filename == ""
+        assert result.row_count == 0
+        assert result.file_count == 0
+        assert result.warnings == []
+        assert result.errors == []
+        assert result.nonwear_csv_content == ""
+        assert result.nonwear_row_count == 0
+        assert result.nonwear_filename == ""
+
+    def test_mutable_lists(self):
+        from sleep_scoring_web.services.export_service import ExportResult
+
+        r1 = ExportResult(success=True)
+        r2 = ExportResult(success=True)
+        r1.warnings.append("warning1")
+        # r2 should not be affected (mutable default factory)
+        assert r2.warnings == []
+
+
+class TestCSVSanitizationEdgeCases:
+    """Additional sanitization edge cases."""
+
+    def test_tab_injection(self):
+        assert ExportService._sanitize_csv_value("\tcmd") == "'\tcmd"
+
+    def test_carriage_return_injection(self):
+        assert ExportService._sanitize_csv_value("\rcmd") == "'\rcmd"
+
+    def test_empty_string_not_sanitized(self):
+        assert ExportService._sanitize_csv_value("") == ""
+
+    def test_boolean_passthrough(self):
+        assert ExportService._sanitize_csv_value(True) is True
+        assert ExportService._sanitize_csv_value(False) is False
+
+
+class TestCSVGenerationRealData:
+    """CSV generation with realistic export row data."""
+
+    def _make_service(self):
+        class MockService(ExportService):
+            def __init__(self):
+                pass
+        return MockService()
+
+    def test_generate_csv_with_export_columns(self):
+        """Simulate a realistic export row and verify CSV output."""
+        import csv
+        import io
+
+        service = self._make_service()
+
+        rows = [
+            {
+                "Filename": "1000 T1 (2024-01-01)60sec.csv",
+                "File ID": 1,
+                "Participant ID": "1000",
+                "Study Date": "2024-01-01",
+                "Period Index": 0,
+                "Marker Type": "Main Sleep",
+                "Onset Time": "22:30",
+                "Offset Time": "06:15",
+                "Onset Datetime": "2024-01-01 22:30:00",
+                "Offset Datetime": "2024-01-02 06:15:00",
+                "Time in Bed (min)": "465.00",
+                "Total Sleep Time (min)": "420.50",
+                "WASO (min)": "30.25",
+                "Sleep Onset Latency (min)": "14.25",
+                "Number of Awakenings": 5,
+                "Avg Awakening Length (min)": "6.05",
+                "Sleep Efficiency (%)": "90.43",
+                "Movement Index": "12.30",
+                "Fragmentation Index": "8.50",
+                "Sleep Fragmentation Index": "20.80",
+                "Total Activity Counts": 15432,
+                "Non-zero Epochs": 75,
+                "Algorithm": "Sadeh 1994 (ActiLife)",
+                "Detection Rule": "3 Epochs / 5 Min",
+                "Verification Status": "Draft",
+                "Scored By": "testadmin",
+                "Is No Sleep": "False",
+                "Needs Consensus": "False",
+                "Notes": "",
+            }
+        ]
+
+        columns = [
+            "Filename", "Study Date", "Period Index", "Marker Type",
+            "Onset Time", "Offset Time", "Total Sleep Time (min)",
+            "Sleep Efficiency (%)", "Algorithm",
+        ]
+
+        csv_content = service._generate_csv(rows, columns, include_header=True)
+
+        # Parse with csv module to validate structure
+        reader = csv.DictReader(io.StringIO(csv_content))
+        parsed_rows = list(reader)
+        assert len(parsed_rows) == 1
+
+        row = parsed_rows[0]
+        assert row["Filename"] == "1000 T1 (2024-01-01)60sec.csv"
+        assert row["Study Date"] == "2024-01-01"
+        assert row["Total Sleep Time (min)"] == "420.50"
+        assert row["Algorithm"] == "Sadeh 1994 (ActiLife)"
+
+    def test_generate_csv_no_sleep_sentinel_row(self):
+        """No-sleep sentinel rows should have empty marker/metric fields."""
+        import csv
+        import io
+
+        service = self._make_service()
+
+        from sleep_scoring_web.services.export_service import _empty_metric_fields
+
+        rows = [
+            {
+                "Filename": "1000 T1.csv",
+                "File ID": 1,
+                "Participant ID": "1000",
+                "Study Date": "2024-01-02",
+                "Period Index": "",
+                "Marker Type": "",
+                "Onset Time": "",
+                "Offset Time": "",
+                "Onset Datetime": "",
+                "Offset Datetime": "",
+                "Scored By": "testadmin",
+                "Is No Sleep": "True",
+                "Needs Consensus": "False",
+                "Notes": "",
+                **_empty_metric_fields(),
+            }
+        ]
+
+        columns = ["Filename", "Study Date", "Is No Sleep", "Marker Type", "Onset Time"]
+        csv_content = service._generate_csv(rows, columns)
+
+        reader = csv.DictReader(io.StringIO(csv_content))
+        parsed = list(reader)
+        assert len(parsed) == 1
+        assert parsed[0]["Is No Sleep"] == "True"
+        assert parsed[0]["Marker Type"] == ""
+        assert parsed[0]["Onset Time"] == ""
+
+    def test_metadata_header_content(self):
+        """Metadata should include key comment lines."""
+        service = self._make_service()
+
+        rows = [
+            {"Filename": "a.csv", "File ID": 1},
+            {"Filename": "b.csv", "File ID": 2},
+        ]
+
+        csv_content = service._generate_csv(rows, ["Filename"], include_metadata=True)
+
+        assert "# Sleep Scoring Export" in csv_content
+        assert "# Total Rows: 2" in csv_content
+        assert "# Files: 2" in csv_content
+
+
+class TestExportCSVEmptyFileIds:
+    """Test export_csv with empty file_ids."""
+
+    @pytest.mark.asyncio
+    async def test_no_files_returns_error(self):
+        from unittest.mock import AsyncMock
+
+        mock_db = AsyncMock()
+        service = ExportService(mock_db)
+        result = await service.export_csv(file_ids=[])
+        assert result.success is False
+        assert len(result.errors) > 0
+        assert "No files specified" in result.errors[0]
+
+    @pytest.mark.asyncio
+    async def test_invalid_columns_skipped(self):
+        """Invalid columns should be skipped with a warning, not cause failure."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_db = AsyncMock()
+        service = ExportService(mock_db)
+
+        # Use only invalid columns
+        result = await service.export_csv(
+            file_ids=[1],
+            columns=["InvalidCol1", "InvalidCol2"],
+        )
+        assert result.success is False
+        assert any("No valid columns" in e for e in result.errors)
+
+    @pytest.mark.asyncio
+    async def test_mixed_valid_invalid_columns(self):
+        """Mix of valid and invalid columns should warn and proceed."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Need to mock the fetch to return empty data
+        mock_db = AsyncMock()
+        mock_execute_result = MagicMock()
+        mock_execute_result.scalars.return_value.all.return_value = []
+        mock_db.execute.return_value = mock_execute_result
+
+        service = ExportService(mock_db)
+        result = await service.export_csv(
+            file_ids=[1],
+            columns=["Filename", "BogusColumn", "Study Date"],
+        )
+        # Should have a warning about invalid columns
+        assert any("Skipping invalid columns" in w for w in result.warnings)
