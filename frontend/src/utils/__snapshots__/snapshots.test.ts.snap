@@ -1,0 +1,94 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`Snapshot: Store initial state shape should match the expected auth state shape 1`] = `
+{
+  "isAdmin": false,
+  "isAuthenticated": false,
+  "sitePassword": null,
+  "username": "anonymous",
+}
+`;
+
+exports[`Snapshot: Store initial state shape should match the expected marker state shape 1`] = `
+{
+  "creationMode": "idle",
+  "isDirty": "boolean",
+  "isNoSleep": "boolean",
+  "markerMode": "sleep",
+  "nonwearMarkersType": true,
+  "sleepMarkersType": true,
+}
+`;
+
+exports[`Snapshot: Constants MARKER_TYPES should be stable 1`] = `
+{
+  "MAIN_SLEEP": "MAIN_SLEEP",
+  "NAP": "NAP",
+}
+`;
+
+exports[`Snapshot: Constants ALGORITHM_TYPES should be stable 1`] = `
+{
+  "COLE_KRIPKE_1992_ACTILIFE": "cole_kripke_1992_actilife",
+  "COLE_KRIPKE_1992_ORIGINAL": "cole_kripke_1992_original",
+  "MANUAL": "manual",
+  "SADEH_1994_ACTILIFE": "sadeh_1994_actilife",
+  "SADEH_1994_ORIGINAL": "sadeh_1994_original",
+}
+`;
+
+exports[`Snapshot: Marker payload serialization sleep marker payload matches expected shape 1`] = `
+{
+  "is_no_sleep": false,
+  "needs_consensus": false,
+  "nonwear_markers": [],
+  "notes": "",
+  "sleep_markers": [
+    {
+      "marker_index": 1,
+      "marker_type": "MAIN_SLEEP",
+      "offset_timestamp": 1704099600,
+      "onset_timestamp": 1704070800,
+    },
+  ],
+}
+`;
+
+exports[`Snapshot: Marker payload serialization no-sleep payload matches expected shape 1`] = `
+{
+  "is_no_sleep": true,
+  "needs_consensus": false,
+  "nonwear_markers": [],
+  "notes": "No main sleep observed",
+  "sleep_markers": [],
+}
+`;
+
+exports[`Snapshot: Marker payload serialization mixed markers payload matches expected shape 1`] = `
+{
+  "is_no_sleep": false,
+  "needs_consensus": true,
+  "nonwear_markers": [
+    {
+      "end_timestamp": 1704049200,
+      "marker_index": 1,
+      "start_timestamp": 1704042000,
+    },
+  ],
+  "notes": "Good recording quality",
+  "sleep_markers": [
+    {
+      "marker_index": 1,
+      "marker_type": "MAIN_SLEEP",
+      "offset_timestamp": 1704099600,
+      "onset_timestamp": 1704070800,
+    },
+    {
+      "marker_index": 2,
+      "marker_type": "NAP",
+      "offset_timestamp": 1704121200,
+      "onset_timestamp": 1704114000,
+    },
+  ],
+}
+`;
