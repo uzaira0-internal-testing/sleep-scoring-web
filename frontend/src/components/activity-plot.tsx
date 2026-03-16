@@ -739,6 +739,14 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       inner.style.width = '4px';
       line.classList.add('dragging');
 
+      // Cache DOM references at drag start to avoid querySelector per frame
+      const cachedTimeLabel = wrapper.querySelector(`.marker-line.time-label[data-line-type="${type}-${edge}"][data-line-index="${index}"]`) as HTMLElement | null;
+      const cachedRegion = wrapper.querySelector(`.marker-region.${type}[data-marker-id="${index}"]`) as HTMLElement | null;
+      const cachedOnsetArrow = wrapper.querySelector('.sleep-rule-arrow.onset') as HTMLElement | null;
+      const cachedOnsetLabel = wrapper.querySelector('.sleep-rule-label.onset') as HTMLElement | null;
+      const cachedOffsetArrow = wrapper.querySelector('.sleep-rule-arrow.offset') as HTMLElement | null;
+      const cachedOffsetLabel = wrapper.querySelector('.sleep-rule-label.offset') as HTMLElement | null;
+
       const onMouseMove = (e: MouseEvent) => {
         if (!isDragging) return;
         const dx = e.clientX - dragStartX;
@@ -752,24 +760,20 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         // Calculate pixel position for region update
         const linePx = newLeft - plotLeft + 6;
 
-        // Calculate and update position in real-time (store won't trigger re-render because isDraggingRef is true)
-        const lineRect = line.getBoundingClientRect();
-        const rootRect = u.root.getBoundingClientRect();
-        const currentPx = (lineRect.left + 6) - rootRect.left - plotLeft;
-        const currentTs = u.posToVal(currentPx, 'x');
+        // Use linePx directly instead of getBoundingClientRect per frame
+        const currentTs = u.posToVal(linePx, 'x');
         if (currentTs !== undefined && currentTs !== null) {
           const snappedSec = snapToEpoch(currentTs);
 
-          // Update time label during drag
-          const timeLabel = wrapper.querySelector(`.marker-line.time-label[data-line-type="${type}-${edge}"][data-line-index="${index}"]`) as HTMLElement;
-          if (timeLabel) {
+          // Update time label during drag (cached reference)
+          if (cachedTimeLabel) {
             const d = new Date(snappedSec * 1000);
-            timeLabel.textContent = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-            timeLabel.style.left = (plotLeft + linePx) + 'px';
+            cachedTimeLabel.textContent = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+            cachedTimeLabel.style.left = (plotLeft + linePx) + 'px';
           }
 
-          // Update the shaded region in real-time
-          const region = wrapper.querySelector(`.marker-region.${type}[data-marker-id="${index}"]`) as HTMLElement;
+          // Update the shaded region in real-time (cached reference)
+          const region = cachedRegion;
           if (region) {
             // Get the other edge's position from current marker state
             const ms = getMarkerState();
@@ -830,22 +834,20 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
                 const arrowY = plotTop + plotHeight * 0.12;
                 const ARROW_HW = 12; // matches ARROW_HEAD_WIDTH in createSleepRuleArrow
 
-                // Reposition onset arrow + label
-                const onsetArrow = wrapper.querySelector('.sleep-rule-arrow.onset') as HTMLElement | null;
-                const onsetLabel = wrapper.querySelector('.sleep-rule-label.onset') as HTMLElement | null;
+                // Reposition onset arrow + label (using cached refs)
                 if (onsetIndex !== null) {
                   const oTs = timestamps[onsetIndex]!;
                   const oPx = u.valToPos(oTs, 'x');
-                  if (onsetArrow) {
-                    onsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px';
-                    onsetArrow.style.top = arrowY + 'px';
-                    onsetArrow.style.display = '';
+                  if (cachedOnsetArrow) {
+                    cachedOnsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px';
+                    cachedOnsetArrow.style.top = arrowY + 'px';
+                    cachedOnsetArrow.style.display = '';
                   }
-                  if (onsetLabel) {
-                    onsetLabel.style.left = (plotLeft + oPx) + 'px';
-                    onsetLabel.style.top = (arrowY - 32) + 'px';
-                    onsetLabel.style.display = '';
-                    const titleEl = onsetLabel.firstElementChild as HTMLElement | null;
+                  if (cachedOnsetLabel) {
+                    cachedOnsetLabel.style.left = (plotLeft + oPx) + 'px';
+                    cachedOnsetLabel.style.top = (arrowY - 32) + 'px';
+                    cachedOnsetLabel.style.display = '';
+                    const titleEl = cachedOnsetLabel.firstElementChild as HTMLElement | null;
                     if (titleEl) {
                       const t = new Date(oTs * 1000).toLocaleTimeString('en-US', {
                         hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC',
@@ -854,26 +856,24 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
                     }
                   }
                 } else {
-                  if (onsetArrow) onsetArrow.style.display = 'none';
-                  if (onsetLabel) onsetLabel.style.display = 'none';
+                  if (cachedOnsetArrow) cachedOnsetArrow.style.display = 'none';
+                  if (cachedOnsetLabel) cachedOnsetLabel.style.display = 'none';
                 }
 
-                // Reposition offset arrow + label
-                const offsetArrow = wrapper.querySelector('.sleep-rule-arrow.offset') as HTMLElement | null;
-                const offsetLabel = wrapper.querySelector('.sleep-rule-label.offset') as HTMLElement | null;
+                // Reposition offset arrow + label (using cached refs)
                 if (offsetIndex !== null) {
                   const oTs = timestamps[offsetIndex]!;
                   const oPx = u.valToPos(oTs, 'x');
-                  if (offsetArrow) {
-                    offsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px';
-                    offsetArrow.style.top = arrowY + 'px';
-                    offsetArrow.style.display = '';
+                  if (cachedOffsetArrow) {
+                    cachedOffsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px';
+                    cachedOffsetArrow.style.top = arrowY + 'px';
+                    cachedOffsetArrow.style.display = '';
                   }
-                  if (offsetLabel) {
-                    offsetLabel.style.left = (plotLeft + oPx) + 'px';
-                    offsetLabel.style.top = (arrowY - 32) + 'px';
-                    offsetLabel.style.display = '';
-                    const titleEl = offsetLabel.firstElementChild as HTMLElement | null;
+                  if (cachedOffsetLabel) {
+                    cachedOffsetLabel.style.left = (plotLeft + oPx) + 'px';
+                    cachedOffsetLabel.style.top = (arrowY - 32) + 'px';
+                    cachedOffsetLabel.style.display = '';
+                    const titleEl = cachedOffsetLabel.firstElementChild as HTMLElement | null;
                     if (titleEl) {
                       const t = new Date(oTs * 1000).toLocaleTimeString('en-US', {
                         hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC',
@@ -882,8 +882,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
                     }
                   }
                 } else {
-                  if (offsetArrow) offsetArrow.style.display = 'none';
-                  if (offsetLabel) offsetLabel.style.display = 'none';
+                  if (cachedOffsetArrow) cachedOffsetArrow.style.display = 'none';
+                  if (cachedOffsetLabel) cachedOffsetLabel.style.display = 'none';
                 }
               }
             }
