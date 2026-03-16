@@ -8,7 +8,6 @@ because FastAPI's dependency injection needs actual types, not string
 annotations. Using Annotated types requires runtime resolution.
 """
 
-import calendar
 import hashlib
 from datetime import date, datetime, timedelta
 from typing import Annotated
@@ -213,7 +212,10 @@ async def get_activity_data_with_scoring(
     )
     activity_rows = result.all()
 
-    # Convert to columnar format
+    # Convert to columnar format — inline timegm to avoid per-row function call overhead
+    import calendar
+
+    _timegm = calendar.timegm
     timestamps: list[float] = []
     axis_x_list: list[float] = []
     axis_y_list: list[float] = []
@@ -221,7 +223,7 @@ async def get_activity_data_with_scoring(
     vm_list: list[float] = []
 
     for row in activity_rows:
-        timestamps.append(naive_to_unix(row.timestamp))
+        timestamps.append(float(_timegm(row.timestamp.timetuple())))
         axis_y_list.append(row.axis_y or 0)
         vm_list.append(row.vector_magnitude or 0)
         if need_axis_x:
@@ -251,8 +253,8 @@ async def get_activity_data_with_scoring(
         current_date_str = str(analysis_date)
         current_date_index = available_dates.index(current_date_str) if current_date_str in available_dates else 0
 
-    view_start = naive_to_unix(start_time)
-    view_end = naive_to_unix(end_time)
+    view_start = float(_timegm(start_time.timetuple()))
+    view_end = float(_timegm(end_time.timetuple()))
 
     response = ActivityDataResponse(
         data=columnar_data,
