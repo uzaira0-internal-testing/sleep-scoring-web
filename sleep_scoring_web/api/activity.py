@@ -274,27 +274,19 @@ async def get_activity_data_with_scoring(
     view_start = (start_time - _EPOCH).total_seconds()
     view_end = (end_time - _EPOCH).total_seconds()
 
-    response = ActivityDataResponse(
-        data=columnar_data,
-        available_dates=available_dates,
-        current_date_index=current_date_index,
-        file_id=file_id,
-        analysis_date=str(analysis_date),
-        view_start=view_start,
-        view_end=view_end,
-    )
-
     # Run sleep scoring algorithm on the data
+    algorithm_results: list[int] | None = None
+    nonwear_results: list[int] | None = None
     if axis_y_list:
         scorer = create_algorithm(algorithm)
-        response.algorithm_results = scorer.score(axis_y_list)
+        algorithm_results = scorer.score(axis_y_list)
 
         # Run Choi nonwear detection
         from sleep_scoring_web.services.choi_helpers import extract_choi_input_from_columnar
 
         choi = ChoiAlgorithm()
-        choi_input = extract_choi_input_from_columnar(response.data, choi_column)
-        response.nonwear_results = choi.detect_mask(choi_input)
+        choi_input = extract_choi_input_from_columnar(columnar_data, choi_column)
+        nonwear_results = choi.detect_mask(choi_input)
 
     # Query uploaded sensor nonwear periods using raw SQL
     sensor_nw_result = await db.execute(
@@ -306,21 +298,44 @@ async def get_activity_data_with_scoring(
         ),
         {"fid": file_id, "ve": view_end, "vs": view_start},
     )
-    response.sensor_nonwear_periods = [
-        SensorNonwearPeriod(start_timestamp=row.start_timestamp, end_timestamp=row.end_timestamp)
+    sensor_nw_periods = [
+        {"start_timestamp": row.start_timestamp, "end_timestamp": row.end_timestamp}
         for row in sensor_nw_result.all()
     ]
 
-    # Set caching headers — ETag + short max-age for browser cache
-    response_headers = {
-        "ETag": etag,
-        "Cache-Control": "private, max-age=300",
-    }
+    # Build response dict directly (bypass Pydantic serialization overhead)
+    import json
 
+    response_dict: dict = {
+        "data": {
+            "timestamps": timestamps,
+            "axis_x": axis_x_list,
+            "axis_y": axis_y_list,
+            "axis_z": axis_z_list,
+            "vector_magnitude": vm_list,
+        },
+        "available_dates": available_dates,
+        "current_date_index": current_date_index,
+        "file_id": file_id,
+        "analysis_date": str(analysis_date),
+        "view_start": view_start,
+        "view_end": view_end,
+    }
+    if algorithm_results is not None:
+        response_dict["algorithm_results"] = algorithm_results
+    if nonwear_results is not None:
+        response_dict["nonwear_results"] = nonwear_results
+    if sensor_nw_periods:
+        response_dict["sensor_nonwear_periods"] = sensor_nw_periods
+
+    # Set caching headers — ETag + short max-age for browser cache
     return Response(
-        content=response.model_dump_json(exclude_none=True),
+        content=json.dumps(response_dict, separators=(",", ":")),
         media_type="application/json",
-        headers=response_headers,
+        headers={
+            "ETag": etag,
+            "Cache-Control": "private, max-age=300",
+        },
     )  # type: ignore[return-value]
 
 
