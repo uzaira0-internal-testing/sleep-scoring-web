@@ -57,7 +57,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
   const serverAvailable = useCapabilitiesStore((state) => state.serverAvailable);
 
   // Fetch markers with metrics for sleep rule arrows (server-only)
-  const { data: markersData } = useQuery({
+  useQuery({
     queryKey: ["markers", currentFileId, currentDate, username || "anonymous"],
     queryFn: async () => {
       if (!currentFileId || !currentDate) return null;
@@ -209,11 +209,20 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     return regions;
   }
 
+  // Refs for fast-changing values that shouldn't trigger full marker redraws.
+  // These change on hover/theme toggle but the marker rendering reads them
+  // imperatively so we avoid adding them to useCallback/useEffect deps.
+  const comparisonCandidatesRef = useRef(comparisonCandidates);
+  comparisonCandidatesRef.current = comparisonCandidates;
+  const comparisonColorMapRef = useRef(comparisonColorMap);
+  comparisonColorMapRef.current = comparisonColorMap;
+  const highlightedCandidateIdRef = useRef(highlightedCandidateId);
+  highlightedCandidateIdRef.current = highlightedCandidateId;
+
   // ============================================================================
   // RENDER MARKERS - Append to wrapper with devicePixelRatio handling for zoom
   // ============================================================================
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  function renderMarkers(u: uPlot) {
+  const renderMarkers = useCallback(function renderMarkers(u: uPlot) {
     if (!u || !u.over) return;
 
     const over = u.over as HTMLElement;
@@ -552,11 +561,14 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     }
 
     // Render comparison overlays from consensus ballot candidates.
-    if (showComparisonMarkers && comparisonCandidates.length > 0) {
-      comparisonCandidates.forEach((candidate, annIndex) => {
+    const curCandidates = comparisonCandidatesRef.current;
+    const curColorMap = comparisonColorMapRef.current;
+    const curHighlightedId = highlightedCandidateIdRef.current;
+    if (showComparisonMarkers && curCandidates.length > 0) {
+      curCandidates.forEach((candidate, annIndex) => {
         const candidateKey = String(candidate.candidate_id);
-        const color = comparisonColorMap.get(candidateKey) ?? (isDark ? "#94a3b8" : "#64748b");
-        const isHighlighted = highlightedCandidateId !== null && candidate.candidate_id === highlightedCandidateId;
+        const color = curColorMap.get(candidateKey) ?? (isDark ? "#94a3b8" : "#64748b");
+        const isHighlighted = curHighlightedId !== null && candidate.candidate_id === curHighlightedId;
         const fill = color + "22"; // subtle translucent fill
         let labeled = false;
 
@@ -610,7 +622,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         });
       });
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getMarkerState, showNonwearOverlays, sensorNonwearPeriods, nonwearResults, timestamps, algorithmResults, sleepDetectionRule, adjacentMarkersData, showAdjacentMarkers, isDark, showComparisonMarkers]);
 
   // ============================================================================
   // CREATE ADJACENT DAY LINE - Dashed line for markers from neighboring days
@@ -952,17 +965,30 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
   // ============================================================================
   // eslint-disable-next-line react-hooks/exhaustive-deps
   function wheelZoomPlugin(factor: number) {
+    // rAF-gate for marker rendering during pan/zoom — collapse multiple
+    // setScale calls per frame into a single renderMarkers pass
+    let renderRafId: number | null = null;
+
+    // Cache the over element rect; invalidated on resize via setSize hook
+    let cachedOverRect: DOMRect | null = null;
+    let cachedOverEl: HTMLDivElement | null = null;
+    const getOverRect = (): DOMRect => {
+      if (!cachedOverRect && cachedOverEl) cachedOverRect = cachedOverEl.getBoundingClientRect();
+      return cachedOverRect!;
+    };
+
     return {
       hooks: {
         ready: (u: uPlot) => {
           const wrapper = u.root;
+          cachedOverEl = u.over;
 
           // Wheel zoom
           wrapper.addEventListener('wheel', (e: WheelEvent) => {
             e.preventDefault();
             e.stopPropagation();
 
-            const rect = u.over.getBoundingClientRect();
+            const rect = getOverRect();
             const left = e.clientX - rect.left;
 
             if (left < 0 || left > rect.width) return;
@@ -1066,7 +1092,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
               return;
             }
 
-            const rect = u.over.getBoundingClientRect();
+            const rect = getOverRect();
             const left = e.clientX - rect.left;
 
             if (left < 0 || left > rect.width) return;
@@ -1092,7 +1118,13 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         },
         setScale: [(u: uPlot, key: string) => {
           if (key === 'x') {
-            renderMarkersRef.current(u);
+            // rAF-gate: skip renderMarkers if one is already scheduled
+            if (renderRafId === null) {
+              renderRafId = requestAnimationFrame(() => {
+                renderRafId = null;
+                renderMarkersRef.current(u);
+              });
+            }
             // Track zoom state by comparing current range to original
             if (originalXScaleRef.current) {
               const orig = originalXScaleRef.current;
@@ -1105,9 +1137,15 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           }
         }],
         setSize: [(u: uPlot) => {
+          cachedOverRect = null; // Invalidate rect cache on resize
           renderMarkersRef.current(u);
         }],
         destroy: [(u: uPlot) => {
+          // Cancel pending rAF to avoid stale renderMarkers call after destroy
+          if (renderRafId !== null) {
+            cancelAnimationFrame(renderRafId);
+            renderRafId = null;
+          }
           // Clean up document-level listeners to prevent memory leaks on chart rebuild
           const cleanup = (u as unknown as Record<string, unknown>)._panCleanup as { onDocMouseMove: (e: MouseEvent) => void; onDocMouseUp: () => void } | undefined;
           if (cleanup) {
@@ -1347,15 +1385,13 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     markerMode,
     creationMode,
     pendingOnsetTimestamp,
-    markersData,
     adjacentMarkersData,
     showAdjacentMarkers,
     showNonwearOverlays,
     sleepDetectionRule,
     showComparisonMarkers,
-    comparisonCandidates,
-    comparisonColorMap,
-    highlightedCandidateId,
+    // comparisonCandidates, comparisonColorMap, highlightedCandidateId
+    // read from refs to avoid redraws on hover/theme changes
   ]);
 
   if (timestamps.length === 0) {
