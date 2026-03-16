@@ -18,7 +18,7 @@ from sqlalchemy import and_, distinct, func, select
 from sleep_scoring_web.api.access import require_file_access, require_file_and_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.db.models import File as FileModel
-from sleep_scoring_web.db.models import Marker, RawActivityData
+from sleep_scoring_web.db.models import RawActivityData
 from sleep_scoring_web.schemas import ActivityDataColumnar, ActivityDataResponse
 from sleep_scoring_web.schemas.enums import AlgorithmType
 from sleep_scoring_web.schemas.models import SensorNonwearPeriod
@@ -296,16 +296,15 @@ async def get_activity_data_with_scoring(
         choi_input = extract_choi_input_from_columnar(response.data, choi_column)
         response.nonwear_results = choi.detect_mask(choi_input)
 
-    # Query uploaded sensor nonwear periods using column projection
+    # Query uploaded sensor nonwear periods using raw SQL
     sensor_nw_result = await db.execute(
-        select(Marker.start_timestamp, Marker.end_timestamp).where(
-            and_(
-                Marker.file_id == file_id,
-                Marker.sensor_nonwear_filter(),
-                Marker.start_timestamp <= view_end,
-                Marker.end_timestamp >= view_start,
-            )
-        )
+        text(
+            "SELECT start_timestamp, end_timestamp FROM markers "
+            "WHERE file_id = :fid AND marker_category = 'nonwear' "
+            "AND marker_type = 'sensor' "
+            "AND start_timestamp <= :ve AND end_timestamp >= :vs"
+        ),
+        {"fid": file_id, "ve": view_end, "vs": view_start},
     )
     response.sensor_nonwear_periods = [
         SensorNonwearPeriod(start_timestamp=row.start_timestamp, end_timestamp=row.end_timestamp)
