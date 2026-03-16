@@ -22,13 +22,17 @@ if settings.use_sqlite:
     async_session_maker = create_session_maker(async_engine)
 else:
     # PostgreSQL configuration (production)
-    # Use db-toolkit for standardized connection pooling
-    async_engine = create_engine(
+    # Use sa_create_async_engine directly to disable pool_pre_ping
+    # (saves one roundtrip per connection checkout; connections are local + stable)
+    async_engine = sa_create_async_engine(
         settings.database_url,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=10,
+        max_overflow=20,
         pool_recycle=1800,
+        pool_pre_ping=False,
         echo=settings.sql_echo,
+        # asyncpg: cache prepared statements for faster repeated queries
+        connect_args={"prepared_statement_cache_size": 256},
     )
     async_session_maker = create_session_maker(async_engine)
 
