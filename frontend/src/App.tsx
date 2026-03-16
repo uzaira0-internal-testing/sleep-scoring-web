@@ -5,7 +5,6 @@ import { useSleepScoringStore } from "@/store";
 import { meApi } from "@/api/client";
 import { useCapabilitiesStore } from "@/store/capabilities-store";
 import { Layout } from "@/components/layout";
-import { LoginPage } from "@/pages/login";
 import { config } from "@/config";
 import { isTauri } from "@/lib/tauri";
 import { getActiveWorkspaceId, useWorkspaceStore } from "@/store/workspace-store";
@@ -14,6 +13,7 @@ import { switchApi } from "@/lib/workspace-api";
 import { DataSourceProvider } from "@/contexts/data-source-context";
 
 // Lazy-loaded route pages for code splitting
+const LoginPage = lazy(() => import("@/pages/login").then((m) => ({ default: m.LoginPage })));
 const ScoringPage = lazy(() => import("@/pages/scoring").then((m) => ({ default: m.ScoringPage })));
 const AnalysisPage = lazy(() => import("@/pages/analysis").then((m) => ({ default: m.AnalysisPage })));
 const ExportPage = lazy(() => import("@/pages/export").then((m) => ({ default: m.ExportPage })));
@@ -144,7 +144,7 @@ function App() {
     <Router {...(isTauri() ? {} : { basename: config.basePath })}>
       <Routes>
         {/* Public routes */}
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={<Suspense fallback={<PageLoader />}><LoginPage /></Suspense>} />
 
         {/* Protected routes with layout */}
         <Route
