@@ -247,7 +247,7 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
       <TableHeader title={title} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
       <div ref={tableRef} className="flex-1 overflow-auto">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-background/95 backdrop-blur-sm border-b z-10">
+          <thead className="sticky top-0 bg-background border-b z-10">
             <tr className="text-muted-foreground">
               <th className="px-2 py-1.5 text-left font-medium">Time</th>
               <th className="px-1.5 py-1.5 text-right font-medium" title="Axis Y">Y</th>
