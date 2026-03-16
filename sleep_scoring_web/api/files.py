@@ -1007,33 +1007,31 @@ async def get_file_dates_status(
     # Single raw SQL query: file access check + dates + annotations + complexity
     # Folds file existence + access check + 5 data queries into a single DB round-trip.
     # Returns empty result set when file doesn't exist or user lacks access.
+    # Diary-first approach: when diary exists, use diary dates directly (index-only scan)
+    # avoiding the expensive DISTINCT date(timestamp) scan on raw_activity_data.
+    # Falls back to activity_dates when no diary entries exist.
     raw_sql = text("""
-        WITH file_check AS (
-            SELECT id, filename FROM files WHERE id = :file_id
+        WITH access_ok AS (
+            SELECT 1 WHERE EXISTS(SELECT 1 FROM files WHERE id = :file_id)
+              AND (:is_admin = true
+                   OR EXISTS(SELECT 1 FROM file_assignments WHERE file_id = :file_id AND username = :username))
         ),
-        access_check AS (
-            SELECT 1 AS ok WHERE (
-                :is_admin = true
-                OR EXISTS(SELECT 1 FROM file_assignments WHERE file_id = :file_id AND username = :username)
-            )
+        diary_dates AS (
+            SELECT analysis_date AS d FROM diary_entries
+            WHERE file_id = :file_id AND EXISTS(SELECT 1 FROM access_ok)
         ),
         activity_dates AS (
+            -- Only compute expensive date extraction when no diary exists
             SELECT DISTINCT date(timestamp) AS d
             FROM raw_activity_data
             WHERE file_id = :file_id
-              AND EXISTS(SELECT 1 FROM file_check)
-              AND EXISTS(SELECT 1 FROM access_check)
-        ),
-        diary_dates AS (
-            SELECT analysis_date AS d FROM diary_entries WHERE file_id = :file_id
-        ),
-        has_diary AS (
-            SELECT EXISTS(SELECT 1 FROM diary_dates) AS val
+              AND NOT EXISTS(SELECT 1 FROM diary_dates)
+              AND EXISTS(SELECT 1 FROM access_ok)
         ),
         filtered_dates AS (
-            SELECT ad.d
-            FROM activity_dates ad, has_diary hd
-            WHERE hd.val = false OR ad.d IN (SELECT d FROM diary_dates)
+            SELECT d FROM diary_dates
+            UNION ALL
+            SELECT d FROM activity_dates
         )
         SELECT
             fd.d::text AS date,
