@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, Copy, RefreshCw, Trash2 } from "lucide-react";
 import { appendErrorLog } from "@/lib/error-log";
+import { config } from "@/config";
 
 interface Props {
   children: ReactNode;
@@ -44,7 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
     try {
       sessionStorage.clear();
     } catch { /* ignore */ }
-    window.location.href = window.location.origin + (import.meta.env.BASE_URL || "/");
+    window.location.href = window.location.origin + config.basePath + "/";
   };
 
   handleCopyError = (): void => {

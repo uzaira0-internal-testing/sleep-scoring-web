@@ -142,9 +142,10 @@ const Router = isTauri() ? HashRouter : BrowserRouter;
 function App() {
   return (
     <Router {...(isTauri() ? {} : { basename: config.basePath })}>
+      <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Public routes */}
-        <Route path="/login" element={<Suspense fallback={<PageLoader />}><LoginPage /></Suspense>} />
+        <Route path="/login" element={<LoginPage />} />
 
         {/* Protected routes with layout */}
         <Route
@@ -158,17 +159,18 @@ function App() {
           }
         >
           <Route index element={<Navigate to="/scoring" replace />} />
-          <Route path="scoring" element={<Suspense fallback={<PageLoader />}><ScoringPage /></Suspense>} />
-          <Route path="analysis" element={<Suspense fallback={<PageLoader />}><AnalysisPage /></Suspense>} />
-          <Route path="export" element={<Suspense fallback={<PageLoader />}><ExportPage /></Suspense>} />
-          <Route path="settings/study" element={<Suspense fallback={<PageLoader />}><StudySettingsPage /></Suspense>} />
-          <Route path="settings/data" element={<Suspense fallback={<PageLoader />}><DataSettingsPage /></Suspense>} />
-          <Route path="admin/assignments" element={<Suspense fallback={<PageLoader />}><AdminAssignmentsPage /></Suspense>} />
+          <Route path="scoring" element={<ScoringPage />} />
+          <Route path="analysis" element={<AnalysisPage />} />
+          <Route path="export" element={<ExportPage />} />
+          <Route path="settings/study" element={<StudySettingsPage />} />
+          <Route path="settings/data" element={<DataSettingsPage />} />
+          <Route path="admin/assignments" element={<AdminAssignmentsPage />} />
         </Route>
 
         {/* Catch-all redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </Router>
   );
 }
