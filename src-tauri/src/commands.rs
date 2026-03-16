@@ -88,7 +88,7 @@ pub async fn discover_peers(state: State<'_, AppState>) -> Result<Vec<PeerInfo>,
 /// Shut down the current mDNS registration if any.
 fn shutdown_mdns(manager: &Mutex<Option<crate::mdns::MdnsManager>>) {
     let mut guard = manager.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(old) = guard.take() {
+    if let Some(mut old) = guard.take() {
         if let Err(e) = old.shutdown() {
             log::warn!("Failed to shut down mDNS: {e}");
         }
