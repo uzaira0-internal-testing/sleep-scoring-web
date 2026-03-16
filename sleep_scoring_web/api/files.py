@@ -22,7 +22,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 
 from sleep_scoring_web.api.access import is_admin_user, require_file_access
 from sleep_scoring_web.api.deps import ApiKey, DbSession, Username, VerifiedPassword
@@ -39,6 +39,52 @@ from sleep_scoring_web.services.file_identity import (
 from sleep_scoring_web.services.loaders.csv_loader import CSVLoaderService
 
 router = APIRouter()
+
+# Pre-built SQL for dates/status endpoint (avoid re-creating text() object per request)
+_DATES_STATUS_SQL = text("""
+    WITH access_ok AS (
+        SELECT 1 WHERE EXISTS(SELECT 1 FROM files WHERE id = :file_id)
+          AND (:is_admin = true
+               OR EXISTS(SELECT 1 FROM file_assignments WHERE file_id = :file_id AND username = :username))
+    ),
+    diary_dates AS (
+        SELECT analysis_date AS d FROM diary_entries
+        WHERE file_id = :file_id AND EXISTS(SELECT 1 FROM access_ok)
+    ),
+    activity_dates AS (
+        SELECT DISTINCT date(timestamp) AS d
+        FROM raw_activity_data
+        WHERE file_id = :file_id
+          AND NOT EXISTS(SELECT 1 FROM diary_dates)
+          AND EXISTS(SELECT 1 FROM access_ok)
+    ),
+    filtered_dates AS (
+        SELECT d FROM diary_dates
+        UNION ALL
+        SELECT d FROM activity_dates
+    )
+    SELECT
+        fd.d::text AS date,
+        COALESCE(ua.is_no_sleep, false) AS is_no_sleep,
+        COALESCE(ua.needs_consensus, false) AS needs_consensus,
+        COALESCE(ua.is_no_sleep, false)
+            OR (ua.sleep_markers_json IS NOT NULL AND ua.sleep_markers_json::text NOT IN ('[]', 'null'))
+            OR (ua.nonwear_markers_json IS NOT NULL AND ua.nonwear_markers_json::text NOT IN ('[]', 'null'))
+            AS has_markers,
+        auto_ua.sleep_markers_json IS NOT NULL
+            AND auto_ua.sleep_markers_json::text NOT IN ('[]', 'null')
+            AS has_auto_score,
+        nc.complexity_pre,
+        nc.complexity_post
+    FROM filtered_dates fd
+    LEFT JOIN user_annotations ua
+        ON ua.file_id = :file_id AND ua.analysis_date = fd.d AND ua.username = :username
+    LEFT JOIN user_annotations auto_ua
+        ON auto_ua.file_id = :file_id AND auto_ua.analysis_date = fd.d AND auto_ua.username = 'auto_score'
+    LEFT JOIN night_complexity nc
+        ON nc.file_id = :file_id AND nc.analysis_date = fd.d
+    ORDER BY fd.d
+""")
 
 
 # =============================================================================
@@ -999,64 +1045,7 @@ async def get_file_dates_status(
     username: Username,
 ) -> Response:
     """Get dates with per-user annotation status, auto-score availability, and complexity."""
-    from sleep_scoring_web.db.models import NightComplexity, UserAnnotation
-
-    from sleep_scoring_web.api.access import is_admin_user
-    from sqlalchemy import text
-
-    # Single raw SQL query: file access check + dates + annotations + complexity
-    # Folds file existence + access check + 5 data queries into a single DB round-trip.
-    # Returns empty result set when file doesn't exist or user lacks access.
-    # Diary-first approach: when diary exists, use diary dates directly (index-only scan)
-    # avoiding the expensive DISTINCT date(timestamp) scan on raw_activity_data.
-    # Falls back to activity_dates when no diary entries exist.
-    raw_sql = text("""
-        WITH access_ok AS (
-            SELECT 1 WHERE EXISTS(SELECT 1 FROM files WHERE id = :file_id)
-              AND (:is_admin = true
-                   OR EXISTS(SELECT 1 FROM file_assignments WHERE file_id = :file_id AND username = :username))
-        ),
-        diary_dates AS (
-            SELECT analysis_date AS d FROM diary_entries
-            WHERE file_id = :file_id AND EXISTS(SELECT 1 FROM access_ok)
-        ),
-        activity_dates AS (
-            -- Only compute expensive date extraction when no diary exists
-            SELECT DISTINCT date(timestamp) AS d
-            FROM raw_activity_data
-            WHERE file_id = :file_id
-              AND NOT EXISTS(SELECT 1 FROM diary_dates)
-              AND EXISTS(SELECT 1 FROM access_ok)
-        ),
-        filtered_dates AS (
-            SELECT d FROM diary_dates
-            UNION ALL
-            SELECT d FROM activity_dates
-        )
-        SELECT
-            fd.d::text AS date,
-            COALESCE(ua.is_no_sleep, false) AS is_no_sleep,
-            COALESCE(ua.needs_consensus, false) AS needs_consensus,
-            COALESCE(ua.is_no_sleep, false)
-                OR (ua.sleep_markers_json IS NOT NULL AND ua.sleep_markers_json::text NOT IN ('[]', 'null'))
-                OR (ua.nonwear_markers_json IS NOT NULL AND ua.nonwear_markers_json::text NOT IN ('[]', 'null'))
-                AS has_markers,
-            auto_ua.sleep_markers_json IS NOT NULL
-                AND auto_ua.sleep_markers_json::text NOT IN ('[]', 'null')
-                AS has_auto_score,
-            nc.complexity_pre,
-            nc.complexity_post
-        FROM filtered_dates fd
-        LEFT JOIN user_annotations ua
-            ON ua.file_id = :file_id AND ua.analysis_date = fd.d AND ua.username = :username
-        LEFT JOIN user_annotations auto_ua
-            ON auto_ua.file_id = :file_id AND auto_ua.analysis_date = fd.d AND auto_ua.username = 'auto_score'
-        LEFT JOIN night_complexity nc
-            ON nc.file_id = :file_id AND nc.analysis_date = fd.d
-        ORDER BY fd.d
-    """)
-
-    result = await db.execute(raw_sql, {
+    result = await db.execute(_DATES_STATUS_SQL, {
         "file_id": file_id,
         "username": username,
         "is_admin": is_admin_user(username),
@@ -1083,7 +1072,7 @@ async def get_file_dates_status(
             missing_date_objs = [datetime.strptime(d, "%Y-%m-%d").date() for d in missing_complexity_dates]
             await _compute_complexity_for_file(file_id, missing_date_objs)
             # Re-fetch after computing
-            result = await db.execute(raw_sql, {"file_id": file_id, "username": username, "is_admin": is_admin_user(username)})
+            result = await db.execute(_DATES_STATUS_SQL, {"file_id": file_id, "username": username, "is_admin": is_admin_user(username)})
             rows = result.fetchall()
         except Exception:
             logger.exception(
