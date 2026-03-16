@@ -1143,8 +1143,9 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         },
         setScale: [(u: uPlot, key: string) => {
           if (key === 'x') {
-            // rAF-gate: skip renderMarkers if one is already scheduled
-            if (renderRafId === null) {
+            // rAF-gate: skip renderMarkers if dragging (cached refs would be invalidated)
+            // or if one is already scheduled
+            if (renderRafId === null && !isDraggingRef.current) {
               renderRafId = requestAnimationFrame(() => {
                 renderRafId = null;
                 renderMarkersRef.current(u);

@@ -26,7 +26,7 @@ else:
         pool_size=10,
         max_overflow=20,
         pool_recycle=1800,
-        pool_pre_ping=False,  # Skip roundtrip; connections are local Docker network
+        pool_pre_ping=True,  # Verify connections; prevents 500s after postgres restart
         echo=settings.sql_echo,
         connect_args={"prepared_statement_cache_size": 256},  # asyncpg prepared stmt cache
     )
