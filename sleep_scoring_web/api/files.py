@@ -1000,55 +1000,62 @@ async def get_file_dates_status(
     """Get dates with per-user annotation status, auto-score availability, and complexity."""
     from sleep_scoring_web.db.models import NightComplexity, UserAnnotation
 
-    await require_file_access(db, username, file_id)
+    from sleep_scoring_web.api.access import require_file_and_access
+    from sqlalchemy import text
 
-    # Verify file exists
-    result = await db.execute(select(FileModel).where(FileModel.id == file_id))
-    file = result.scalar_one_or_none()
-    if not file or is_excluded_file_obj(file):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    await require_file_and_access(db, username, file_id)
 
-    # Get all activity dates
-    date_col = func.date(RawActivityData.timestamp).label("date")
-    result = await db.execute(select(date_col).where(RawActivityData.file_id == file_id).group_by(date_col).order_by(date_col))
-    all_dates = [str(d) for d in result.scalars().all()]
-
-    # Filter by diary (study-period dates only)
-    diary_result = await db.execute(select(DiaryEntry.analysis_date).where(DiaryEntry.file_id == file_id))
-    diary_dates = {str(d) for d in diary_result.scalars().all()}
-    dates = [d for d in all_dates if d in diary_dates] if diary_dates else all_dates
-
-    # Get THIS user's annotations (not any user's)
-    result = await db.execute(
-        select(UserAnnotation).where(
-            UserAnnotation.file_id == file_id,
-            UserAnnotation.username == username,
+    # Single raw SQL query: get dates with annotation status, auto-score, and complexity
+    # Uses LEFT JOINs to combine what was previously 5 serial queries into 1 round-trip.
+    # The CTE first computes activity dates, then filters by diary if diary exists.
+    raw_sql = text("""
+        WITH activity_dates AS (
+            SELECT DISTINCT date(timestamp) AS d
+            FROM raw_activity_data
+            WHERE file_id = :file_id
+        ),
+        diary_dates AS (
+            SELECT analysis_date AS d FROM diary_entries WHERE file_id = :file_id
+        ),
+        has_diary AS (
+            SELECT EXISTS(SELECT 1 FROM diary_dates) AS val
+        ),
+        filtered_dates AS (
+            SELECT ad.d
+            FROM activity_dates ad, has_diary hd
+            WHERE hd.val = false OR ad.d IN (SELECT d FROM diary_dates)
         )
-    )
-    annotations = {str(a.analysis_date): a for a in result.scalars().all()}
+        SELECT
+            fd.d::text AS date,
+            ua.is_no_sleep,
+            ua.needs_consensus,
+            ua.sleep_markers_json,
+            ua.nonwear_markers_json,
+            auto_ua.sleep_markers_json AS auto_sleep_markers_json,
+            nc.complexity_pre,
+            nc.complexity_post
+        FROM filtered_dates fd
+        LEFT JOIN user_annotations ua
+            ON ua.file_id = :file_id AND ua.analysis_date = fd.d AND ua.username = :username
+        LEFT JOIN user_annotations auto_ua
+            ON auto_ua.file_id = :file_id AND auto_ua.analysis_date = fd.d AND auto_ua.username = 'auto_score'
+        LEFT JOIN night_complexity nc
+            ON nc.file_id = :file_id AND nc.analysis_date = fd.d
+        ORDER BY fd.d
+    """)
 
-    # Get auto_score annotations (separate user)
-    result = await db.execute(
-        select(UserAnnotation).where(
-            UserAnnotation.file_id == file_id,
-            UserAnnotation.username == "auto_score",
-        )
-    )
-    auto_annotations = {str(a.analysis_date): a for a in result.scalars().all()}
+    result = await db.execute(raw_sql, {"file_id": file_id, "username": username})
+    rows = result.fetchall()
 
-    # Get complexity scores
-    result = await db.execute(select(NightComplexity).where(NightComplexity.file_id == file_id))
-    complexity_map = {str(n.analysis_date): n for n in result.scalars().all()}
-
-    # Auto-compute missing complexity rows on-demand so scoring view is prepopulated
-    # without requiring a manual "compute complexity" action.
-    missing_complexity_dates = [d for d in dates if d not in complexity_map]
+    # Check if any dates are missing complexity — auto-compute if needed
+    missing_complexity_dates = [row.date for row in rows if row.complexity_pre is None]
     if missing_complexity_dates:
         try:
             missing_date_objs = [datetime.strptime(d, "%Y-%m-%d").date() for d in missing_complexity_dates]
             await _compute_complexity_for_file(file_id, missing_date_objs)
-            refreshed = await db.execute(select(NightComplexity).where(NightComplexity.file_id == file_id))
-            complexity_map = {str(n.analysis_date): n for n in refreshed.scalars().all()}
+            # Re-fetch after computing
+            result = await db.execute(raw_sql, {"file_id": file_id, "username": username})
+            rows = result.fetchall()
         except Exception:
             logger.exception(
                 "Failed auto-computing missing complexity rows for file %d (%d missing dates)",
@@ -1057,35 +1064,29 @@ async def get_file_dates_status(
             )
 
     out = []
-    for date_str in dates:
-        annotation = annotations.get(date_str)
+    for row in rows:
+        is_no_sleep = bool(row.is_no_sleep) if row.is_no_sleep is not None else False
+        needs_consensus = bool(row.needs_consensus) if row.needs_consensus is not None else False
+
         has_markers = False
-        is_no_sleep = False
-        needs_consensus = False
-        if annotation:
-            is_no_sleep = bool(annotation.is_no_sleep)
-            needs_consensus = bool(annotation.needs_consensus)
-            sleep_markers = annotation.sleep_markers_json or []
-            nonwear_markers = annotation.nonwear_markers_json or []
+        if row.sleep_markers_json or row.nonwear_markers_json:
+            sleep_markers = row.sleep_markers_json or []
+            nonwear_markers = row.nonwear_markers_json or []
             has_markers = len(sleep_markers) > 0 or len(nonwear_markers) > 0
 
-        # Check if auto_score has markers for this date
-        auto_ann = auto_annotations.get(date_str)
         has_auto_score = False
-        if auto_ann:
-            auto_markers = auto_ann.sleep_markers_json or []
-            has_auto_score = len(auto_markers) > 0
+        if row.auto_sleep_markers_json:
+            has_auto_score = len(row.auto_sleep_markers_json) > 0
 
-        complexity = complexity_map.get(date_str)
         out.append(
             DateStatus(
-                date=date_str,
+                date=row.date,
                 has_markers=has_markers or is_no_sleep,
                 is_no_sleep=is_no_sleep,
                 needs_consensus=needs_consensus,
                 has_auto_score=has_auto_score,
-                complexity_pre=complexity.complexity_pre if complexity else None,
-                complexity_post=complexity.complexity_post if complexity else None,
+                complexity_pre=row.complexity_pre,
+                complexity_post=row.complexity_post,
             )
         )
     return out
