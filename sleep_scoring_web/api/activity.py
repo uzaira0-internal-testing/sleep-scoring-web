@@ -104,8 +104,6 @@ async def get_activity_data(
     )
 
     # Get available dates for navigation
-    from sqlalchemy import distinct, func
-
     dates_result = await db.execute(
         select(distinct(func.date(RawActivityData.timestamp)))
         .where(RawActivityData.file_id == file_id)
@@ -239,17 +237,17 @@ async def get_activity_data_with_scoring(
         vector_magnitude=vm_list,
     )
 
-    # Only run available_dates full-table scan when requested
+    # Derive available_dates from File.start_time/end_time (no DB query needed).
+    # The file object is already loaded by require_file_and_access().
     need_dates = requested_fields is None or "available_dates" in requested_fields
     available_dates: list[str] = []
     current_date_index = 0
-    if need_dates:
-        dates_result = await db.execute(
-            select(distinct(func.date(RawActivityData.timestamp)))
-            .where(RawActivityData.file_id == file_id)
-            .order_by(func.date(RawActivityData.timestamp))
-        )
-        available_dates = [str(d) for d in dates_result.scalars().all()]
+    if need_dates and file.start_time and file.end_time:
+        d = file.start_time.date()
+        end_d = file.end_time.date()
+        while d <= end_d:
+            available_dates.append(str(d))
+            d += timedelta(days=1)
         current_date_str = str(analysis_date)
         current_date_index = available_dates.index(current_date_str) if current_date_str in available_dates else 0
 
