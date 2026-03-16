@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy import func, or_, select
 
 from sleep_scoring_web.api.access import is_admin_user, require_file_access
@@ -990,13 +991,13 @@ async def get_file_dates(
     return all_dates
 
 
-@router.get("/{file_id}/dates/status", response_model=list[DateStatus])
+@router.get("/{file_id}/dates/status")
 async def get_file_dates_status(
     file_id: int,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> list[DateStatus]:
+) -> Response:
     """Get dates with per-user annotation status, auto-score availability, and complexity."""
     from sleep_scoring_web.db.models import NightComplexity, UserAnnotation
 
@@ -1093,18 +1094,24 @@ async def get_file_dates_status(
                 len(missing_complexity_dates),
             )
 
-    return [
-        DateStatus(
-            date=row.date,
-            has_markers=bool(row.has_markers),
-            is_no_sleep=bool(row.is_no_sleep),
-            needs_consensus=bool(row.needs_consensus),
-            has_auto_score=bool(row.has_auto_score),
-            complexity_pre=row.complexity_pre,
-            complexity_post=row.complexity_post,
-        )
+    import json as _json
+
+    payload = [
+        {
+            "date": row.date,
+            "has_markers": bool(row.has_markers),
+            "is_no_sleep": bool(row.is_no_sleep),
+            "needs_consensus": bool(row.needs_consensus),
+            "has_auto_score": bool(row.has_auto_score),
+            "complexity_pre": float(row.complexity_pre) if row.complexity_pre is not None else None,
+            "complexity_post": float(row.complexity_post) if row.complexity_post is not None else None,
+        }
         for row in rows
     ]
+    return Response(
+        content=_json.dumps(payload),
+        media_type="application/json",
+    )
 
 
 @router.post("/{file_id}/compute-complexity")
