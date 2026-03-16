@@ -156,7 +156,7 @@ async def get_activity_data_with_scoring(
     - cole_kripke_1992_original: Cole-Kripke 1992 original paper version
     """
     from sleep_scoring_web.services.algorithms import ALGORITHM_TYPES, ChoiAlgorithm, create_algorithm
-    from sleep_scoring_web.services.choi_helpers import get_choi_column
+    from sleep_scoring_web.services.choi_helpers import DEFAULT_CHOI_COLUMN, VALID_CHOI_COLUMNS
 
     # Validate algorithm type
     if algorithm not in ALGORITHM_TYPES:
@@ -165,11 +165,31 @@ async def get_activity_data_with_scoring(
             detail=f"Unknown algorithm: {algorithm}. Available: {ALGORITHM_TYPES}",
         )
 
-    # Single atomic file load + access check (avoids double query)
-    file = await require_file_and_access(db, username, file_id)
+    # Load file + user settings in a single round-trip using outerjoin.
+    # Replaces two sequential queries (require_file_and_access + get_choi_column).
+    from sleep_scoring_web.api.access import is_admin_user, user_can_access_file
+    from sleep_scoring_web.db.models import UserSettings
+    from sleep_scoring_web.services.file_identity import is_excluded_file_obj
 
-    # ETag: activity data is immutable for a given file+date+params combination.
-    choi_column = await get_choi_column(db, username)
+    combined = await db.execute(
+        select(FileModel, UserSettings.extra_settings_json)
+        .outerjoin(UserSettings, UserSettings.username == username)
+        .where(FileModel.id == file_id)
+    )
+    row = combined.first()
+    if not row or not row[0] or is_excluded_file_obj(row[0]):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    file = row[0]
+    if not is_admin_user(username) and not await user_can_access_file(db, username, file_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    # Extract choi_column from user settings (loaded in the same query)
+    extra_settings = row[1]
+    choi_column = DEFAULT_CHOI_COLUMN
+    if extra_settings:
+        col = extra_settings.get("choi_axis", DEFAULT_CHOI_COLUMN)
+        if col in VALID_CHOI_COLUMNS:
+            choi_column = col
     etag_src = f"{file_id}:{analysis_date}:{algorithm}:{view_hours}:{choi_column}:{fields or ''}:{file.uploaded_at}"
     etag = '"' + hashlib.md5(etag_src.encode(), usedforsecurity=False).hexdigest() + '"'
 
