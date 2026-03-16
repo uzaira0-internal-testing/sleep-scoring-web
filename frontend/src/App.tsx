@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useState, useEffect, useRef, lazy, Suspense, startTransition } from "react";
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useSleepScoringStore } from "@/store";
 import { meApi } from "@/api/client";
@@ -120,6 +120,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Deferred redirect — uses startTransition so lazy routes don't throw error #310 */
+function DeferredRedirect({ to }: { to: string }): React.ReactElement | null {
+  const navigate = useNavigate();
+  useEffect(() => {
+    startTransition(() => { navigate(to, { replace: true }); });
+  }, [navigate, to]);
+  return null;
+}
+
 /** Shared fallback spinner for lazy-loaded pages */
 function PageLoader(): React.ReactElement {
   return (
@@ -145,7 +154,7 @@ function App() {
       <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Public routes */}
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={<Suspense fallback={<PageLoader />}><LoginPage /></Suspense>} />
 
         {/* Protected routes with layout */}
         <Route
@@ -158,13 +167,13 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="/scoring" replace />} />
-          <Route path="scoring" element={<ScoringPage />} />
-          <Route path="analysis" element={<AnalysisPage />} />
-          <Route path="export" element={<ExportPage />} />
-          <Route path="settings/study" element={<StudySettingsPage />} />
-          <Route path="settings/data" element={<DataSettingsPage />} />
-          <Route path="admin/assignments" element={<AdminAssignmentsPage />} />
+          <Route index element={<DeferredRedirect to="/scoring" />} />
+          <Route path="scoring" element={<Suspense fallback={<PageLoader />}><ScoringPage /></Suspense>} />
+          <Route path="analysis" element={<Suspense fallback={<PageLoader />}><AnalysisPage /></Suspense>} />
+          <Route path="export" element={<Suspense fallback={<PageLoader />}><ExportPage /></Suspense>} />
+          <Route path="settings/study" element={<Suspense fallback={<PageLoader />}><StudySettingsPage /></Suspense>} />
+          <Route path="settings/data" element={<Suspense fallback={<PageLoader />}><DataSettingsPage /></Suspense>} />
+          <Route path="admin/assignments" element={<Suspense fallback={<PageLoader />}><AdminAssignmentsPage /></Suspense>} />
         </Route>
 
         {/* Catch-all redirect */}
