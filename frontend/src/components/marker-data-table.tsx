@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useSleepScoringStore, useMarkers, useDates } from "@/store";
 import { fetchWithAuth, getApiBase } from "@/api/client";
@@ -242,6 +242,15 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
     );
   }
 
+  const markerRowStyle = useMemo(() => {
+    const color = isSleepMode ? colorTheme.sleepOverlay : colorTheme.nonwear;
+    return {
+      backgroundColor: hexToRgba(color, 0.25),
+      borderLeft: `3px solid ${color}`,
+      boxShadow: `inset 0 0 0 1px ${hexToRgba(color, 0.3)}`,
+    } as const;
+  }, [isSleepMode, colorTheme.sleepOverlay, colorTheme.nonwear]);
+
   return (
     <div className="h-full flex flex-col">
       <TableHeader title={title} onOpenPopout={onOpenPopout} onScrollToMarker={scrollToMarker} />
@@ -279,11 +288,7 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
                       ? "font-bold"
                       : "hover:bg-muted/40"
                   }`}
-                  style={isMarkerRow ? {
-                    backgroundColor: hexToRgba(isSleepMode ? colorTheme.sleepOverlay : colorTheme.nonwear, 0.25),
-                    borderLeft: `3px solid ${isSleepMode ? colorTheme.sleepOverlay : colorTheme.nonwear}`,
-                    boxShadow: `inset 0 0 0 1px ${hexToRgba(isSleepMode ? colorTheme.sleepOverlay : colorTheme.nonwear, 0.3)}`,
-                  } : undefined}
+                  style={isMarkerRow ? markerRowStyle : undefined}
                 >
                   <td className="px-2 py-1 font-mono">{timeStr}</td>
                   <td className="px-1.5 py-1 text-right font-mono">{colData.axis_y[idx]}</td>
