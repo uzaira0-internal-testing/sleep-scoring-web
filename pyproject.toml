@@ -320,7 +320,7 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 pythonpath = ["."]
-addopts = "-v --tb=short --strict-markers --strict-config"
+addopts = "--tb=short --strict-markers --strict-config -n 8"
 filterwarnings = [
     "error::DeprecationWarning",
     "error::PendingDeprecationWarning",
