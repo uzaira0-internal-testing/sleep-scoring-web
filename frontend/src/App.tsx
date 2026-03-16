@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useSleepScoringStore } from "@/store";
@@ -6,18 +6,20 @@ import { meApi } from "@/api/client";
 import { useCapabilitiesStore } from "@/store/capabilities-store";
 import { Layout } from "@/components/layout";
 import { LoginPage } from "@/pages/login";
-import { ScoringPage } from "@/pages/scoring";
-import { StudySettingsPage } from "@/pages/study-settings";
-import { DataSettingsPage } from "@/pages/data-settings";
-import { AnalysisPage } from "@/pages/analysis";
-import { ExportPage } from "@/pages/export";
-import { AdminAssignmentsPage } from "@/pages/admin-assignments";
 import { config } from "@/config";
 import { isTauri } from "@/lib/tauri";
 import { getActiveWorkspaceId, useWorkspaceStore } from "@/store/workspace-store";
 import { switchDb, getDb } from "@/lib/workspace-db";
 import { switchApi } from "@/lib/workspace-api";
 import { DataSourceProvider } from "@/contexts/data-source-context";
+
+// Lazy-loaded route pages for code splitting
+const ScoringPage = lazy(() => import("@/pages/scoring").then((m) => ({ default: m.ScoringPage })));
+const AnalysisPage = lazy(() => import("@/pages/analysis").then((m) => ({ default: m.AnalysisPage })));
+const ExportPage = lazy(() => import("@/pages/export").then((m) => ({ default: m.ExportPage })));
+const StudySettingsPage = lazy(() => import("@/pages/study-settings").then((m) => ({ default: m.StudySettingsPage })));
+const DataSettingsPage = lazy(() => import("@/pages/data-settings").then((m) => ({ default: m.DataSettingsPage })));
+const AdminAssignmentsPage = lazy(() => import("@/pages/admin-assignments").then((m) => ({ default: m.AdminAssignmentsPage })));
 
 /**
  * Rehydrate workspace-scoped singletons (Dexie DB, API client) after page reload.
@@ -118,6 +120,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Shared fallback spinner for lazy-loaded pages */
+function PageLoader(): React.ReactElement {
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+
 /**
  * Main App component with routing
  */
@@ -147,12 +158,12 @@ function App() {
           }
         >
           <Route index element={<Navigate to="/scoring" replace />} />
-          <Route path="scoring" element={<ScoringPage />} />
-          <Route path="analysis" element={<AnalysisPage />} />
-          <Route path="export" element={<ExportPage />} />
-          <Route path="settings/study" element={<StudySettingsPage />} />
-          <Route path="settings/data" element={<DataSettingsPage />} />
-          <Route path="admin/assignments" element={<AdminAssignmentsPage />} />
+          <Route path="scoring" element={<Suspense fallback={<PageLoader />}><ScoringPage /></Suspense>} />
+          <Route path="analysis" element={<Suspense fallback={<PageLoader />}><AnalysisPage /></Suspense>} />
+          <Route path="export" element={<Suspense fallback={<PageLoader />}><ExportPage /></Suspense>} />
+          <Route path="settings/study" element={<Suspense fallback={<PageLoader />}><StudySettingsPage /></Suspense>} />
+          <Route path="settings/data" element={<Suspense fallback={<PageLoader />}><DataSettingsPage /></Suspense>} />
+          <Route path="admin/assignments" element={<Suspense fallback={<PageLoader />}><AdminAssignmentsPage /></Suspense>} />
         </Route>
 
         {/* Catch-all redirect */}
