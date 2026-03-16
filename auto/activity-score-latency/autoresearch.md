@@ -79,12 +79,18 @@ Stop when improvement is <5% after 3 consecutive cycles.
    - Direct numpy implementation, skips 1440 dummy datetime creation
    - 4.2x faster: 0.17ms vs 0.72ms
 
+10. **PostgreSQL array_agg for columnar data** (92620c0)
+    - Replace row-by-row iteration with array_agg to get pre-formed arrays in a single row
+    - Eliminates Python row iteration overhead entirely (3x faster for 1440 rows)
+    - Micro-benchmark: 7.7ms -> 2.6ms for DB+conversion step
+
 ### Current State
-- Server-side p50: ~8ms (quiet) / 33-35ms (under contention from other agents)
-- Total improvement from baseline: ~195ms -> ~8ms (96%)
+- Server-side p50: ~5.5-6ms (quiet) / up to 35ms (under contention from other agents)
+- Total improvement from baseline: ~195ms -> ~5.5ms (97.2%)
+- Remaining bottleneck is Choi nonwear detection (~3ms) which lives in archived desktop code
 
 ### Ideas Not Yet Tried
-- Batch activity data + sensor nonwear into single CTE query
 - Connection pooling optimization
 - Response compression (gzip)
 - In-memory LRU cache for file+settings (avoid DB on repeated requests)
+- Batch activity data + sensor nonwear into single CTE query
