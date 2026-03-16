@@ -983,7 +983,11 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           const wrapper = u.root;
           cachedOverEl = u.over;
 
-          // Wheel zoom
+          // Wheel zoom — rAF-gated to coalesce rapid wheel events
+          let zoomRafId: number | null = null;
+          let zoomNxMin = 0;
+          let zoomNxMax = 0;
+
           wrapper.addEventListener('wheel', (e: WheelEvent) => {
             e.preventDefault();
             e.stopPropagation();
@@ -993,6 +997,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
             if (left < 0 || left > rect.width) return;
 
+            // Use current scale range (may have been updated by a pending rAF)
             const xVal = u.posToVal(left, 'x');
             const oxRange = (u.scales.x!.max ?? 0) - (u.scales.x!.min ?? 0);
 
@@ -1005,12 +1010,17 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             if (nxRange < minRange || nxRange > maxRange) return;
 
             const leftPct = left / (u.bbox.width / devicePixelRatio);
-            const nxMin = xVal - leftPct * nxRange;
-            const nxMax = nxMin + nxRange;
+            zoomNxMin = xVal - leftPct * nxRange;
+            zoomNxMax = zoomNxMin + nxRange;
 
-            u.batch(() => {
-              u.setScale('x', { min: nxMin, max: nxMax });
-            });
+            if (zoomRafId === null) {
+              zoomRafId = requestAnimationFrame(() => {
+                zoomRafId = null;
+                u.batch(() => {
+                  u.setScale('x', { min: zoomNxMin, max: zoomNxMax });
+                });
+              });
+            }
           }, { passive: false });
 
           // Pan with any mouse button drag (left, middle, or shift+left)
@@ -1033,6 +1043,11 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
               // This allows click events to still work for marker placement
             }
           });
+
+          // rAF-gate for pan setScale — coalesce mousemove events per frame
+          let panRafId: number | null = null;
+          let pendingNxMin = 0;
+          let pendingNxMax = 0;
 
           // Store references for cleanup in destroy hook
           const onDocMouseMove = (e: MouseEvent) => {
@@ -1066,9 +1081,17 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
               }
             }
 
-            u.batch(() => {
-              u.setScale('x', { min: nxMin, max: nxMax });
-            });
+            // Coalesce: store latest values and schedule one setScale per frame
+            pendingNxMin = nxMin;
+            pendingNxMax = nxMax;
+            if (panRafId === null) {
+              panRafId = requestAnimationFrame(() => {
+                panRafId = null;
+                u.batch(() => {
+                  u.setScale('x', { min: pendingNxMin, max: pendingNxMax });
+                });
+              });
+            }
           };
 
           const onDocMouseUp = () => {
@@ -1413,7 +1436,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
   };
 
   return (
-    <div className="w-full h-full relative overflow-hidden">
+    <div className="w-full h-full relative overflow-hidden" style={{ contain: 'layout style paint' }}>
       <div ref={containerRef} className="w-full h-full" />
       {isZoomed && (
         <button
