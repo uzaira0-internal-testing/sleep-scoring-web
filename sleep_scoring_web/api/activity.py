@@ -21,7 +21,7 @@ from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import RawActivityData
 from sleep_scoring_web.schemas import ActivityDataColumnar, ActivityDataResponse
 from sleep_scoring_web.schemas.enums import AlgorithmType
-from sleep_scoring_web.schemas.models import SensorNonwearPeriod
+
 from sleep_scoring_web.utils import naive_to_unix
 
 router = APIRouter()
@@ -213,10 +213,10 @@ async def get_activity_data_with_scoring(
     need_axis_x = requested_fields is None or "axis_x" in requested_fields
     need_axis_z = requested_fields is None or "axis_z" in requested_fields
 
-    # Use raw SQL text to skip SQLAlchemy query compilation overhead
+    # Use raw SQL with server-side epoch conversion to avoid Python datetime processing
     from sqlalchemy import text
 
-    cols = "timestamp, axis_y, vector_magnitude"
+    cols = "EXTRACT(EPOCH FROM timestamp)::float AS ts, axis_y, vector_magnitude"
     if need_axis_x:
         cols += ", axis_x"
     if need_axis_z:
@@ -224,7 +224,7 @@ async def get_activity_data_with_scoring(
 
     result = await db.execute(
         text(
-            f"SELECT {cols} FROM raw_activity_data "
+            f"SELECT {cols} FROM raw_activity_data "  # noqa: S608
             "WHERE file_id = :fid AND timestamp >= :start AND timestamp < :end "
             "ORDER BY timestamp"
         ),
@@ -232,8 +232,7 @@ async def get_activity_data_with_scoring(
     )
     activity_rows = result.all()
 
-    # Convert to columnar format — (dt - EPOCH).total_seconds() is 5x faster than timegm
-    _EPOCH = datetime(1970, 1, 1)
+    # Convert to columnar format — timestamps already as epoch floats from PostgreSQL
     timestamps: list[float] = []
     axis_x_list: list[float] = []
     axis_y_list: list[float] = []
@@ -241,7 +240,7 @@ async def get_activity_data_with_scoring(
     vm_list: list[float] = []
 
     for row in activity_rows:
-        timestamps.append((row.timestamp - _EPOCH).total_seconds())
+        timestamps.append(row.ts)
         axis_y_list.append(row.axis_y or 0)
         vm_list.append(row.vector_magnitude or 0)
         if need_axis_x:
@@ -249,16 +248,7 @@ async def get_activity_data_with_scoring(
         if need_axis_z:
             axis_z_list.append(row.axis_z or 0)
 
-    columnar_data = ActivityDataColumnar(
-        timestamps=timestamps,
-        axis_x=axis_x_list,
-        axis_y=axis_y_list,
-        axis_z=axis_z_list,
-        vector_magnitude=vm_list,
-    )
-
     # Derive available_dates from File.start_time/end_time (no DB query needed).
-    # The file object is already loaded by require_file_and_access().
     need_dates = requested_fields is None or "available_dates" in requested_fields
     available_dates: list[str] = []
     current_date_index = 0
@@ -271,6 +261,7 @@ async def get_activity_data_with_scoring(
         current_date_str = str(analysis_date)
         current_date_index = available_dates.index(current_date_str) if current_date_str in available_dates else 0
 
+    _EPOCH = datetime(1970, 1, 1)
     view_start = (start_time - _EPOCH).total_seconds()
     view_end = (end_time - _EPOCH).total_seconds()
 
@@ -281,11 +272,13 @@ async def get_activity_data_with_scoring(
         scorer = create_algorithm(algorithm)
         algorithm_results = scorer.score(axis_y_list)
 
-        # Run Choi nonwear detection
-        from sleep_scoring_web.services.choi_helpers import extract_choi_input_from_columnar
-
+        # Run Choi nonwear detection — use dict lookup instead of Pydantic model
+        choi_col_data = {
+            "axis_x": axis_x_list, "axis_y": axis_y_list,
+            "axis_z": axis_z_list, "vector_magnitude": vm_list,
+        }
         choi = ChoiAlgorithm()
-        choi_input = extract_choi_input_from_columnar(columnar_data, choi_column)
+        choi_input = choi_col_data.get(choi_column, vm_list)
         nonwear_results = choi.detect_mask(choi_input)
 
     # Query uploaded sensor nonwear periods using raw SQL
