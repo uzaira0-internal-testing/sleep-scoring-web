@@ -968,13 +968,15 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     // rAF-gate for marker rendering during pan/zoom — collapse multiple
     // setScale calls per frame into a single renderMarkers pass
     let renderRafId: number | null = null;
+    let zoomRafId: number | null = null;
+    let panRafId: number | null = null;
 
     // Cache the over element rect; invalidated on resize via setSize hook
     let cachedOverRect: DOMRect | null = null;
     let cachedOverEl: HTMLDivElement | null = null;
-    const getOverRect = (): DOMRect => {
+    const getOverRect = (): DOMRect | null => {
       if (!cachedOverRect && cachedOverEl) cachedOverRect = cachedOverEl.getBoundingClientRect();
-      return cachedOverRect!;
+      return cachedOverRect;
     };
 
     return {
@@ -984,7 +986,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           cachedOverEl = u.over;
 
           // Wheel zoom — rAF-gated to coalesce rapid wheel events
-          let zoomRafId: number | null = null;
           let zoomNxMin = 0;
           let zoomNxMax = 0;
 
@@ -993,6 +994,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             e.stopPropagation();
 
             const rect = getOverRect();
+            if (!rect) return;
             const left = e.clientX - rect.left;
 
             if (left < 0 || left > rect.width) return;
@@ -1045,7 +1047,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           });
 
           // rAF-gate for pan setScale — coalesce mousemove events per frame
-          let panRafId: number | null = null;
           let pendingNxMin = 0;
           let pendingNxMax = 0;
 
@@ -1116,6 +1117,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             }
 
             const rect = getOverRect();
+            if (!rect) return;
             const left = e.clientX - rect.left;
 
             if (left < 0 || left > rect.width) return;
@@ -1164,11 +1166,10 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           renderMarkersRef.current(u);
         }],
         destroy: [(u: uPlot) => {
-          // Cancel pending rAF to avoid stale renderMarkers call after destroy
-          if (renderRafId !== null) {
-            cancelAnimationFrame(renderRafId);
-            renderRafId = null;
-          }
+          // Cancel pending rAFs to avoid stale callbacks after destroy
+          if (renderRafId !== null) { cancelAnimationFrame(renderRafId); renderRafId = null; }
+          if (zoomRafId !== null) { cancelAnimationFrame(zoomRafId); zoomRafId = null; }
+          if (panRafId !== null) { cancelAnimationFrame(panRafId); panRafId = null; }
           // Clean up document-level listeners to prevent memory leaks on chart rebuild
           const cleanup = (u as unknown as Record<string, unknown>)._panCleanup as { onDocMouseMove: (e: MouseEvent) => void; onDocMouseUp: () => void } | undefined;
           if (cleanup) {

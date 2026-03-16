@@ -7,7 +7,6 @@ Provides async SQLAlchemy engine and session factory using db-toolkit.
 from __future__ import annotations
 
 from db_toolkit import create_engine, create_get_db, create_session_maker
-from sqlalchemy.ext.asyncio import create_async_engine as sa_create_async_engine
 
 from sleep_scoring_web.config import settings
 
@@ -15,24 +14,21 @@ from sleep_scoring_web.config import settings
 if settings.use_sqlite:
     # SQLite configuration (for development)
     # db-toolkit handles SQLite specially (no pooling)
-    async_engine = sa_create_async_engine(
+    async_engine = create_engine(
         settings.database_url,
         echo=settings.sql_echo,
     )
     async_session_maker = create_session_maker(async_engine)
 else:
     # PostgreSQL configuration (production)
-    # Use sa_create_async_engine directly to disable pool_pre_ping
-    # (saves one roundtrip per connection checkout; connections are local + stable)
-    async_engine = sa_create_async_engine(
+    async_engine = create_engine(
         settings.database_url,
         pool_size=10,
         max_overflow=20,
         pool_recycle=1800,
-        pool_pre_ping=False,
+        pool_pre_ping=False,  # Skip roundtrip; connections are local Docker network
         echo=settings.sql_echo,
-        # asyncpg: cache prepared statements for faster repeated queries
-        connect_args={"prepared_statement_cache_size": 256},
+        connect_args={"prepared_statement_cache_size": 256},  # asyncpg prepared stmt cache
     )
     async_session_maker = create_session_maker(async_engine)
 

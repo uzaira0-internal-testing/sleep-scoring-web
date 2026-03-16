@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
+)
+from sqlalchemy.ext.asyncio import (
     create_async_engine as sa_create_async_engine,
 )
 
@@ -17,7 +19,9 @@ def create_engine(
     max_overflow: int = 10,
     pool_timeout: int = 30,
     pool_recycle: int = 1800,
+    pool_pre_ping: bool = True,
     echo: bool = False,
+    **engine_kwargs: object,
 ) -> AsyncEngine:
     """Create an async SQLAlchemy engine with sensible defaults.
 
@@ -27,7 +31,10 @@ def create_engine(
         max_overflow: Max connections above pool_size (default: 10)
         pool_timeout: Seconds to wait for connection (default: 30)
         pool_recycle: Seconds before recycling connection (default: 1800)
+        pool_pre_ping: Verify connections before checkout (default: True)
         echo: Log SQL statements (default: False)
+        **engine_kwargs: Additional keyword arguments passed to create_async_engine
+            (e.g., connect_args for driver-specific options)
 
     Returns:
         Configured AsyncEngine
@@ -38,20 +45,21 @@ def create_engine(
     # Handle SQLite specially (no pooling)
     is_sqlite = database_url.startswith("sqlite")
 
-    engine_kwargs: dict = {
+    kwargs: dict = {
         "echo": echo,
+        **engine_kwargs,
     }
 
     if not is_sqlite:
-        engine_kwargs.update(
+        kwargs.update(
             pool_size=pool_size,
             max_overflow=max_overflow,
             pool_timeout=pool_timeout,
             pool_recycle=pool_recycle,
-            pool_pre_ping=True,  # Verify connections before use
+            pool_pre_ping=pool_pre_ping,
         )
 
-    return sa_create_async_engine(database_url, **engine_kwargs)
+    return sa_create_async_engine(database_url, **kwargs)
 
 
 def create_session_maker(
