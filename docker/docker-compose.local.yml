@@ -79,7 +79,7 @@ services:
       # Application
       PYTHONUNBUFFERED: 1
       DEBUG: ${DEBUG:-false}
-      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:8501"]}'
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8501}
     volumes:
       # Mount data directory for CSV files to scan on startup
       - ../data:/app/data
@@ -122,8 +122,6 @@ services:
       context: ..
       dockerfile: docker/frontend/Dockerfile
       args:
-        # API base URL - now uses /api without versioning
-        VITE_API_BASE_URL: /api
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     container_name: sleep-scoring-frontend
     environment:

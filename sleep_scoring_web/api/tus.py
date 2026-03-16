@@ -164,7 +164,7 @@ tus_router = create_tus_router(
 _FILE_STATUS_VALUES = frozenset(s.value for s in FileStatus)
 
 
-@router.get("/files/{file_id}/processing-status")
+@router.get("/files/{file_id}/processing-status", response_model=ProcessingStatusResponse)
 async def get_processing_status(
     file_id: int,
     db: DbSession,

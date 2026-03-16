@@ -213,8 +213,8 @@ export type FileStatus = components["schemas"]["FileStatus"];
 /** Verification status for annotations */
 export type VerificationStatus = components["schemas"]["VerificationStatus"];
 
-/** Nonwear data source type */
-export type NonwearDataSource = components["schemas"]["NonwearDataSource"];
+/** Nonwear data source type (not in OpenAPI schema — defined manually) */
+export type NonwearDataSource = "choi_algorithm" | "manual";
 
 // =============================================================================
 // API Path Types (for type-safe fetch)

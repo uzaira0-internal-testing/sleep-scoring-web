@@ -5,7 +5,6 @@
 //! - Allows spikes of up to spike_tolerance (2) non-zero minutes within a window
 //! - Minimum period length: 90 minutes
 //! - Window size for spike checking: 30 minutes
-//! - Merges adjacent periods within 1 minute
 
 const MIN_PERIOD_LENGTH: usize = 90;
 const SPIKE_TOLERANCE: usize = 2;
@@ -62,10 +61,9 @@ pub fn detect(counts: &[f64]) -> Vec<u8> {
             let nonzero_count =
                 prefix_nonzero[window_end] - prefix_nonzero[window_start];
 
-            // Subtract 1 to exclude the current epoch (which we know is non-zero)
-            // from the spike count — we're checking whether the *surrounding* window
-            // has too many non-zero epochs, not the epoch itself.
-            if nonzero_count.saturating_sub(1) > SPIKE_TOLERANCE {
+            // The window nonzero count includes the current epoch (which is non-zero).
+            // Per Choi 2011, break if more than SPIKE_TOLERANCE non-zero epochs in window.
+            if nonzero_count > SPIKE_TOLERANCE {
                 break;
             }
 
@@ -80,50 +78,14 @@ pub fn detect(counts: &[f64]) -> Vec<u8> {
         }
     }
 
-    // Merge adjacent periods (within 1 minute / 1 index)
-    let merged = merge_periods(periods);
-
     // Convert to mask using slice fill (memset-optimized)
     let mut mask = vec![0u8; n];
-    for period in &merged {
+    for period in &periods {
         let end = period.end_idx.min(n - 1);
         mask[period.start_idx..=end].fill(1);
     }
 
     mask
-}
-
-fn merge_periods(mut periods: Vec<NonwearPeriod>) -> Vec<NonwearPeriod> {
-    if periods.is_empty() {
-        return periods;
-    }
-
-    // Periods are expected sorted by start_idx (added in left-to-right scan order).
-    // Defensive sort in case a future refactor breaks insertion order (negligible cost on small vec).
-    debug_assert!(
-        periods.windows(2).all(|w| w[0].start_idx <= w[1].start_idx),
-        "merge_periods: input periods were not sorted by start_idx"
-    );
-    periods.sort_by_key(|p| p.start_idx);
-
-    let mut merged: Vec<NonwearPeriod> = Vec::new();
-    let mut current = NonwearPeriod {
-        start_idx: periods[0].start_idx,
-        end_idx: periods[0].end_idx,
-    };
-
-    for next in periods.into_iter().skip(1) {
-        // Merge if gap <= 1 minute (1 index)
-        if next.start_idx <= current.end_idx + 2 {
-            current.end_idx = current.end_idx.max(next.end_idx);
-        } else {
-            merged.push(current);
-            current = next;
-        }
-    }
-    merged.push(current);
-
-    merged
 }
 
 #[cfg(test)]

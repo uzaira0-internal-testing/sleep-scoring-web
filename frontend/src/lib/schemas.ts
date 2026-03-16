@@ -24,8 +24,6 @@ export const MarkerTypeSchema = z.enum(vals(MARKER_TYPES));
 export const AlgorithmTypeSchema = z.enum(vals(ALGORITHM_TYPES));
 export const FileStatusSchema = z.enum(vals(FILE_STATUSES));
 export const VerificationStatusSchema = z.enum(vals(VERIFICATION_STATUSES));
-export const NonwearDataSourceSchema = z.enum(["choi_algorithm", "manual"]);
-
 // =============================================================================
 // Form Schemas (user input validation)
 // =============================================================================
@@ -54,7 +52,6 @@ const ManualNonwearPeriodSchema = z.object({
   start_timestamp: z.number().nullable().optional(),
   end_timestamp: z.number().nullable().optional(),
   marker_index: z.number().int().default(1),
-  source: NonwearDataSourceSchema.default("manual"),
 });
 
 /** Markers with metrics response (what loadMarkers returns from server) */

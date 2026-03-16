@@ -195,7 +195,44 @@ All new/modified function signatures must have explicit types. Avoid `any` and `
 
 Use existing constants from `api/types.ts` (e.g., `MarkerType`, `AlgorithmType`) instead of hardcoded strings.
 
+#### OpenAPI as Single Source of Truth for API Types
+
+**All frontend API types MUST derive from the auto-generated `schema.ts`**, not hand-written interfaces. The workflow:
+
+1. **Backend**: Every endpoint MUST have `response_model=PydanticModel` on its route decorator
+2. **Generate**: `cd frontend && npm run generate:types:live` (requires backend running)
+3. **Frontend**: Import types as `components["schemas"]["ModelName"]` from `@/api/schema`
+4. **Verify**: `./scripts/check-contract-drift.sh` detects if `schema.ts` is stale
+
+```typescript
+// WRONG — hand-written type that will drift
+interface FileListResponse { items: FileInfo[]; total: number; }
+
+// CORRECT — derived from generated schema
+export type FileListResponse = components["schemas"]["FileListResponse"];
+```
+
+**When adding a new backend endpoint:**
+1. Add `response_model=YourModel` to the FastAPI decorator
+2. Run `cd frontend && npm run generate:types:live`
+3. Import the type from `schema.ts` in the frontend
+4. Run `./scripts/check-contract-drift.sh` to verify
+
 ### Backend (Python)
+
+#### response_model= on ALL Endpoints
+
+Every FastAPI endpoint MUST have `response_model=PydanticModel` on its route decorator. This ensures the OpenAPI spec (and thus generated frontend types) stays in sync with the actual response shape. Endpoints returning `StreamingResponse` are exempt.
+
+```python
+# WRONG — missing response_model, OpenAPI types it as unknown
+@router.get("/{file_id}")
+async def get_file(...) -> FileInfo:
+
+# CORRECT — response_model makes it appear in OpenAPI schema
+@router.get("/{file_id}", response_model=FileInfo)
+async def get_file(...) -> FileInfo:
+```
 
 #### StrEnums for ALL String Constants
 
@@ -261,11 +298,38 @@ Use only features visible on the actogram: activity spikes, transitions, max act
 
 ## Known Issues / Technical Debt
 
-### 1. Silent Failures Need Better Logging
+### 1. TODO: Migrate fetchWithAuth to openapi-fetch Typed Client
+
+The frontend has `openapi-fetch` installed and `createClient<paths>()` set up in `workspace-api.ts`, but **all 36 API calls use `fetchWithAuth<T>()` with hand-written URL strings and manual type parameters instead**. This means:
+- No compile-time route validation (typo in URL = silent runtime 404)
+- Types can drift from the backend OpenAPI spec
+- The generated `paths` interface in `schema.ts` is unused
+
+**Current state (Approach A — completed):** Backend endpoints now have proper `response_model=` Pydantic types, `schema.ts` is regenerated, and frontend types derive from the generated schema. This eliminates type drift.
+
+**Next step (Approach B — TODO):** Replace all `fetchWithAuth<T>(url)` calls with typed `openapi-fetch` client calls (e.g., `client.GET("/api/v1/files/{file_id}/dates/status", { params: { path: { file_id } } })`). This adds compile-time route validation — a renamed or removed endpoint becomes a TypeScript error instead of a runtime 404.
+
+Files to migrate: `api/client.ts` (36 calls), `services/data-source.ts` (10 calls), `components/consensus-panel.tsx`, `components/activity-plot.tsx`, `components/marker-data-table.tsx`, `pages/analysis.tsx`, `pages/scoring.tsx`.
+
+### 2. Choi Algorithm Divergence (Python vs Rust)
+
+The Python and Rust Choi nonwear implementations differ in two ways:
+- **Spike tolerance**: Python breaks at `>= 3` nonzero epochs, Rust at `>= 4` (off-by-one)
+- **Period merging**: Rust merges adjacent nonwear periods within 1 minute, Python doesn't
+
+Golden tests don't cover these edge cases. A file scored server-side vs client-side can produce different nonwear markers. Fix: align the implementations and add spike/merge test fixtures.
+
+### 3. Docker Compose Inconsistencies
+
+- `CORS_ORIGINS`: local/dev pass JSON array format, backend expects comma-separated
+- TUS upload volume missing from base `docker-compose.yml`
+- `UPLOAD_API_KEY` and `RATE_LIMIT_DEFAULT` absent from local compose
+
+### 4. Silent Failures Need Better Logging
 
 Data loading that returns empty/None when data was expected should log at WARNING level with context.
 
-### 2. Docker Build: bun.lock Sync
+### 3. Docker Build: bun.lock Sync
 
 When adding npm packages via `npm install` on the host (because bun isn't in PATH), `bun.lock` must also be updated for the Docker build (which uses `bun install`). Either:
 - Run `docker run --rm -v "$(pwd)/frontend:/app" -w /app oven/bun:1-alpine bun install` to update bun.lock

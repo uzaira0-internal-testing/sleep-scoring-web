@@ -841,6 +841,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/markers/{file_id}/{analysis_date}/table/{period_index}/columnar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Onset Offset Data Columnar
+         * @description Get activity data around a marker in columnar format (smaller payload).
+         *
+         *     Delegates to the row-based endpoint and converts the result.
+         */
+        get: operations["get_onset_offset_data_columnar_api_v1_markers__file_id___analysis_date__table__period_index__columnar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/markers/{file_id}/{analysis_date}/table-full": {
         parameters: {
             query?: never;
@@ -856,6 +878,29 @@ export interface paths {
          *     Includes algorithm results and nonwear detection.
          */
         get: operations["get_full_table_data_api_v1_markers__file_id___analysis_date__table_full_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/{file_id}/{analysis_date}/table-full/columnar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Full Table Data Columnar
+         * @description Get full 24h of activity data in columnar format (smaller payload).
+         *
+         *     Delegates to the row-based endpoint and converts the result.
+         *     Frontend derives HH:MM from timestamps (datetime_str dropped).
+         */
+        get: operations["get_full_table_data_columnar_api_v1_markers__file_id___analysis_date__table_full_columnar_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1290,13 +1335,13 @@ export interface paths {
         get: operations["get_study_settings_api_v1_settings_study_get"];
         /**
          * Update Study Settings
-         * @description Update study-wide settings. These are shared across all users.
+         * @description Update study-wide settings. These are shared across all users (admin only).
          */
         put: operations["update_study_settings_api_v1_settings_study_put"];
         post?: never;
         /**
          * Reset Study Settings
-         * @description Reset study-wide settings to defaults.
+         * @description Reset study-wide settings to defaults (admin only).
          */
         delete: operations["reset_study_settings_api_v1_settings_study_delete"];
         options?: never;
@@ -1409,6 +1454,72 @@ export interface paths {
          *     via the resolved_annotations table.
          */
         post: operations["resolve_consensus_api_v1_consensus__file_id___analysis_date__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log Audit Events
+         * @description Append a batch of audit events for a file/date.
+         *
+         *     Idempotent: duplicate (session_id, sequence) pairs are skipped.
+         *     This handles the case where the client crashes after server receipt
+         *     but before deleting from IndexedDB, causing a re-send on next load.
+         */
+        post: operations["log_audit_events_api_v1_audit_log_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/{file_id}/{analysis_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Audit Log
+         * @description Retrieve audit log entries for a file/date, ordered chronologically.
+         *
+         *     Supports filtering by username and/or session_id.
+         */
+        get: operations["get_audit_log_api_v1_audit__file_id___analysis_date__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/{file_id}/{analysis_date}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Audit Summary
+         * @description Summary statistics for audit activity on a file/date.
+         */
+        get: operations["get_audit_summary_api_v1_audit__file_id___analysis_date__summary_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1642,6 +1753,130 @@ export interface components {
             updated_at?: string | null;
         };
         /**
+         * AssignmentProgressFile
+         * @description Per-file progress within an assignment progress entry.
+         */
+        AssignmentProgressFile: {
+            /** File Id */
+            file_id: number;
+            /** Filename */
+            filename: string;
+            /** Total Dates */
+            total_dates: number;
+            /** Scored Dates */
+            scored_dates: number;
+            /** Assigned At */
+            assigned_at?: string | null;
+        };
+        /**
+         * AssignmentProgressResponse
+         * @description Per-user assignment progress.
+         */
+        AssignmentProgressResponse: {
+            /** Username */
+            username: string;
+            /** Files */
+            files: components["schemas"]["AssignmentProgressFile"][];
+            /** Total Files */
+            total_files: number;
+            /** Total Dates */
+            total_dates: number;
+            /** Scored Dates */
+            scored_dates: number;
+        };
+        /**
+         * AuditBatchRequest
+         * @description Batch of audit events for a single file/date.
+         */
+        AuditBatchRequest: {
+            /** File Id */
+            file_id: number;
+            /**
+             * Analysis Date
+             * Format: date
+             */
+            analysis_date: string;
+            /** Events */
+            events: components["schemas"]["AuditEvent"][];
+        };
+        /**
+         * AuditBatchResponse
+         * @description Response after logging audit events.
+         */
+        AuditBatchResponse: {
+            /** Logged */
+            logged: number;
+        };
+        /**
+         * AuditEvent
+         * @description Single audit event from the frontend.
+         */
+        AuditEvent: {
+            /** Action */
+            action: string;
+            /**
+             * Client Timestamp
+             * @description Unix seconds when the action occurred
+             */
+            client_timestamp: number;
+            /** Session Id */
+            session_id: string;
+            /** Sequence */
+            sequence: number;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * AuditLogResponse
+         * @description Single audit log entry returned to the client.
+         */
+        AuditLogResponse: {
+            /** Id */
+            id: number;
+            /** Action */
+            action: string;
+            /** Client Timestamp */
+            client_timestamp: number;
+            /** Session Id */
+            session_id: string;
+            /** Sequence */
+            sequence: number;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            } | null;
+            /** Username */
+            username: string;
+        };
+        /**
+         * AuditSummaryResponse
+         * @description Summary of audit activity for a file/date.
+         */
+        AuditSummaryResponse: {
+            /** Total Events */
+            total_events: number;
+            /** Users */
+            users: string[];
+            /** Sessions */
+            sessions: number;
+            /** First Event */
+            first_event?: number | null;
+            /** Last Event */
+            last_event?: number | null;
+        };
+        /**
+         * AuthMeResponse
+         * @description Response for GET /files/auth/me.
+         */
+        AuthMeResponse: {
+            /** Username */
+            username: string;
+            /** Is Admin */
+            is_admin: boolean;
+        };
+        /**
          * AuthStatusResponse
          * @description Response for auth status check.
          */
@@ -1749,6 +1984,34 @@ export interface components {
             /** Notes */
             notes?: string[];
         };
+        /**
+         * AutoScoreResultResponse
+         * @description Response for GET /markers/{file_id}/{date}/auto-score-result.
+         */
+        AutoScoreResultResponse: {
+            /** Sleep Markers */
+            sleep_markers: {
+                [key: string]: unknown;
+            }[];
+            /** Nonwear Markers */
+            nonwear_markers: {
+                [key: string]: unknown;
+            }[];
+            /** Algorithm Used */
+            algorithm_used?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * BackfillResponse
+         * @description Response for POST /files/backfill-participant-ids.
+         */
+        BackfillResponse: {
+            /** Updated */
+            updated: number;
+            /** Total Files */
+            total_files: number;
+        };
         /** Body_upload_diary_csv_api_v1_diary_upload_post */
         Body_upload_diary_csv_api_v1_diary_upload_post: {
             /**
@@ -1848,6 +2111,16 @@ export interface components {
             created_at?: string | null;
         };
         /**
+         * ComputeComplexityResponse
+         * @description Response for POST /files/{file_id}/compute-complexity.
+         */
+        ComputeComplexityResponse: {
+            /** Message */
+            message: string;
+            /** Date Count */
+            date_count: number;
+        };
+        /**
          * ConsensusBallotResponse
          * @description Ballot view for voting on marker sets.
          */
@@ -1932,6 +2205,16 @@ export interface components {
             total_dates_with_multiple: number;
         };
         /**
+         * CreateAssignmentsResponse
+         * @description Response for POST /files/assignments.
+         */
+        CreateAssignmentsResponse: {
+            /** Created */
+            created: number;
+            /** Total Requested */
+            total_requested: number;
+        };
+        /**
          * DateStatus
          * @description Date annotation status with complexity scores.
          */
@@ -1950,6 +2233,24 @@ export interface components {
             complexity_pre?: number | null;
             /** Complexity Post */
             complexity_post?: number | null;
+        };
+        /**
+         * DeleteAllFilesResponse
+         * @description Response for DELETE /files.
+         */
+        DeleteAllFilesResponse: {
+            /** Message */
+            message: string;
+            /** Deleted Count */
+            deleted_count: number;
+        };
+        /**
+         * DeleteResponse
+         * @description Generic response for delete operations returning a count.
+         */
+        DeleteResponse: {
+            /** Deleted */
+            deleted: number;
         };
         /**
          * DiaryEntryCreate
@@ -2213,6 +2514,24 @@ export interface components {
             warnings?: string[];
         };
         /**
+         * FileAssignmentResponse
+         * @description Single file assignment entry.
+         */
+        FileAssignmentResponse: {
+            /** Id */
+            id: number;
+            /** File Id */
+            file_id: number;
+            /** Filename */
+            filename: string;
+            /** Username */
+            username: string;
+            /** Assigned By */
+            assigned_by: string;
+            /** Assigned At */
+            assigned_at?: string | null;
+        };
+        /**
          * FileInfo
          * @description File metadata for listing.
          */
@@ -2242,6 +2561,16 @@ export interface components {
             uploaded_by?: string | null;
             /** Uploaded At */
             uploaded_at?: string | null;
+        };
+        /**
+         * FileListResponse
+         * @description Response for listing files.
+         */
+        FileListResponse: {
+            /** Items */
+            items: components["schemas"]["FileInfo"][];
+            /** Total */
+            total: number;
         };
         /**
          * FileStatus
@@ -2290,6 +2619,33 @@ export interface components {
              * @default File uploaded successfully
              */
             message: string;
+        };
+        /**
+         * FullTableColumnar
+         * @description Columnar format for full table data.
+         */
+        FullTableColumnar: {
+            /** Timestamps */
+            timestamps?: number[];
+            /** Axis Y */
+            axis_y?: number[];
+            /** Vector Magnitude */
+            vector_magnitude?: number[];
+            /** Algorithm Result */
+            algorithm_result?: (number | null)[];
+            /** Choi Result */
+            choi_result?: (number | null)[];
+            /** Is Nonwear */
+            is_nonwear?: boolean[];
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
+            /** Start Time */
+            start_time?: string | null;
+            /** End Time */
+            end_time?: string | null;
         };
         /**
          * FullTableDataPoint
@@ -2355,8 +2711,6 @@ export interface components {
              * @default 1
              */
             marker_index: number;
-            /** @default manual */
-            source: components["schemas"]["NonwearDataSource"];
         };
         /**
          * MarkerCategory
@@ -2365,11 +2719,21 @@ export interface components {
          */
         MarkerCategory: "sleep" | "nonwear";
         /**
+         * MarkerDeleteResponse
+         * @description Response for DELETE /markers/{file_id}/{date}/{period_index}.
+         */
+        MarkerDeleteResponse: {
+            /** Deleted */
+            deleted: boolean;
+            /** Period Index */
+            period_index: number;
+        };
+        /**
          * MarkerType
          * @description Sleep marker type classifications.
          * @enum {string}
          */
-        MarkerType: "MAIN_SLEEP" | "NAP";
+        MarkerType: "MAIN_SLEEP" | "NAP" | "manual" | "sensor";
         /**
          * MarkerUpdateRequest
          * @description Request to update markers for a file/date.
@@ -2431,11 +2795,21 @@ export interface components {
             notes?: string | null;
         };
         /**
-         * NonwearDataSource
-         * @description Nonwear data source types.
-         * @enum {string}
+         * NightComplexityResponse
+         * @description Response for GET /files/{file_id}/{date}/complexity.
          */
-        NonwearDataSource: "choi_algorithm" | "manual";
+        NightComplexityResponse: {
+            /** Complexity Pre */
+            complexity_pre?: number | null;
+            /** Complexity Post */
+            complexity_post?: number | null;
+            /** Features */
+            features: {
+                [key: string]: number | string | null;
+            };
+            /** Computed At */
+            computed_at?: string | null;
+        };
         /**
          * NonwearUploadResponse
          * @description Response after uploading nonwear sensor CSV.
@@ -2463,6 +2837,34 @@ export interface components {
             unmatched_identifiers?: string[];
             /** Ambiguous Identifiers */
             ambiguous_identifiers?: string[];
+        };
+        /**
+         * OnsetOffsetColumnar
+         * @description Columnar format for onset/offset table data.
+         */
+        OnsetOffsetColumnar: {
+            /** Timestamps */
+            timestamps?: number[];
+            /** Axis Y */
+            axis_y?: number[];
+            /** Vector Magnitude */
+            vector_magnitude?: number[];
+            /** Algorithm Result */
+            algorithm_result?: (number | null)[];
+            /** Choi Result */
+            choi_result?: (number | null)[];
+            /** Is Nonwear */
+            is_nonwear?: boolean[];
+        };
+        /**
+         * OnsetOffsetColumnarResponse
+         * @description Columnar response with data around a marker.
+         */
+        OnsetOffsetColumnarResponse: {
+            onset_data?: components["schemas"]["OnsetOffsetColumnar"];
+            offset_data?: components["schemas"]["OnsetOffsetColumnar"];
+            /** Period Index */
+            period_index: number;
         };
         /**
          * OnsetOffsetDataPoint
@@ -2590,6 +2992,22 @@ export interface components {
             };
         };
         /**
+         * PipelineDiscoveryResponse
+         * @description Response for GET /markers/pipeline/discover.
+         */
+        PipelineDiscoveryResponse: {
+            /** Roles */
+            roles: {
+                [key: string]: string[];
+            };
+            /** Param Schemas */
+            param_schemas: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        /**
          * ProcessingStatusResponse
          * @description Response for background file processing progress.
          */
@@ -2615,6 +3033,16 @@ export interface components {
             error?: string | null;
             /** Started At */
             started_at?: string | null;
+        };
+        /**
+         * PurgeExcludedResponse
+         * @description Response for POST /files/purge-excluded.
+         */
+        PurgeExcludedResponse: {
+            /** Deleted Count */
+            deleted_count: number;
+            /** Deleted Filenames */
+            deleted_filenames: string[];
         };
         /**
          * ResolveRequest
@@ -2673,6 +3101,46 @@ export interface components {
              * @default Markers saved successfully
              */
             message: string;
+        };
+        /**
+         * ScanStartResponse
+         * @description Response for POST /files/scan.
+         */
+        ScanStartResponse: {
+            /** Message */
+            message: string;
+            /** Started */
+            started: boolean;
+            /** Total Files */
+            total_files: number;
+            /** Status Url */
+            status_url?: string | null;
+        };
+        /**
+         * ScanStatusResponse
+         * @description Response for GET /files/scan/status.
+         */
+        ScanStatusResponse: {
+            /** Is Running */
+            is_running: boolean;
+            /** Total Files */
+            total_files: number;
+            /** Processed */
+            processed: number;
+            /** Imported */
+            imported: number;
+            /** Skipped */
+            skipped: number;
+            /** Failed */
+            failed: number;
+            /** Current File */
+            current_file: string;
+            /** Progress Percent */
+            progress_percent: number;
+            /** Imported Files */
+            imported_files: string[];
+            /** Error */
+            error?: string | null;
         };
         /**
          * SensorNonwearPeriod
@@ -2873,6 +3341,20 @@ export interface components {
             } | null;
         };
         /**
+         * UnassignedFileResponse
+         * @description A file with no assignments.
+         */
+        UnassignedFileResponse: {
+            /** Id */
+            id: number;
+            /** Filename */
+            filename: string;
+            /** Participant Id */
+            participant_id?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
          * UserSettingsResponse
          * @description Response model for user settings.
          */
@@ -2950,6 +3432,28 @@ export interface components {
         VoteRequest: {
             /** Candidate Id */
             candidate_id?: number | null;
+        };
+        /**
+         * WatcherStatusResponse
+         * @description Response for GET /files/watcher/status.
+         */
+        WatcherStatusResponse: {
+            /** Is Running */
+            is_running: boolean;
+            /** Watched Directory */
+            watched_directory: string;
+            /** Total Ingested */
+            total_ingested: number;
+            /** Total Skipped */
+            total_skipped: number;
+            /** Total Failed */
+            total_failed: number;
+            /** Pending Files */
+            pending_files: string[];
+            /** Last Scan Time */
+            last_scan_time?: string | null;
+            /** Recent Errors */
+            recent_errors: string[];
         };
     };
     responses: never;
@@ -3227,9 +3731,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["FileListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3262,9 +3764,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DeleteAllFilesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3296,9 +3796,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AuthMeResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3330,9 +3828,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["FileAssignmentResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -3370,9 +3866,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CreateAssignmentsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3406,9 +3900,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DeleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3440,9 +3932,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["AssignmentProgressResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -3474,9 +3964,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["UnassignedFileResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -3510,9 +3998,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PurgeExcludedResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3609,9 +4095,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["BackfillResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3712,9 +4196,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ComputeComplexityResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3748,9 +4230,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["NightComplexityResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3782,9 +4262,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ScanStartResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3815,9 +4293,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ScanStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3848,9 +4324,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WatcherStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3885,9 +4359,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DeleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3945,6 +4417,8 @@ export interface operations {
                 view_hours?: number;
                 /** @description Sleep scoring algorithm to use */
                 algorithm?: string;
+                /** @description Comma-separated optional fields to include (axis_x,axis_z,available_dates). Omit for all. */
+                fields?: string | null;
             };
             header?: {
                 "X-Site-Password"?: string | null;
@@ -4116,9 +4590,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MarkerDeleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4285,6 +4757,8 @@ export interface operations {
                 onset_ts?: number | null;
                 /** @description Offset timestamp in seconds (use instead of DB lookup) */
                 offset_ts?: number | null;
+                /** @description Sleep scoring algorithm */
+                algorithm?: string;
             };
             header?: {
                 "X-Site-Password"?: string | null;
@@ -4319,9 +4793,56 @@ export interface operations {
             };
         };
     };
+    get_onset_offset_data_columnar_api_v1_markers__file_id___analysis_date__table__period_index__columnar_get: {
+        parameters: {
+            query?: {
+                window_minutes?: number;
+                /** @description Onset timestamp in seconds */
+                onset_ts?: number | null;
+                /** @description Offset timestamp in seconds */
+                offset_ts?: number | null;
+                /** @description Sleep scoring algorithm */
+                algorithm?: string;
+            };
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+                period_index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnsetOffsetColumnarResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_full_table_data_api_v1_markers__file_id___analysis_date__table_full_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sleep scoring algorithm */
+                algorithm?: string;
+            };
             header?: {
                 "X-Site-Password"?: string | null;
                 "X-Username"?: string | null;
@@ -4341,6 +4862,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FullTableResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_full_table_data_columnar_api_v1_markers__file_id___analysis_date__table_full_columnar_get: {
+        parameters: {
+            query?: {
+                /** @description Sleep scoring algorithm */
+                algorithm?: string;
+            };
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FullTableColumnar"];
                 };
             };
             /** @description Validation Error */
@@ -4488,9 +5047,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AutoScoreResultResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4559,9 +5116,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PipelineDiscoveryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5173,6 +5728,7 @@ export interface operations {
             query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -5208,6 +5764,7 @@ export interface operations {
             query?: never;
             header?: {
                 "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -5399,6 +5956,117 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResolvedAnnotationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_audit_events_api_v1_audit_log_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_audit_log_api_v1_audit__file_id___analysis_date__get: {
+        parameters: {
+            query?: {
+                /** @description Filter by username */
+                username?: string | null;
+                /** @description Filter by session */
+                session_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_audit_summary_api_v1_audit__file_id___analysis_date__summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditSummaryResponse"];
                 };
             };
             /** @description Validation Error */

@@ -72,7 +72,7 @@ def _build_nonwear_checker(sensor_nw_markers: list[Marker]) -> Callable[[float],
 # =============================================================================
 
 
-@router.get("/{file_id}/{analysis_date}/table/{period_index}")
+@router.get("/{file_id}/{analysis_date}/table/{period_index}", response_model=OnsetOffsetTableResponse)
 async def get_onset_offset_data(
     file_id: int,
     analysis_date: date,
@@ -282,7 +282,7 @@ def _points_to_columnar(points: list[OnsetOffsetDataPoint]) -> OnsetOffsetColumn
     )
 
 
-@router.get("/{file_id}/{analysis_date}/table/{period_index}/columnar")
+@router.get("/{file_id}/{analysis_date}/table/{period_index}/columnar", response_model=OnsetOffsetColumnarResponse)
 async def get_onset_offset_data_columnar(
     file_id: int,
     analysis_date: date,
@@ -319,7 +319,7 @@ async def get_onset_offset_data_columnar(
     )
 
 
-@router.get("/{file_id}/{analysis_date}/table-full")
+@router.get("/{file_id}/{analysis_date}/table-full", response_model=FullTableResponse)
 async def get_full_table_data(
     file_id: int,
     analysis_date: date,
@@ -423,7 +423,7 @@ async def get_full_table_data(
     )
 
 
-@router.get("/{file_id}/{analysis_date}/table-full/columnar")
+@router.get("/{file_id}/{analysis_date}/table-full/columnar", response_model=FullTableColumnar)
 async def get_full_table_data_columnar(
     file_id: int,
     analysis_date: date,

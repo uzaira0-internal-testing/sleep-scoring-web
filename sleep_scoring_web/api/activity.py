@@ -21,13 +21,12 @@ from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import RawActivityData
 from sleep_scoring_web.schemas import ActivityDataColumnar, ActivityDataResponse
 from sleep_scoring_web.schemas.enums import AlgorithmType
-
 from sleep_scoring_web.utils import naive_to_unix
 
 router = APIRouter()
 
 
-@router.get("/{file_id}/{analysis_date}")
+@router.get("/{file_id}/{analysis_date}", response_model=ActivityDataResponse)
 async def get_activity_data(
     file_id: int,
     analysis_date: date,
@@ -127,6 +126,7 @@ async def get_activity_data(
 
 @router.get(
     "/{file_id}/{analysis_date}/score",
+    response_model=ActivityDataResponse,
     response_model_exclude_none=True,
 )
 async def get_activity_data_with_scoring(
@@ -229,7 +229,7 @@ async def get_activity_data_with_scoring(
 
     result = await db.execute(
         text(
-            f"SELECT {', '.join(agg_cols)} FROM raw_activity_data "  # noqa: S608
+            f"SELECT {', '.join(agg_cols)} FROM raw_activity_data "
             "WHERE file_id = :fid AND timestamp >= :start AND timestamp < :end"
         ),
         {"fid": file_id, "start": start_time, "end": end_time},
@@ -333,7 +333,7 @@ async def get_activity_data_with_scoring(
     )  # type: ignore[return-value]
 
 
-@router.get("/{file_id}/{analysis_date}/sadeh")
+@router.get("/{file_id}/{analysis_date}/sadeh", response_model=ActivityDataResponse)
 async def get_activity_data_with_sadeh(
     file_id: int,
     analysis_date: date,

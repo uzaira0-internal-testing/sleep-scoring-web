@@ -76,6 +76,7 @@ services:
     volumes:
       - app-data:/app/data
       - app-uploads:/app/uploads
+      - app-tus-uploads:/app/uploads/tus
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,3 +153,5 @@ volumes:
     name: sleep-scoring-app-data
   app-uploads:
     name: sleep-scoring-app-uploads
+  app-tus-uploads:
+    name: sleep-scoring-app-tus-uploads

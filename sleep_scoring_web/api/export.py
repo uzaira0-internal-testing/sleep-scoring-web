@@ -57,7 +57,7 @@ def _error_csv(message: str) -> StreamingResponse:
     )
 
 
-@router.get("/columns")
+@router.get("/columns", response_model=ExportColumnsResponse)
 async def get_export_columns(
     _: VerifiedPassword,
 ) -> ExportColumnsResponse:
@@ -82,7 +82,7 @@ async def get_export_columns(
     return ExportColumnsResponse(columns=columns, categories=categories)
 
 
-@router.post("/csv")
+@router.post("/csv", response_model=ExportResponse)
 async def generate_csv_export(
     request: ExportRequest,
     db: DbSession,

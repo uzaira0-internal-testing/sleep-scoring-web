@@ -21,8 +21,7 @@ logger = logging.getLogger(__name__)
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import Response
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, or_, select
 
 from sleep_scoring_web.api.access import is_admin_user, require_file_access
 from sleep_scoring_web.api.deps import ApiKey, DbSession, Username, VerifiedPassword
@@ -30,7 +29,28 @@ from sleep_scoring_web.config import get_settings, settings
 from sleep_scoring_web.db.models import DiaryEntry, FileAssignment, RawActivityData, UserSettings
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.session import async_session_maker
-from sleep_scoring_web.schemas import DateStatus, FileInfo, FileStatus, FileUploadResponse
+from sleep_scoring_web.schemas import (
+    AssignmentProgressFile,
+    AssignmentProgressResponse,
+    AuthMeResponse,
+    BackfillResponse,
+    ComputeComplexityResponse,
+    CreateAssignmentsResponse,
+    DateStatus,
+    DeleteAllFilesResponse,
+    DeleteResponse,
+    FileAssignmentResponse,
+    FileInfo,
+    FileListResponse,
+    FileStatus,
+    FileUploadResponse,
+    NightComplexityResponse,
+    PurgeExcludedResponse,
+    ScanStartResponse,
+    ScanStatusResponse,
+    UnassignedFileResponse,
+    WatcherStatusResponse,
+)
 from sleep_scoring_web.services.file_identity import (
     infer_participant_id_and_timepoint_from_filename,
     is_excluded_activity_filename,
@@ -39,52 +59,6 @@ from sleep_scoring_web.services.file_identity import (
 from sleep_scoring_web.services.loaders.csv_loader import CSVLoaderService
 
 router = APIRouter()
-
-# Pre-built SQL for dates/status endpoint (avoid re-creating text() object per request)
-_DATES_STATUS_SQL = text("""
-    WITH access_ok AS (
-        SELECT 1 WHERE EXISTS(SELECT 1 FROM files WHERE id = :file_id)
-          AND (:is_admin = true
-               OR EXISTS(SELECT 1 FROM file_assignments WHERE file_id = :file_id AND username = :username))
-    ),
-    diary_dates AS (
-        SELECT analysis_date AS d FROM diary_entries
-        WHERE file_id = :file_id AND EXISTS(SELECT 1 FROM access_ok)
-    ),
-    activity_dates AS (
-        SELECT DISTINCT date(timestamp) AS d
-        FROM raw_activity_data
-        WHERE file_id = :file_id
-          AND NOT EXISTS(SELECT 1 FROM diary_dates)
-          AND EXISTS(SELECT 1 FROM access_ok)
-    ),
-    filtered_dates AS (
-        SELECT d FROM diary_dates
-        UNION ALL
-        SELECT d FROM activity_dates
-    )
-    SELECT
-        fd.d::text AS date,
-        COALESCE(ua.is_no_sleep, false) AS is_no_sleep,
-        COALESCE(ua.needs_consensus, false) AS needs_consensus,
-        COALESCE(ua.is_no_sleep, false)
-            OR (ua.sleep_markers_json IS NOT NULL AND ua.sleep_markers_json::text NOT IN ('[]', 'null'))
-            OR (ua.nonwear_markers_json IS NOT NULL AND ua.nonwear_markers_json::text NOT IN ('[]', 'null'))
-            AS has_markers,
-        auto_ua.sleep_markers_json IS NOT NULL
-            AND auto_ua.sleep_markers_json::text NOT IN ('[]', 'null')
-            AS has_auto_score,
-        nc.complexity_pre,
-        nc.complexity_post
-    FROM filtered_dates fd
-    LEFT JOIN user_annotations ua
-        ON ua.file_id = :file_id AND ua.analysis_date = fd.d AND ua.username = :username
-    LEFT JOIN user_annotations auto_ua
-        ON auto_ua.file_id = :file_id AND auto_ua.analysis_date = fd.d AND auto_ua.username = 'auto_score'
-    LEFT JOIN night_complexity nc
-        ON nc.file_id = :file_id AND nc.analysis_date = fd.d
-    ORDER BY fd.d
-""")
 
 
 # =============================================================================
@@ -347,7 +321,7 @@ def _run_background_scan(username: str, csv_files: list[Path]) -> None:
         _scan_status.error = str(e)
 
 
-@router.post("/upload")
+@router.post("/upload", response_model=FileUploadResponse)
 async def upload_file(
     file: Annotated[UploadFile, File(description="CSV file to upload")],
     db: DbSession,
@@ -485,7 +459,7 @@ async def upload_file(
         ) from e
 
 
-@router.post("/upload/api")
+@router.post("/upload/api", response_model=FileUploadResponse)
 async def upload_file_api(
     file: Annotated[UploadFile, File(description="CSV file to upload")],
     db: DbSession,
@@ -611,12 +585,12 @@ async def upload_file_api(
         ) from e
 
 
-@router.get("")
+@router.get("", response_model=FileListResponse)
 async def list_files(
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> dict:
+) -> FileListResponse:
     """List uploaded files. Users with assignments see only their files (even admins)."""
     # Check if user has any assignments — assignments always take priority
     assignment_result = await db.execute(select(FileAssignment.file_id).where(FileAssignment.username == username))
@@ -625,7 +599,7 @@ async def list_files(
 
     # Security: unassigned non-admin users must not see any file names/metadata.
     if not assigned_ids and not is_admin:
-        return {"items": [], "total": 0}
+        return FileListResponse(items=[], total=0)
 
     if assigned_ids:
         # User has assignments → show only assigned files (admin or not)
@@ -655,7 +629,7 @@ async def list_files(
         for f in files
     ]
 
-    return {"items": items, "total": len(items)}
+    return FileListResponse(items=items, total=len(items))
 
 
 # =============================================================================
@@ -675,15 +649,15 @@ def _excluded_filename_sql_filter():
     return or_(lowered.like("%ignore%"), lowered.like("%issue%"))
 
 
-@router.get("/auth/me")
+@router.get("/auth/me", response_model=AuthMeResponse)
 async def get_me(
     _: VerifiedPassword,
     username: Username,
-) -> dict:
+) -> AuthMeResponse:
     """Return current user info including admin status."""
     app_settings = get_settings()
     is_admin = username.lower() in app_settings.admin_usernames_list
-    return {"username": username, "is_admin": is_admin}
+    return AuthMeResponse(username=username, is_admin=is_admin)
 
 
 # =============================================================================
@@ -691,12 +665,12 @@ async def get_me(
 # =============================================================================
 
 
-@router.get("/assignments")
+@router.get("/assignments", response_model=list[FileAssignmentResponse])
 async def list_assignments(
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> list[dict]:
+) -> list[FileAssignmentResponse]:
     """List all file assignments (admin only)."""
     _require_admin(username)
     result = await db.execute(
@@ -706,25 +680,25 @@ async def list_assignments(
         .order_by(FileAssignment.username, FileModel.filename)
     )
     return [
-        {
-            "id": fa.id,
-            "file_id": fa.file_id,
-            "filename": filename,
-            "username": fa.username,
-            "assigned_by": fa.assigned_by,
-            "assigned_at": str(fa.assigned_at) if fa.assigned_at else None,
-        }
+        FileAssignmentResponse(
+            id=fa.id,
+            file_id=fa.file_id,
+            filename=filename,
+            username=fa.username,
+            assigned_by=fa.assigned_by,
+            assigned_at=str(fa.assigned_at) if fa.assigned_at else None,
+        )
         for fa, filename in result.all()
     ]
 
 
-@router.post("/assignments")
+@router.post("/assignments", response_model=CreateAssignmentsResponse)
 async def create_assignments(
     request: dict,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> dict:
+) -> CreateAssignmentsResponse:
     """Assign files to a user (admin only). Body: {"file_ids": [...], "username": "..."}."""
     _require_admin(username)
     file_ids = request.get("file_ids", [])
@@ -765,31 +739,31 @@ async def create_assignments(
         created += 1
 
     await db.commit()
-    return {"created": created, "total_requested": len(file_ids)}
+    return CreateAssignmentsResponse(created=created, total_requested=len(file_ids))
 
 
-@router.delete("/assignments/{target_username}")
+@router.delete("/assignments/{target_username}", response_model=DeleteResponse)
 async def delete_user_assignments(
     target_username: str,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> dict:
+) -> DeleteResponse:
     """Remove all assignments for a user (admin only)."""
     from sqlalchemy import delete as sa_delete
 
     _require_admin(username)
     result = await db.execute(sa_delete(FileAssignment).where(FileAssignment.username == target_username))
     await db.commit()
-    return {"deleted": result.rowcount}
+    return DeleteResponse(deleted=result.rowcount)
 
 
-@router.get("/assignments/progress")
+@router.get("/assignments/progress", response_model=list[AssignmentProgressResponse])
 async def get_assignment_progress(
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> list[dict]:
+) -> list[AssignmentProgressResponse]:
     """
     Get all assignments with per-user, per-file scoring progress (admin only).
 
@@ -852,41 +826,41 @@ async def get_assignment_progress(
         scored_dates[(created_by or "", file_id)] = count
 
     # 5. Build response grouped by username
-    users: dict[str, dict] = {}
+    users: dict[str, AssignmentProgressResponse] = {}
     for a in assignments:
         if a.username not in users:
-            users[a.username] = {
-                "username": a.username,
-                "files": [],
-                "total_files": 0,
-                "total_dates": 0,
-                "scored_dates": 0,
-            }
+            users[a.username] = AssignmentProgressResponse(
+                username=a.username,
+                files=[],
+                total_files=0,
+                total_dates=0,
+                scored_dates=0,
+            )
         user = users[a.username]
         file_total = total_dates_by_file.get(a.file_id, 0)
         file_scored = scored_dates.get((a.username, a.file_id), 0)
-        user["files"].append(
-            {
-                "file_id": a.file_id,
-                "filename": a.filename,
-                "total_dates": file_total,
-                "scored_dates": file_scored,
-                "assigned_at": str(a.assigned_at) if a.assigned_at else None,
-            }
+        user.files.append(
+            AssignmentProgressFile(
+                file_id=a.file_id,
+                filename=a.filename,
+                total_dates=file_total,
+                scored_dates=file_scored,
+                assigned_at=str(a.assigned_at) if a.assigned_at else None,
+            )
         )
-        user["total_files"] += 1
-        user["total_dates"] += file_total
-        user["scored_dates"] += file_scored
+        user.total_files += 1
+        user.total_dates += file_total
+        user.scored_dates += file_scored
 
     return list(users.values())
 
 
-@router.get("/assignments/unassigned")
+@router.get("/assignments/unassigned", response_model=list[UnassignedFileResponse])
 async def get_unassigned_files(
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> list[dict]:
+) -> list[UnassignedFileResponse]:
     """Get files with zero assignments (admin only)."""
     _require_admin(username)
 
@@ -898,16 +872,19 @@ async def get_unassigned_files(
         .where(FileModel.status == FileStatus.READY)
         .order_by(FileModel.filename)
     )
-    return [{"id": row[0], "filename": row[1], "participant_id": row[2], "status": row[3]} for row in result.all()]
+    return [
+        UnassignedFileResponse(id=row[0], filename=row[1], participant_id=row[2], status=row[3])
+        for row in result.all()
+    ]
 
 
-@router.post("/purge-excluded")
+@router.post("/purge-excluded", response_model=PurgeExcludedResponse)
 async def purge_excluded_files(
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
     delete_disk_files: bool = True,
-) -> dict:
+) -> PurgeExcludedResponse:
     """Delete all files whose names contain IGNORE or ISSUE."""
     _require_admin(username)
 
@@ -927,13 +904,13 @@ async def purge_excluded_files(
         await db.delete(file)
 
     await db.commit()
-    return {
-        "deleted_count": len(deleted_filenames),
-        "deleted_filenames": deleted_filenames,
-    }
+    return PurgeExcludedResponse(
+        deleted_count=len(deleted_filenames),
+        deleted_filenames=deleted_filenames,
+    )
 
 
-@router.get("/{file_id}")
+@router.get("/{file_id}", response_model=FileInfo)
 async def get_file(
     file_id: int,
     db: DbSession,
@@ -967,12 +944,12 @@ async def get_file(
     )
 
 
-@router.post("/backfill-participant-ids")
+@router.post("/backfill-participant-ids", response_model=BackfillResponse)
 async def backfill_participant_ids(
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> dict:
+) -> BackfillResponse:
     """
     Infer and persist missing File.participant_id values from filenames.
 
@@ -997,7 +974,7 @@ async def backfill_participant_ids(
             updated += 1
 
     await db.commit()
-    return {"updated": updated, "total_files": eligible_total}
+    return BackfillResponse(updated=updated, total_files=eligible_total)
 
 
 @router.get("/{file_id}/dates")
@@ -1037,43 +1014,65 @@ async def get_file_dates(
     return all_dates
 
 
-@router.get("/{file_id}/dates/status")
+@router.get("/{file_id}/dates/status", response_model=list[DateStatus])
 async def get_file_dates_status(
     file_id: int,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> Response:
+) -> list[DateStatus]:
     """Get dates with per-user annotation status, auto-score availability, and complexity."""
-    result = await db.execute(_DATES_STATUS_SQL, {
-        "file_id": file_id,
-        "username": username,
-        "is_admin": is_admin_user(username),
-    })
-    rows = result.fetchall()
+    from sleep_scoring_web.db.models import NightComplexity, UserAnnotation
 
-    # If no rows returned, check whether the file exists or user lacks access
-    if not rows:
-        file_result = await db.execute(select(FileModel).where(FileModel.id == file_id))
-        file = file_result.scalar_one_or_none()
-        if not file or is_excluded_file_obj(file):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-        if not is_admin_user(username):
-            from sleep_scoring_web.db.models import FileAssignment as FA
-            access_result = await db.execute(select(FA.id).where(FA.file_id == file_id, FA.username == username))
-            if access_result.scalar_one_or_none() is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-        # File exists and is accessible but has no activity data — return empty list
+    await require_file_access(db, username, file_id)
 
-    # Check if any dates are missing complexity — auto-compute if needed
-    missing_complexity_dates = [row.date for row in rows if row.complexity_pre is None]
+    # Verify file exists
+    result = await db.execute(select(FileModel).where(FileModel.id == file_id))
+    file = result.scalar_one_or_none()
+    if not file or is_excluded_file_obj(file):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    # Get all activity dates
+    date_col = func.date(RawActivityData.timestamp).label("date")
+    result = await db.execute(select(date_col).where(RawActivityData.file_id == file_id).group_by(date_col).order_by(date_col))
+    all_dates = [str(d) for d in result.scalars().all()]
+
+    # Filter by diary (study-period dates only)
+    diary_result = await db.execute(select(DiaryEntry.analysis_date).where(DiaryEntry.file_id == file_id))
+    diary_dates = {str(d) for d in diary_result.scalars().all()}
+    dates = [d for d in all_dates if d in diary_dates] if diary_dates else all_dates
+
+    # Get THIS user's annotations (not any user's)
+    result = await db.execute(
+        select(UserAnnotation).where(
+            UserAnnotation.file_id == file_id,
+            UserAnnotation.username == username,
+        )
+    )
+    annotations = {str(a.analysis_date): a for a in result.scalars().all()}
+
+    # Get auto_score annotations (separate user)
+    result = await db.execute(
+        select(UserAnnotation).where(
+            UserAnnotation.file_id == file_id,
+            UserAnnotation.username == "auto_score",
+        )
+    )
+    auto_annotations = {str(a.analysis_date): a for a in result.scalars().all()}
+
+    # Get complexity scores
+    result = await db.execute(select(NightComplexity).where(NightComplexity.file_id == file_id))
+    complexity_map = {str(n.analysis_date): n for n in result.scalars().all()}
+
+    # Auto-compute missing complexity rows on-demand so scoring view is prepopulated
+    # without requiring a manual "compute complexity" action.
+    missing_complexity_dates = [d for d in dates if d not in complexity_map]
     if missing_complexity_dates:
         try:
             missing_date_objs = [datetime.strptime(d, "%Y-%m-%d").date() for d in missing_complexity_dates]
             await _compute_complexity_for_file(file_id, missing_date_objs)
-            # Re-fetch after computing
-            result = await db.execute(_DATES_STATUS_SQL, {"file_id": file_id, "username": username, "is_admin": is_admin_user(username)})
-            rows = result.fetchall()
+            refreshed = await db.execute(select(NightComplexity).where(NightComplexity.file_id == file_id))
+            complexity_map = {str(n.analysis_date): n for n in refreshed.scalars().all()}
         except Exception:
             logger.exception(
                 "Failed auto-computing missing complexity rows for file %d (%d missing dates)",
@@ -1081,33 +1080,48 @@ async def get_file_dates_status(
                 len(missing_complexity_dates),
             )
 
-    import json as _json
+    out = []
+    for date_str in dates:
+        annotation = annotations.get(date_str)
+        has_markers = False
+        is_no_sleep = False
+        needs_consensus = False
+        if annotation:
+            is_no_sleep = bool(annotation.is_no_sleep)
+            needs_consensus = bool(annotation.needs_consensus)
+            sleep_markers = annotation.sleep_markers_json or []
+            nonwear_markers = annotation.nonwear_markers_json or []
+            has_markers = len(sleep_markers) > 0 or len(nonwear_markers) > 0
 
-    payload = [
-        {
-            "date": row.date,
-            "has_markers": bool(row.has_markers),
-            "is_no_sleep": bool(row.is_no_sleep),
-            "needs_consensus": bool(row.needs_consensus),
-            "has_auto_score": bool(row.has_auto_score),
-            "complexity_pre": float(row.complexity_pre) if row.complexity_pre is not None else None,
-            "complexity_post": float(row.complexity_post) if row.complexity_post is not None else None,
-        }
-        for row in rows
-    ]
-    return Response(
-        content=_json.dumps(payload),
-        media_type="application/json",
-    )
+        # Check if auto_score has markers for this date
+        auto_ann = auto_annotations.get(date_str)
+        has_auto_score = False
+        if auto_ann:
+            auto_markers = auto_ann.sleep_markers_json or []
+            has_auto_score = len(auto_markers) > 0
+
+        complexity = complexity_map.get(date_str)
+        out.append(
+            DateStatus(
+                date=date_str,
+                has_markers=has_markers or is_no_sleep,
+                is_no_sleep=is_no_sleep,
+                needs_consensus=needs_consensus,
+                has_auto_score=has_auto_score,
+                complexity_pre=complexity.complexity_pre if complexity else None,
+                complexity_post=complexity.complexity_post if complexity else None,
+            )
+        )
+    return out
 
 
-@router.post("/{file_id}/compute-complexity")
+@router.post("/{file_id}/compute-complexity", response_model=ComputeComplexityResponse)
 async def compute_complexity(
     file_id: int,
     background_tasks: BackgroundTasks,
     db: DbSession,
     _: VerifiedPassword,
-) -> dict:
+) -> ComputeComplexityResponse:
     """
     Trigger batch complexity computation for all dates in a file.
 
@@ -1127,16 +1141,16 @@ async def compute_complexity(
 
     background_tasks.add_task(_compute_complexity_for_file, file_id, dates)
 
-    return {"message": f"Computing complexity for {len(dates)} dates", "date_count": len(dates)}
+    return ComputeComplexityResponse(message=f"Computing complexity for {len(dates)} dates", date_count=len(dates))
 
 
-@router.get("/{file_id}/{analysis_date}/complexity")
+@router.get("/{file_id}/{analysis_date}/complexity", response_model=NightComplexityResponse)
 async def get_complexity_detail(
     file_id: int,
     analysis_date: str,
     db: DbSession,
     _: VerifiedPassword,
-) -> dict:
+) -> NightComplexityResponse:
     """Get full complexity feature breakdown for a file/date."""
     from sleep_scoring_web.db.models import NightComplexity
 
@@ -1157,12 +1171,12 @@ async def get_complexity_detail(
     if not complexity:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Complexity not computed for this date")
 
-    return {
-        "complexity_pre": complexity.complexity_pre,
-        "complexity_post": complexity.complexity_post,
-        "features": complexity.features_json or {},
-        "computed_at": str(complexity.computed_at) if complexity.computed_at else None,
-    }
+    return NightComplexityResponse(
+        complexity_pre=complexity.complexity_pre,
+        complexity_post=complexity.complexity_post,
+        features=complexity.features_json or {},
+        computed_at=str(complexity.computed_at) if complexity.computed_at else None,
+    )
 
 
 async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
@@ -1356,12 +1370,12 @@ async def delete_file(
     await db.commit()
 
 
-@router.delete("", status_code=status.HTTP_200_OK)
+@router.delete("", status_code=status.HTTP_200_OK, response_model=DeleteAllFilesResponse)
 async def delete_all_files(
     db: DbSession,
     _: VerifiedPassword,
     status_filter: str | None = None,
-) -> dict:
+) -> DeleteAllFilesResponse:
     """
     Delete all files from the database.
 
@@ -1388,18 +1402,18 @@ async def delete_all_files(
 
     await db.commit()
 
-    return {
-        "message": f"Deleted {deleted_count} files",
-        "deleted_count": deleted_count,
-    }
+    return DeleteAllFilesResponse(
+        message=f"Deleted {deleted_count} files",
+        deleted_count=deleted_count,
+    )
 
 
-@router.post("/scan")
+@router.post("/scan", response_model=ScanStartResponse)
 async def scan_data_directory(
     background_tasks: BackgroundTasks,
     _: VerifiedPassword,
     username: Username,
-) -> dict:
+) -> ScanStartResponse:
     """
     Start a background scan of the data directory for CSV files.
 
@@ -1415,22 +1429,22 @@ async def scan_data_directory(
 
     data_path = get_data_path()
     if not data_path.exists():
-        return {
-            "message": f"Data directory '{data_path}' does not exist",
-            "started": False,
-            "total_files": 0,
-        }
+        return ScanStartResponse(
+            message=f"Data directory '{data_path}' does not exist",
+            started=False,
+            total_files=0,
+        )
 
     # Find all CSV files
     csv_files = list(data_path.glob("*.csv")) + list(data_path.glob("*.CSV"))
     csv_files = [path for path in csv_files if not is_excluded_activity_filename(path.name)]
 
     if not csv_files:
-        return {
-            "message": "No CSV files found in data directory",
-            "started": False,
-            "total_files": 0,
-        }
+        return ScanStartResponse(
+            message="No CSV files found in data directory",
+            started=False,
+            total_files=0,
+        )
 
     # Reset scan status
     _scan_status.is_running = True
@@ -1446,41 +1460,41 @@ async def scan_data_directory(
     # Start background task
     background_tasks.add_task(_run_background_scan, username, csv_files)
 
-    return {
-        "message": f"Background scan started for {len(csv_files)} files",
-        "started": True,
-        "total_files": len(csv_files),
-        "status_url": "/api/v1/files/scan/status",
-    }
+    return ScanStartResponse(
+        message=f"Background scan started for {len(csv_files)} files",
+        started=True,
+        total_files=len(csv_files),
+        status_url="/api/v1/files/scan/status",
+    )
 
 
-@router.get("/scan/status")
+@router.get("/scan/status", response_model=ScanStatusResponse)
 async def get_scan_status(
     _: VerifiedPassword,
-) -> dict:
+) -> ScanStatusResponse:
     """
     Get the current status of the background file scan.
 
     Poll this endpoint to track import progress.
     """
-    return {
-        "is_running": _scan_status.is_running,
-        "total_files": _scan_status.total_files,
-        "processed": _scan_status.processed,
-        "imported": _scan_status.imported,
-        "skipped": _scan_status.skipped,
-        "failed": _scan_status.failed,
-        "current_file": _scan_status.current_file,
-        "progress_percent": (round(_scan_status.processed / _scan_status.total_files * 100, 1) if _scan_status.total_files > 0 else 0),
-        "imported_files": _scan_status.imported_files[-10:],  # Last 10 imported
-        "error": _scan_status.error,
-    }
+    return ScanStatusResponse(
+        is_running=_scan_status.is_running,
+        total_files=_scan_status.total_files,
+        processed=_scan_status.processed,
+        imported=_scan_status.imported,
+        skipped=_scan_status.skipped,
+        failed=_scan_status.failed,
+        current_file=_scan_status.current_file,
+        progress_percent=(round(_scan_status.processed / _scan_status.total_files * 100, 1) if _scan_status.total_files > 0 else 0),
+        imported_files=_scan_status.imported_files[-10:],
+        error=_scan_status.error,
+    )
 
 
-@router.get("/watcher/status")
+@router.get("/watcher/status", response_model=WatcherStatusResponse)
 async def get_watcher_status(
     _: VerifiedPassword,
-) -> dict:
+) -> WatcherStatusResponse:
     """
     Get the current status of the automatic file watcher.
 
@@ -1489,17 +1503,17 @@ async def get_watcher_status(
     """
     from sleep_scoring_web.services.file_watcher import get_watcher_status as get_status
 
-    return get_status()
+    return WatcherStatusResponse(**get_status())
 
 
-@router.delete("/{file_id}/assignments/{target_username}")
+@router.delete("/{file_id}/assignments/{target_username}", response_model=DeleteResponse)
 async def delete_file_assignment(
     file_id: int,
     target_username: str,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> dict:
+) -> DeleteResponse:
     """Remove a single file assignment (admin only)."""
     from sqlalchemy import delete as sa_delete
 
@@ -1513,4 +1527,4 @@ async def delete_file_assignment(
     await db.commit()
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    return {"deleted": 1}
+    return DeleteResponse(deleted=1)

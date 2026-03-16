@@ -593,237 +593,89 @@ export function ScoringPage() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Row 1: File selector + algorithm settings */}
-      <div className="flex-none px-4 py-2 border-b flex flex-wrap items-center gap-4 overflow-visible relative z-30">
-        {/* File selector */}
-        <div className="flex items-center gap-2 flex-none">
-          <FileText className="h-4 w-4 text-muted-foreground" />
+      {/* Utility bar: Save status + icons — right-aligned */}
+      <div className="flex-none px-4 py-1 border-b flex items-center justify-end gap-2">
+        {/* Save status */}
+        {isSaving ? (
+          <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Saving
+          </span>
+        ) : saveError ? (
+          <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400" title={saveError}>
+            <AlertCircle className="h-3 w-3" />
+            Save failed
+          </span>
+        ) : isDirty ? (
+          <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-muted border border-border text-muted-foreground">
+            <CircleDot className="h-3 w-3" />
+            Unsaved
+          </span>
+        ) : (sleepMarkers.length > 0 || nonwearMarkers.length > 0) ? (
+          <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400">
+            <Check className="h-3 w-3" />
+            Saved
+          </span>
+        ) : null}
+        <ColorThemePopover />
+        <KeyboardShortcutsButton onClick={() => setShortcutsOpen(true)} />
+        <ColorLegendButton onClick={() => setColorLegendOpen(true)} />
+      </div>
+
+      {/* File bar: Source | File selector (centered) | View */}
+      <div className="flex-none px-4 py-1.5 border-b grid grid-cols-[1fr_auto_1fr] items-center gap-4 overflow-visible relative z-30">
+        {/* Left: Source */}
+        <div className="flex items-center gap-1.5 justify-self-end">
+          <Label className="text-xs text-muted-foreground">Source:</Label>
+          <Select
+            options={isLocal
+              ? ACTIVITY_SOURCE_OPTIONS.filter((o) => o.value === "axis_y" || o.value === "vector_magnitude")
+              : ACTIVITY_SOURCE_OPTIONS}
+            value={preferredDisplayColumn}
+            onChange={(e) => setPreferredDisplayColumn(e.target.value as "axis_x" | "axis_y" | "axis_z" | "vector_magnitude")}
+            className="w-[140px]"
+          />
+        </div>
+
+        {/* Center: File selector */}
+        <div className="flex items-center gap-2">
+          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
           <SearchableSelect
             options={fileOptions}
             value={currentFileId ? String(currentFileId) : ""}
             onChange={handleFileChange}
-            className="w-[560px] max-w-[60vw] min-w-[360px]"
+            className="w-[min(560px,50vw)] min-w-[200px]"
             placeholder="Select a file..."
           />
         </div>
 
-        <div className="h-5 w-px bg-border" />
-
-        {/* Source, View */}
-        <div className="flex items-center gap-3 flex-none">
-          <div className="flex items-center gap-1.5">
-            <Label className="text-xs text-muted-foreground">Source:</Label>
-            <Select
-              options={isLocal
-                ? ACTIVITY_SOURCE_OPTIONS.filter((o) => o.value === "axis_y" || o.value === "vector_magnitude")
-                : ACTIVITY_SOURCE_OPTIONS}
-              value={preferredDisplayColumn}
-              onChange={(e) => setPreferredDisplayColumn(e.target.value as "axis_x" | "axis_y" | "axis_z" | "vector_magnitude")}
-              className="w-[140px]"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Label className="text-xs text-muted-foreground">View:</Label>
-            <Select
-              options={VIEW_MODE_OPTIONS}
-              value={String(viewModeHours)}
-              onChange={(e) => setViewModeHours(Number(e.target.value) as 24 | 48)}
-              className="w-[110px]"
-            />
-          </div>
-        </div>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Help buttons */}
-        <div className="flex items-center gap-1 flex-none">
-          <ColorThemePopover />
-          <KeyboardShortcutsButton onClick={() => setShortcutsOpen(true)} />
-          <ColorLegendButton onClick={() => setColorLegendOpen(true)} />
+        {/* Right: View */}
+        <div className="flex items-center gap-1.5 justify-self-start">
+          <Label className="text-xs text-muted-foreground">View:</Label>
+          <Select
+            options={VIEW_MODE_OPTIONS}
+            value={String(viewModeHours)}
+            onChange={(e) => setViewModeHours(Number(e.target.value) as 24 | 48)}
+            className="w-[110px]"
+          />
         </div>
       </div>
 
-      {/* Row 2: Mode controls | Date navigation (centered) | Save/Clear */}
-      <div className="flex-none px-4 py-1.5 border-b bg-muted/30 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
-        {/* Left: Mode + Auto-Score */}
-        <div className="min-w-0 flex flex-wrap items-center gap-2 justify-self-start">
-          <div className="flex gap-1">
-            <Button
-              variant={markerMode === "sleep" ? "default" : "outline"}
-              size="sm"
-              className="h-7 text-xs px-2 shrink-0"
-              onClick={() => setMarkerMode("sleep")}
-              title={isNoSleep ? "Place nap markers (no main sleep)" : undefined}
-            >
-              <Moon className="h-3.5 w-3.5 mr-1" />
-              {isNoSleep ? "Nap" : "Sleep"}
-            </Button>
-            <Button
-              variant={markerMode === "nonwear" ? "default" : "outline"}
-              size="sm"
-              className="h-7 text-xs px-2 shrink-0"
-              onClick={() => setMarkerMode("nonwear")}
-            >
-              <Watch className="h-3.5 w-3.5 mr-1" />
-              Nonwear
-            </Button>
-          </div>
-
-          <Button
-            variant={isNoSleep ? "default" : "outline"}
-            size="sm"
-            className={`h-7 text-xs px-2 shrink-0 ${isNoSleep ? "bg-amber-600 hover:bg-amber-700" : ""}`}
-            onClick={async () => {
-              const state = useSleepScoringStore.getState();
-              if (!state.isNoSleep) {
-                const hasMainSleep = state.sleepMarkers.some(m => m.markerType === MARKER_TYPES.MAIN_SLEEP);
-                if (hasMainSleep) {
-                  const ok = await confirm({ title: "No Sleep", description: "Marking as 'No Sleep' will clear main sleep markers. Nap markers will be preserved. Continue?", variant: "destructive", confirmLabel: "Clear & Mark" });
-                  if (!ok) return;
-                }
-                useSleepScoringStore.getState().setIsNoSleep(true);
-              } else {
-                state.setIsNoSleep(false);
-              }
-            }}
-            title={isNoSleep ? "Click to allow main sleep markers" : "Mark this date as having no main sleep"}
-          >
-            <Ban className="h-3.5 w-3.5 mr-1" />
-            No Sleep
-          </Button>
-
-          <Button
-            variant={needsConsensus ? "default" : "outline"}
-            size="sm"
-            className={`h-7 text-xs px-2 shrink-0 ${needsConsensus ? "bg-orange-600 hover:bg-orange-700" : ""}`}
-            onClick={() => setNeedsConsensus(!needsConsensus)}
-            title={needsConsensus ? "Remove consensus flag" : "Flag for consensus review"}
-            disabled={!currentFileId || !currentDate}
-          >
-            <Users className="h-3.5 w-3.5 mr-1" />
-            Consensus
-          </Button>
-
-          <input
-            type="text"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Notes..."
-            disabled={!currentFileId || !currentDate}
-            className="h-7 text-xs px-2 rounded-md border border-border bg-background min-w-[120px] max-w-[200px] flex-shrink placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-            title="Annotation notes (auto-saved)"
-          />
-
-          <div className="h-4 w-px bg-border shrink-0" />
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2 shrink-0"
-            onClick={() => { autoScoreRef.current = false; autoScoreMutation.mutate(); }}
-            disabled={!currentFileId || !currentDate || autoScoreMutation.isPending || isNoSleep || hasNoDiary}
-            title={hasNoDiary ? "Cannot auto-score: no diary data for this date" : "Automatically detect and suggest sleep marker placements"}
-          >
-            {autoScoreMutation.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-            ) : (
-              <Wand2 className="h-3.5 w-3.5 mr-1" />
-            )}
-            Auto Sleep
-          </Button>
-          <div className="flex items-center gap-1 shrink-0">
-            <Checkbox
-              checked={autoScoreOnNavigate}
-              onCheckedChange={(checked) => setAutoScoreOnNavigate(!!checked)}
-            />
-            <Label className="text-[11px] cursor-pointer" onClick={() => setAutoScoreOnNavigate(!autoScoreOnNavigate)}>
-              Auto
-            </Label>
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2 shrink-0"
-            onClick={() => { autoNonwearMutation.mutate(); }}
-            disabled={!currentFileId || !currentDate || autoNonwearMutation.isPending}
-            title="Automatically detect nonwear periods from diary + Choi/sensor signals"
-          >
-            {autoNonwearMutation.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-            ) : (
-              <Wand2 className="h-3.5 w-3.5 mr-1" />
-            )}
-            Auto Nonwear
-          </Button>
-          <div className="flex items-center gap-1 shrink-0">
-            <Checkbox
-              checked={autoNonwearOnNavigate}
-              onCheckedChange={(checked) => useSleepScoringStore.getState().setAutoNonwearOnNavigate(!!checked)}
-            />
-            <Label className="text-[11px] cursor-pointer" onClick={() => useSleepScoringStore.getState().setAutoNonwearOnNavigate(!autoNonwearOnNavigate)}>
-              Auto
-            </Label>
-          </div>
-
-          <div className="h-4 w-px bg-border shrink-0" />
-
-          <div className="flex items-center gap-1 shrink-0">
-            <Checkbox
-              checked={showAdjacentMarkers}
-              onCheckedChange={(checked) => setShowAdjacentMarkers(checked)}
-            />
-            <Label className="text-[11px] cursor-pointer" onClick={() => setShowAdjacentMarkers(!showAdjacentMarkers)}>
-              Adjacent
-            </Label>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Checkbox
-              checked={showComparisonMarkers}
-              onCheckedChange={(checked) => setShowComparisonMarkers(!!checked)}
-            />
-            <Label className="text-[11px] cursor-pointer" onClick={() => setShowComparisonMarkers(!showComparisonMarkers)}>
-              Compare
-            </Label>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Checkbox
-              checked={showNonwearOverlays}
-              onCheckedChange={(checked) => setShowNonwearOverlays(checked)}
-            />
-            <Label className="text-[11px] cursor-pointer" onClick={() => setShowNonwearOverlays(!showNonwearOverlays)}>
-              NW Overlays
-            </Label>
-          </div>
-
-          {creationMode !== "idle" && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-[11px] px-2 shrink-0 border-amber-400/40 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-300 dark:bg-amber-500/10"
-              title={`Click plot to set ${creationMode === "placing_onset" ? "offset" : "onset"}. Click to cancel.`}
-              onClick={cancelMarkerCreation}
-            >
-              <X className="h-3 w-3 mr-1" />
-              {creationMode === "placing_onset" ? "Set Offset" : "Set Onset"}
-            </Button>
-          )}
-        </div>
-
-        {/* Center: Date navigation — takes remaining space, centered */}
-        <div className="flex items-center justify-center gap-2 justify-self-center">
+      {/* Toolbar — semantic groups that flow into rows based on available space */}
+      <div className="flex-none border-b bg-muted/30">
+        {/* Date navigation row — ONLY the date picker, perfectly centered */}
+        <div className="px-4 py-2 flex items-center justify-center gap-2">
           <Button
             variant="outline"
             size="icon"
-            className="h-7 w-7"
+            className="h-7 w-7 shrink-0"
             onClick={() => navigateDate(-1)}
             disabled={!canGoPrev || !currentFileId}
             data-testid="prev-date-btn"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="relative w-[min(420px,50vw)] min-w-[280px]">
+          <div className="relative min-w-[200px] w-[min(420px,45vw)]">
             <select
               className="w-full h-7 px-3 pr-8 rounded-md border border-input bg-background text-sm font-medium appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring"
               value={currentDateIndex}
@@ -850,7 +702,6 @@ export function ScoringPage() {
             </select>
             {currentDate && (() => {
               const st = dateStatusMap.get(currentDate);
-              // Dot intentionally reflects marker state only.
               if (st?.is_no_sleep) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-amber-500" title="No sleep" />;
               if (st?.has_markers) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green-500" title="Has markers" />;
               return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-muted-foreground/30" title="No markers" />;
@@ -860,7 +711,7 @@ export function ScoringPage() {
           <Button
             variant="outline"
             size="icon"
-            className="h-7 w-7"
+            className="h-7 w-7 shrink-0"
             onClick={() => navigateDate(1)}
             disabled={!canGoNext || !currentFileId}
             data-testid="next-date-btn"
@@ -901,11 +752,173 @@ export function ScoringPage() {
           })()}
         </div>
 
-        {/* Right: Marker editor + Save/Clear */}
-        <div className="min-w-0 flex flex-wrap items-center gap-3 justify-self-end">
-          {/* Marker times display */}
+        {/* Controls row — semantic groups as atomic units, wraps naturally */}
+        <div className="px-4 py-1.5 border-t border-border/40 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+          {/* Group A: Mode — Sleep, Nonwear, No Sleep */}
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              variant={markerMode === "sleep" ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs px-2.5"
+              onClick={() => setMarkerMode("sleep")}
+              title={isNoSleep ? "Place nap markers (no main sleep)" : undefined}
+            >
+              <Moon className="h-3.5 w-3.5 mr-1" />
+              {isNoSleep ? "Nap" : "Sleep"}
+            </Button>
+            <Button
+              variant={markerMode === "nonwear" ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs px-2.5"
+              onClick={() => setMarkerMode("nonwear")}
+            >
+              <Watch className="h-3.5 w-3.5 mr-1" />
+              Nonwear
+            </Button>
+            <Button
+              variant={isNoSleep ? "default" : "outline"}
+              size="sm"
+              className={`h-7 text-xs px-2.5 ${isNoSleep ? "bg-amber-600 hover:bg-amber-700" : ""}`}
+              onClick={async () => {
+                const state = useSleepScoringStore.getState();
+                if (!state.isNoSleep) {
+                  const hasMainSleep = state.sleepMarkers.some(m => m.markerType === MARKER_TYPES.MAIN_SLEEP);
+                  if (hasMainSleep) {
+                    const ok = await confirm({ title: "No Sleep", description: "Marking as 'No Sleep' will clear main sleep markers. Nap markers will be preserved. Continue?", variant: "destructive", confirmLabel: "Clear & Mark" });
+                    if (!ok) return;
+                  }
+                  useSleepScoringStore.getState().setIsNoSleep(true);
+                } else {
+                  state.setIsNoSleep(false);
+                }
+              }}
+              title={isNoSleep ? "Click to allow main sleep markers" : "Mark this date as having no main sleep"}
+            >
+              <Ban className="h-3.5 w-3.5 mr-1" />
+              No Sleep
+            </Button>
+          </div>
+
+          <div className="h-5 w-px bg-border/40 shrink-0" />
+
+          {/* Group B: Consensus + Notes */}
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant={needsConsensus ? "default" : "outline"}
+              size="sm"
+              className={`h-7 text-xs px-2.5 ${needsConsensus ? "bg-orange-600 hover:bg-orange-700" : ""}`}
+              onClick={() => setNeedsConsensus(!needsConsensus)}
+              title={needsConsensus ? "Remove consensus flag" : "Flag for consensus review"}
+              disabled={!currentFileId || !currentDate}
+            >
+              <Users className="h-3.5 w-3.5 mr-1" />
+              Consensus
+            </Button>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes..."
+              disabled={!currentFileId || !currentDate}
+              className="h-7 text-xs px-2 rounded-md border border-border bg-background w-[140px] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+              title="Annotation notes (auto-saved)"
+            />
+          </div>
+
+          <div className="h-5 w-px bg-border/40 shrink-0" />
+
+          {/* Group C: Auto Sleep (button + checkbox together) */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs px-2.5"
+              onClick={() => { autoScoreRef.current = false; autoScoreMutation.mutate(); }}
+              disabled={!currentFileId || !currentDate || autoScoreMutation.isPending || isNoSleep || hasNoDiary}
+              title={hasNoDiary ? "Cannot auto-score: no diary data for this date" : "Automatically detect and suggest sleep marker placements"}
+            >
+              {autoScoreMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              Auto Sleep
+            </Button>
+            <div className="flex items-center gap-1">
+              <Checkbox
+                checked={autoScoreOnNavigate}
+                onCheckedChange={(checked) => setAutoScoreOnNavigate(!!checked)}
+              />
+              <Label className="text-[11px] cursor-pointer" onClick={() => setAutoScoreOnNavigate(!autoScoreOnNavigate)}>
+                Auto
+              </Label>
+            </div>
+          </div>
+
+          {/* Group D: Auto Nonwear (button + checkbox together) */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs px-2.5"
+              onClick={() => { autoNonwearMutation.mutate(); }}
+              disabled={!currentFileId || !currentDate || autoNonwearMutation.isPending}
+              title="Automatically detect nonwear periods from diary + Choi/sensor signals"
+            >
+              {autoNonwearMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              Auto Nonwear
+            </Button>
+            <div className="flex items-center gap-1">
+              <Checkbox
+                checked={autoNonwearOnNavigate}
+                onCheckedChange={(checked) => useSleepScoringStore.getState().setAutoNonwearOnNavigate(!!checked)}
+              />
+              <Label className="text-[11px] cursor-pointer" onClick={() => useSleepScoringStore.getState().setAutoNonwearOnNavigate(!autoNonwearOnNavigate)}>
+                Auto
+              </Label>
+            </div>
+          </div>
+
+          <div className="h-5 w-px bg-border/40 shrink-0" />
+
+          {/* Group E: Display options (all checkboxes together) */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-1">
+              <Checkbox
+                checked={showAdjacentMarkers}
+                onCheckedChange={(checked) => setShowAdjacentMarkers(checked)}
+              />
+              <Label className="text-[11px] cursor-pointer" onClick={() => setShowAdjacentMarkers(!showAdjacentMarkers)}>
+                Adjacent
+              </Label>
+            </div>
+            <div className="flex items-center gap-1">
+              <Checkbox
+                checked={showComparisonMarkers}
+                onCheckedChange={(checked) => setShowComparisonMarkers(!!checked)}
+              />
+              <Label className="text-[11px] cursor-pointer" onClick={() => setShowComparisonMarkers(!showComparisonMarkers)}>
+                Compare
+              </Label>
+            </div>
+            <div className="flex items-center gap-1">
+              <Checkbox
+                checked={showNonwearOverlays}
+                onCheckedChange={(checked) => setShowNonwearOverlays(checked)}
+              />
+              <Label className="text-[11px] cursor-pointer" onClick={() => setShowNonwearOverlays(!showNonwearOverlays)}>
+                NW Overlays
+              </Label>
+            </div>
+          </div>
+
+          {/* Group F: Marker edit — Onset, Offset, Duration (always horizontal) */}
           {markerMode === "sleep" && selectedPeriodIndex !== null && sleepMarkers[selectedPeriodIndex] && (
-            <>
+            <div className="flex items-center gap-2 shrink-0">
               <div className="flex items-center gap-1.5">
                 <Label className="text-xs font-semibold">Onset:</Label>
                 <Input
@@ -950,50 +963,29 @@ export function ScoringPage() {
                   }}
                 />
               </div>
-              <span className="text-xs font-medium">
+              <span className="text-xs font-medium tabular-nums">
                 {formatDuration(sleepMarkers[selectedPeriodIndex].onsetTimestamp, sleepMarkers[selectedPeriodIndex].offsetTimestamp)}
               </span>
-            </>
+            </div>
           )}
           {markerMode === "nonwear" && selectedPeriodIndex !== null && nonwearMarkers[selectedPeriodIndex] && (
-            <>
-              <span className="text-xs">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs tabular-nums">
                 {formatTime(nonwearMarkers[selectedPeriodIndex].startTimestamp)}–{formatTime(nonwearMarkers[selectedPeriodIndex].endTimestamp)}
               </span>
-              <span className="text-xs font-medium">
+              <span className="text-xs font-medium tabular-nums">
                 {formatDuration(nonwearMarkers[selectedPeriodIndex].startTimestamp, nonwearMarkers[selectedPeriodIndex].endTimestamp)}
               </span>
-              <div className="h-4 w-px bg-border" />
-            </>
+            </div>
           )}
 
-          {/* Save status */}
-          {isSaving ? (
-            <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Saving
-            </span>
-          ) : saveError ? (
-            <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400" title={saveError}>
-              <AlertCircle className="h-3 w-3" />
-              Save failed
-            </span>
-          ) : isDirty ? (
-            <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-muted border border-border text-muted-foreground">
-              <CircleDot className="h-3 w-3" />
-              Unsaved
-            </span>
-          ) : (sleepMarkers.length > 0 || nonwearMarkers.length > 0) ? (
-            <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400">
-              <Check className="h-3 w-3" />
-              Saved
-            </span>
-          ) : null}
+          <div className="h-5 w-px bg-border/40 shrink-0" />
 
+          {/* Group G: Clear */}
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs text-destructive border-destructive/50 hover:bg-destructive/10"
+            className="h-7 text-xs text-destructive border-destructive/50 hover:bg-destructive/10 shrink-0"
             onClick={async () => {
               const ok = await confirm({ title: "Clear Markers", description: "Clear all markers for this date?", variant: "destructive", confirmLabel: "Clear All" });
               if (ok) {
@@ -1004,6 +996,20 @@ export function ScoringPage() {
             <Trash2 className="h-3.5 w-3.5 mr-1" />
             Clear
           </Button>
+
+          {/* Creation mode indicator */}
+          {creationMode !== "idle" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-[11px] px-2.5 shrink-0 border-amber-400/40 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-300 dark:bg-amber-500/10"
+              title={`Click plot to set ${creationMode === "placing_onset" ? "offset" : "onset"}. Click to cancel.`}
+              onClick={cancelMarkerCreation}
+            >
+              <X className="h-3 w-3 mr-1" />
+              {creationMode === "placing_onset" ? "Set Offset" : "Set Onset"}
+            </Button>
+          )}
         </div>
       </div>
 

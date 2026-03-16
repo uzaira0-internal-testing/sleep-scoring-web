@@ -22,7 +22,7 @@ from sleep_scoring_web.api.access import require_file_access, require_file_and_a
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
 from sleep_scoring_web.db.models import ConsensusCandidate, DiaryEntry, Marker, RawActivityData, SleepMetric, UserAnnotation
 from sleep_scoring_web.db.models import File as FileModel
-from sleep_scoring_web.schemas import ManualNonwearPeriod, MarkerUpdateRequest, SleepMetrics, SleepPeriod
+from sleep_scoring_web.schemas import ManualNonwearPeriod, MarkerDeleteResponse, MarkerUpdateRequest, SleepMetrics, SleepPeriod
 from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, MarkerType, VerificationStatus
 from sleep_scoring_web.services.consensus import compute_candidate_hash
 from sleep_scoring_web.services.consensus_realtime import broadcast_consensus_update
@@ -205,7 +205,7 @@ class SaveStatusResponse(BaseModel):
 # =============================================================================
 
 
-@router.get("/{file_id}/{analysis_date}")
+@router.get("/{file_id}/{analysis_date}", response_model=MarkersWithMetricsResponse)
 async def get_markers(
     file_id: int,
     analysis_date: date,
@@ -486,7 +486,7 @@ async def get_markers(
     )
 
 
-@router.put("/{file_id}/{analysis_date}")
+@router.put("/{file_id}/{analysis_date}", response_model=SaveStatusResponse)
 async def save_markers(
     file_id: int,
     analysis_date: date,
@@ -618,7 +618,7 @@ async def save_markers(
     )
 
 
-@router.delete("/{file_id}/{analysis_date}/{period_index}")
+@router.delete("/{file_id}/{analysis_date}/{period_index}", response_model=MarkerDeleteResponse)
 async def delete_marker(
     file_id: int,
     analysis_date: date,
@@ -627,7 +627,7 @@ async def delete_marker(
     _: VerifiedPassword,
     username: Username,
     marker_category: Annotated[MarkerCategory, Query()] = MarkerCategory.SLEEP,
-) -> dict[str, Any]:
+) -> MarkerDeleteResponse:
     """Delete a specific marker period."""
     await require_file_access(db, username, file_id)
 
@@ -647,7 +647,7 @@ async def delete_marker(
     if result.rowcount == 0:  # type: ignore[union-attr]
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Marker not found")
 
-    return {"deleted": True, "period_index": period_index}
+    return MarkerDeleteResponse(deleted=True, period_index=period_index)
 
 
 # =============================================================================
@@ -664,7 +664,7 @@ class AdjacentDayMarkersResponse(BaseModel):
     next_date: date | None = None
 
 
-@router.get("/{file_id}/{analysis_date}/adjacent")
+@router.get("/{file_id}/{analysis_date}/adjacent", response_model=AdjacentDayMarkersResponse)
 async def get_adjacent_day_markers(
     file_id: int,
     analysis_date: date,

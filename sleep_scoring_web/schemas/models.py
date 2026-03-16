@@ -461,6 +461,175 @@ class DateStatus(BaseModel):
     complexity_post: float | None = None
 
 
+# =============================================================================
+# API Response Models (typed replacements for raw dict returns)
+# =============================================================================
+
+
+class FileListResponse(BaseModel):
+    """Response for listing files."""
+
+    items: list[FileInfo]
+    total: int
+
+
+class AuthMeResponse(BaseModel):
+    """Response for GET /files/auth/me."""
+
+    username: str
+    is_admin: bool
+
+
+class FileAssignmentResponse(BaseModel):
+    """Single file assignment entry."""
+
+    id: int
+    file_id: int
+    filename: str
+    username: str
+    assigned_by: str
+    assigned_at: str | None = None
+
+
+class CreateAssignmentsResponse(BaseModel):
+    """Response for POST /files/assignments."""
+
+    created: int
+    total_requested: int
+
+
+class DeleteResponse(BaseModel):
+    """Generic response for delete operations returning a count."""
+
+    deleted: int
+
+
+class AssignmentProgressFile(BaseModel):
+    """Per-file progress within an assignment progress entry."""
+
+    file_id: int
+    filename: str
+    total_dates: int
+    scored_dates: int
+    assigned_at: str | None = None
+
+
+class AssignmentProgressResponse(BaseModel):
+    """Per-user assignment progress."""
+
+    username: str
+    files: list[AssignmentProgressFile]
+    total_files: int
+    total_dates: int
+    scored_dates: int
+
+
+class UnassignedFileResponse(BaseModel):
+    """A file with no assignments."""
+
+    id: int
+    filename: str
+    participant_id: str | None = None
+    status: str
+
+
+class PurgeExcludedResponse(BaseModel):
+    """Response for POST /files/purge-excluded."""
+
+    deleted_count: int
+    deleted_filenames: list[str]
+
+
+class BackfillResponse(BaseModel):
+    """Response for POST /files/backfill-participant-ids."""
+
+    updated: int
+    total_files: int
+
+
+class ComputeComplexityResponse(BaseModel):
+    """Response for POST /files/{file_id}/compute-complexity."""
+
+    message: str
+    date_count: int
+
+
+class NightComplexityResponse(BaseModel):
+    """Response for GET /files/{file_id}/{date}/complexity."""
+
+    complexity_pre: int | None = None
+    complexity_post: int | None = None
+    features: dict[str, float | str | None]
+    computed_at: str | None = None
+
+
+class DeleteAllFilesResponse(BaseModel):
+    """Response for DELETE /files."""
+
+    message: str
+    deleted_count: int
+
+
+class ScanStartResponse(BaseModel):
+    """Response for POST /files/scan."""
+
+    message: str
+    started: bool
+    total_files: int
+    status_url: str | None = None
+
+
+class ScanStatusResponse(BaseModel):
+    """Response for GET /files/scan/status."""
+
+    is_running: bool
+    total_files: int
+    processed: int
+    imported: int
+    skipped: int
+    failed: int
+    current_file: str
+    progress_percent: float
+    imported_files: list[str]
+    error: str | None = None
+
+
+class WatcherStatusResponse(BaseModel):
+    """Response for GET /files/watcher/status."""
+
+    is_running: bool
+    watched_directory: str
+    total_ingested: int
+    total_skipped: int
+    total_failed: int
+    pending_files: list[str]
+    last_scan_time: str | None = None
+    recent_errors: list[str]
+
+
+class MarkerDeleteResponse(BaseModel):
+    """Response for DELETE /markers/{file_id}/{date}/{period_index}."""
+
+    deleted: bool
+    period_index: int
+
+
+class AutoScoreResultResponse(BaseModel):
+    """Response for GET /markers/{file_id}/{date}/auto-score-result."""
+
+    sleep_markers: list[dict[str, Any]]
+    nonwear_markers: list[dict[str, Any]]
+    algorithm_used: str | None = None
+    notes: str | None = None
+
+
+class PipelineDiscoveryResponse(BaseModel):
+    """Response for GET /markers/pipeline/discover."""
+
+    roles: dict[str, list[str]]
+    param_schemas: dict[str, dict[str, Any]]
+
+
 # NOTE: Consensus ballot models live in api/consensus.py (CandidateVoteSummary,
 # ConsensusBallotResponse) and are already exposed in the OpenAPI schema via
 # response_model annotations on the ballot endpoints.

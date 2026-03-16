@@ -704,7 +704,7 @@ async def cast_consensus_vote(
     )
 
 
-@router.post("/{file_id}/{analysis_date}/resolve")
+@router.post("/{file_id}/{analysis_date}/resolve", response_model=ResolvedAnnotationResponse)
 async def resolve_consensus(
     file_id: int,
     analysis_date: date,

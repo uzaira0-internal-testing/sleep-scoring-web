@@ -95,7 +95,7 @@ def get_default_settings() -> UserSettingsResponse:
 # =============================================================================
 
 
-@router.get("")
+@router.get("", response_model=UserSettingsResponse)
 async def get_settings(
     db: DbSession,
     _: VerifiedPassword,
@@ -153,7 +153,7 @@ async def get_settings(
     )
 
 
-@router.put("")
+@router.put("", response_model=UserSettingsResponse)
 async def update_settings(
     settings_data: UserSettingsUpdate,
     db: DbSession,
@@ -286,7 +286,7 @@ class StudySettingsUpdate(BaseModel):
     extra_settings: dict[str, Any] | None = None
 
 
-@router.get("/study")
+@router.get("/study", response_model=StudySettingsResponse)
 async def get_study_settings(
     db: DbSession,
     _: VerifiedPassword,
@@ -320,7 +320,7 @@ async def get_study_settings(
     )
 
 
-@router.put("/study")
+@router.put("/study", response_model=StudySettingsResponse)
 async def update_study_settings(
     settings_data: StudySettingsUpdate,
     db: DbSession,

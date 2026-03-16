@@ -24,6 +24,7 @@ from sleep_scoring_web.api.markers import (
 )
 from sleep_scoring_web.db.models import DiaryEntry, Marker, RawActivityData, UserAnnotation
 from sleep_scoring_web.db.models import File as FileModel
+from sleep_scoring_web.schemas import AutoScoreResultResponse, PipelineDiscoveryResponse
 from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, VerificationStatus
 from sleep_scoring_web.schemas.pipeline import PipelineConfigRequest
 from sleep_scoring_web.services.consensus_realtime import broadcast_consensus_update
@@ -463,7 +464,7 @@ async def _run_auto_score_batch(
 # =============================================================================
 
 
-@router.post("/auto-score/batch")
+@router.post("/auto-score/batch", response_model=AutoScoreBatchStatusResponse)
 async def start_auto_score_batch(
     request: AutoScoreBatchRequest,
     db: DbSession,
@@ -501,7 +502,7 @@ async def start_auto_score_batch(
         return _serialize_auto_score_batch_state()
 
 
-@router.get("/auto-score/batch/status")
+@router.get("/auto-score/batch/status", response_model=AutoScoreBatchStatusResponse)
 async def get_auto_score_batch_status(
     _: VerifiedPassword,
 ) -> AutoScoreBatchStatusResponse:
@@ -509,7 +510,7 @@ async def get_auto_score_batch_status(
     return _serialize_auto_score_batch_state()
 
 
-@router.post("/{file_id}/{analysis_date}/auto-score")
+@router.post("/{file_id}/{analysis_date}/auto-score", response_model=AutoScoreResponse)
 async def auto_score_markers(
     file_id: int,
     analysis_date: date,
@@ -543,14 +544,14 @@ async def auto_score_markers(
     )
 
 
-@router.get("/{file_id}/{analysis_date}/auto-score-result")
+@router.get("/{file_id}/{analysis_date}/auto-score-result", response_model=AutoScoreResultResponse)
 async def get_auto_score_result(
     file_id: int,
     analysis_date: date,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
-) -> dict[str, Any]:
+) -> AutoScoreResultResponse:
     """
     Get the auto_score user's saved annotation for this file/date.
 
@@ -572,15 +573,15 @@ async def get_auto_score_result(
     if not annotation or not annotation.sleep_markers_json:
         raise HTTPException(status_code=404, detail="No auto-score result for this date")
 
-    return {
-        "sleep_markers": annotation.sleep_markers_json,
-        "nonwear_markers": annotation.nonwear_markers_json or [],
-        "algorithm_used": annotation.algorithm_used,
-        "notes": annotation.notes,
-    }
+    return AutoScoreResultResponse(
+        sleep_markers=annotation.sleep_markers_json,
+        nonwear_markers=annotation.nonwear_markers_json or [],
+        algorithm_used=annotation.algorithm_used,
+        notes=annotation.notes,
+    )
 
 
-@router.post("/{file_id}/{analysis_date}/auto-nonwear")
+@router.post("/{file_id}/{analysis_date}/auto-nonwear", response_model=AutoNonwearResponse)
 async def auto_nonwear_markers(
     file_id: int,
     analysis_date: date,
@@ -716,19 +717,19 @@ async def auto_nonwear_markers(
 # =============================================================================
 
 
-@router.get("/pipeline/discover")
+@router.get("/pipeline/discover", response_model=PipelineDiscoveryResponse)
 async def discover_pipeline(
     _: VerifiedPassword,
-) -> dict[str, Any]:
+) -> PipelineDiscoveryResponse:
     """Return available pipeline components per role and their parameter schemas."""
     from sleep_scoring_web.schemas.pipeline import PARAM_JSON_SCHEMAS
     from sleep_scoring_web.services.pipeline import describe_pipeline
 
     roles = describe_pipeline()
-    return {"roles": roles, "param_schemas": PARAM_JSON_SCHEMAS}
+    return PipelineDiscoveryResponse(roles=roles, param_schemas=PARAM_JSON_SCHEMAS)
 
 
-@router.post("/{file_id}/{analysis_date}/auto-score-v2")
+@router.post("/{file_id}/{analysis_date}/auto-score-v2", response_model=AutoScoreResponse)
 async def auto_score_v2(
     file_id: int,
     analysis_date: date,

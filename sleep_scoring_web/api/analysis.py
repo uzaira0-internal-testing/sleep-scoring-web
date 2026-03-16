@@ -42,7 +42,7 @@ class AnalysisSummaryResponse(BaseModel):
     aggregate_metrics: AggregateMetrics = Field(default_factory=AggregateMetrics)
 
 
-@router.get("/summary")
+@router.get("/summary", response_model=AnalysisSummaryResponse)
 async def get_analysis_summary(
     db: DbSession,
     _: VerifiedPassword,

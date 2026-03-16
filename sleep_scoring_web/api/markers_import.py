@@ -61,7 +61,7 @@ class NonwearUploadResponse(BaseModel):
     ambiguous_identifiers: list[str] = Field(default_factory=list)
 
 
-@router.post("/nonwear/upload")
+@router.post("/nonwear/upload", response_model=NonwearUploadResponse)
 async def upload_nonwear_csv(
     file: Annotated[UploadFile, File(description="Nonwear CSV file")],
     db: DbSession,
@@ -85,7 +85,7 @@ async def upload_nonwear_csv(
     return await _process_nonwear_csv(file, db, username, file_id=None)
 
 
-@router.post("/{file_id}/nonwear/upload")
+@router.post("/{file_id}/nonwear/upload", response_model=NonwearUploadResponse)
 async def upload_nonwear_csv_for_file(
     file_id: int,
     file: Annotated[UploadFile, File(description="Nonwear CSV file")],
@@ -564,7 +564,7 @@ class SleepImportResponse(BaseModel):
     ambiguous_identifiers: list[str] = Field(default_factory=list)
 
 
-@router.post("/sleep/upload")
+@router.post("/sleep/upload", response_model=SleepImportResponse)
 async def upload_sleep_csv(
     file: Annotated[UploadFile, File(description="Desktop sleep marker CSV export")],
     background_tasks: BackgroundTasks,

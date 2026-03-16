@@ -159,7 +159,7 @@ class DiaryUploadResponse(BaseModel):
 # =============================================================================
 
 
-@router.get("/{file_id}")
+@router.get("/{file_id}", response_model=list[DiaryEntryResponse])
 async def list_diary_entries(
     file_id: int,
     db: DbSession,
@@ -205,7 +205,7 @@ async def get_diary_entry(
     return DiaryEntryResponse.model_validate(entry)
 
 
-@router.put("/{file_id}/{analysis_date}")
+@router.put("/{file_id}/{analysis_date}", response_model=DiaryEntryResponse)
 async def update_diary_entry(
     file_id: int,
     analysis_date: date,
@@ -282,7 +282,7 @@ async def delete_diary_entry(
     await db.commit()
 
 
-@router.post("/upload")
+@router.post("/upload", response_model=DiaryUploadResponse)
 async def upload_diary_csv(
     file: UploadFile,
     background_tasks: BackgroundTasks,
@@ -550,7 +550,7 @@ async def upload_diary_csv(
     )
 
 
-@router.post("/{file_id}/upload")
+@router.post("/{file_id}/upload", response_model=DiaryUploadResponse)
 async def upload_diary_csv_for_file(
     file_id: int,
     file: UploadFile,

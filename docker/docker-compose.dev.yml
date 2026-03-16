@@ -70,7 +70,7 @@ services:
       # Application
       PYTHONUNBUFFERED: 1
       DEBUG: "true"
-      CORS_ORIGINS: '["http://localhost:5173", "http://localhost:5180", "http://localhost:8501", "http://127.0.0.1:5173"]'
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:5180,http://localhost:8501,http://127.0.0.1:5173"
     volumes:
       # Mount source code for hot reloading
       - ../sleep_scoring_web:/app/sleep_scoring_web:ro
