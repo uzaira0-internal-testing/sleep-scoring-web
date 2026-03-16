@@ -1000,19 +1000,28 @@ async def get_file_dates_status(
     """Get dates with per-user annotation status, auto-score availability, and complexity."""
     from sleep_scoring_web.db.models import NightComplexity, UserAnnotation
 
-    from sleep_scoring_web.api.access import require_file_and_access
+    from sleep_scoring_web.api.access import is_admin_user
     from sqlalchemy import text
 
-    await require_file_and_access(db, username, file_id)
-
-    # Single raw SQL query: get dates with annotation status, auto-score, and complexity
-    # Uses LEFT JOINs to combine what was previously 5 serial queries into 1 round-trip.
-    # The CTE first computes activity dates, then filters by diary if diary exists.
+    # Single raw SQL query: file access check + dates + annotations + complexity
+    # Folds file existence + access check + 5 data queries into a single DB round-trip.
+    # Returns empty result set when file doesn't exist or user lacks access.
     raw_sql = text("""
-        WITH activity_dates AS (
+        WITH file_check AS (
+            SELECT id, filename FROM files WHERE id = :file_id
+        ),
+        access_check AS (
+            SELECT 1 AS ok WHERE (
+                :is_admin = true
+                OR EXISTS(SELECT 1 FROM file_assignments WHERE file_id = :file_id AND username = :username)
+            )
+        ),
+        activity_dates AS (
             SELECT DISTINCT date(timestamp) AS d
             FROM raw_activity_data
             WHERE file_id = :file_id
+              AND EXISTS(SELECT 1 FROM file_check)
+              AND EXISTS(SELECT 1 FROM access_check)
         ),
         diary_dates AS (
             SELECT analysis_date AS d FROM diary_entries WHERE file_id = :file_id
@@ -1044,8 +1053,25 @@ async def get_file_dates_status(
         ORDER BY fd.d
     """)
 
-    result = await db.execute(raw_sql, {"file_id": file_id, "username": username})
+    result = await db.execute(raw_sql, {
+        "file_id": file_id,
+        "username": username,
+        "is_admin": is_admin_user(username),
+    })
     rows = result.fetchall()
+
+    # If no rows returned, check whether the file exists or user lacks access
+    if not rows:
+        file_result = await db.execute(select(FileModel).where(FileModel.id == file_id))
+        file = file_result.scalar_one_or_none()
+        if not file or is_excluded_file_obj(file):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        if not is_admin_user(username):
+            from sleep_scoring_web.db.models import FileAssignment as FA
+            access_result = await db.execute(select(FA.id).where(FA.file_id == file_id, FA.username == username))
+            if access_result.scalar_one_or_none() is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        # File exists and is accessible but has no activity data — return empty list
 
     # Check if any dates are missing complexity — auto-compute if needed
     missing_complexity_dates = [row.date for row in rows if row.complexity_pre is None]
