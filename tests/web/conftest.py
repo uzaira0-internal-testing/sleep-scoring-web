@@ -80,15 +80,17 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     loop.close()
 
 
-@pytest_asyncio.fixture(scope="function")
-async def test_engine():
-    """Create a test database engine using in-memory SQLite."""
+@pytest_asyncio.fixture(scope="session")
+async def _shared_engine():
+    """Create a shared test database engine (session-scoped, created once)."""
     from sqlalchemy import event
+    from sqlalchemy.pool import StaticPool
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         echo=False,
         future=True,
+        poolclass=StaticPool,
     )
 
     # Enable foreign key enforcement (SQLite has it OFF by default)
@@ -98,28 +100,43 @@ async def test_engine():
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-    # Create all tables
+    # Create all tables once
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
-    # Cleanup
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 
-@pytest_asyncio.fixture(scope="function")
-async def test_session_maker(test_engine):
-    """Create a session maker for the test database."""
+@pytest_asyncio.fixture(scope="session")
+async def _shared_session_maker(_shared_engine):
+    """Session factory bound to the shared engine (session-scoped)."""
     return async_sessionmaker(
-        test_engine,
+        _shared_engine,
         class_=AsyncSession,
         expire_on_commit=False,
         autocommit=False,
         autoflush=False,
     )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_engine(_shared_engine, _shared_session_maker):
+    """Provide the shared engine, cleaning up data after each test."""
+    yield _shared_engine
+
+    # Delete all rows in reverse dependency order for test isolation
+    async with _shared_session_maker() as session:
+        for table in reversed(Base.metadata.sorted_tables):
+            await session.execute(table.delete())
+        await session.commit()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_session_maker(test_engine, _shared_session_maker):
+    """Create a session maker for the test database."""
+    return _shared_session_maker
 
 
 @pytest_asyncio.fixture(scope="function")
