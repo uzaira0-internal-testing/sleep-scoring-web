@@ -195,6 +195,15 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
     }
   }, [selectedPeriodIndex, isSleepMode, type, updateMarker]);
 
+  const markerRowStyle = useMemo(() => {
+    const color = isSleepMode ? colorTheme.sleepOverlay : colorTheme.nonwear;
+    return {
+      backgroundColor: hexToRgba(color, 0.25),
+      borderLeft: `3px solid ${color}`,
+      boxShadow: `inset 0 0 0 1px ${hexToRgba(color, 0.3)}`,
+    } as const;
+  }, [isSleepMode, colorTheme.sleepOverlay, colorTheme.nonwear]);
+
   // Empty / Loading states
   if (selectedPeriodIndex === null) {
     return (
@@ -241,15 +250,6 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
       </div>
     );
   }
-
-  const markerRowStyle = useMemo(() => {
-    const color = isSleepMode ? colorTheme.sleepOverlay : colorTheme.nonwear;
-    return {
-      backgroundColor: hexToRgba(color, 0.25),
-      borderLeft: `3px solid ${color}`,
-      boxShadow: `inset 0 0 0 1px ${hexToRgba(color, 0.3)}`,
-    } as const;
-  }, [isSleepMode, colorTheme.sleepOverlay, colorTheme.nonwear]);
 
   return (
     <div className="h-full flex flex-col">
