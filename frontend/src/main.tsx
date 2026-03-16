@@ -4,13 +4,14 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { appendErrorLog } from "@/lib/error-log";
-import { initSentry } from "@/lib/sentry";
 import { queryClient } from "@/query-client";
 import App from "./App";
 import "./index.css";
 
-// Initialize Sentry before React render (no-op if VITE_SENTRY_DSN not set)
-initSentry();
+// Lazy-load Sentry only when DSN is configured (saves ~28KB from initial bundle)
+if (import.meta.env.VITE_SENTRY_DSN) {
+  import("@/lib/sentry").then(({ initSentry }) => initSentry());
+}
 
 // Global unhandled error/rejection logging (persists to localStorage)
 window.addEventListener("error", (event) => {
