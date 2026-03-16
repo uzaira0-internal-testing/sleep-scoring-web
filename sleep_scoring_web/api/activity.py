@@ -8,12 +8,13 @@ because FastAPI's dependency injection needs actual types, not string
 annotations. Using Annotated types requires runtime resolution.
 """
 
+import calendar
 import hashlib
 from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, distinct, func, select
 
 from sleep_scoring_web.api.access import require_file_access, require_file_and_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
@@ -181,52 +182,116 @@ async def get_activity_data_with_scoring(
     # Parse requested fields
     requested_fields = set(fields.split(",")) if fields else None
 
-    # Get base activity data
-    response = await get_activity_data(file_id, analysis_date, db, "", username, view_hours)
+    # --- Inline activity data fetch (avoids redundant file/access queries) ---
 
-    # Strip optional axes if not requested
-    if requested_fields is not None:
-        if "axis_x" not in requested_fields:
-            response.data.axis_x = []
-        if "axis_z" not in requested_fields:
-            response.data.axis_z = []
-        if "available_dates" not in requested_fields:
-            response.available_dates = []
+    # Calculate time window
+    if view_hours == 48:
+        start_time = datetime.combine(analysis_date, datetime.min.time())
+        end_time = start_time + timedelta(hours=48)
+    else:
+        start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
+        end_time = start_time + timedelta(hours=24)
+
+    # Select only needed columns instead of full ORM load
+    need_axis_x = requested_fields is None or "axis_x" in requested_fields
+    need_axis_z = requested_fields is None or "axis_z" in requested_fields
+
+    columns = [RawActivityData.timestamp, RawActivityData.axis_y, RawActivityData.vector_magnitude]
+    if need_axis_x:
+        columns.append(RawActivityData.axis_x)
+    if need_axis_z:
+        columns.append(RawActivityData.axis_z)
+
+    result = await db.execute(
+        select(*columns)
+        .where(
+            and_(
+                RawActivityData.file_id == file_id,
+                RawActivityData.timestamp >= start_time,
+                RawActivityData.timestamp < end_time,
+            )
+        )
+        .order_by(RawActivityData.timestamp)
+    )
+    activity_rows = result.all()
+
+    # Convert to columnar format
+    timestamps: list[float] = []
+    axis_x_list: list[float] = []
+    axis_y_list: list[float] = []
+    axis_z_list: list[float] = []
+    vm_list: list[float] = []
+
+    for row in activity_rows:
+        timestamps.append(naive_to_unix(row.timestamp))
+        axis_y_list.append(row.axis_y or 0)
+        vm_list.append(row.vector_magnitude or 0)
+        if need_axis_x:
+            axis_x_list.append(row.axis_x or 0)
+        if need_axis_z:
+            axis_z_list.append(row.axis_z or 0)
+
+    columnar_data = ActivityDataColumnar(
+        timestamps=timestamps,
+        axis_x=axis_x_list,
+        axis_y=axis_y_list,
+        axis_z=axis_z_list,
+        vector_magnitude=vm_list,
+    )
+
+    # Only run available_dates full-table scan when requested
+    need_dates = requested_fields is None or "available_dates" in requested_fields
+    available_dates: list[str] = []
+    current_date_index = 0
+    if need_dates:
+        dates_result = await db.execute(
+            select(distinct(func.date(RawActivityData.timestamp)))
+            .where(RawActivityData.file_id == file_id)
+            .order_by(func.date(RawActivityData.timestamp))
+        )
+        available_dates = [str(d) for d in dates_result.scalars().all()]
+        current_date_str = str(analysis_date)
+        current_date_index = available_dates.index(current_date_str) if current_date_str in available_dates else 0
+
+    view_start = naive_to_unix(start_time)
+    view_end = naive_to_unix(end_time)
+
+    response = ActivityDataResponse(
+        data=columnar_data,
+        available_dates=available_dates,
+        current_date_index=current_date_index,
+        file_id=file_id,
+        analysis_date=str(analysis_date),
+        view_start=view_start,
+        view_end=view_end,
+    )
 
     # Run sleep scoring algorithm on the data
-    if response.data.axis_y:
+    if axis_y_list:
         scorer = create_algorithm(algorithm)
-        results = scorer.score(response.data.axis_y)
-        response.algorithm_results = results
+        response.algorithm_results = scorer.score(axis_y_list)
 
-        # Run Choi nonwear detection using user's preferred column (or default
-        # vector_magnitude) — same column as the table endpoints for consistency.
+        # Run Choi nonwear detection
         from sleep_scoring_web.services.choi_helpers import extract_choi_input_from_columnar
 
         choi = ChoiAlgorithm()
         choi_input = extract_choi_input_from_columnar(response.data, choi_column)
         response.nonwear_results = choi.detect_mask(choi_input)
 
-    # Query uploaded sensor nonwear periods (marker_type="sensor") — separate from manual markers.
-    # Use timestamp overlap with the view window instead of analysis_date so sensor
-    # nonwear always displays regardless of which date the marker was stored under.
+    # Query uploaded sensor nonwear periods using column projection
     sensor_nw_result = await db.execute(
-        select(Marker).where(
+        select(Marker.start_timestamp, Marker.end_timestamp).where(
             and_(
                 Marker.file_id == file_id,
                 Marker.sensor_nonwear_filter(),
-                Marker.start_timestamp <= response.view_end,
-                Marker.end_timestamp >= response.view_start,
+                Marker.start_timestamp <= view_end,
+                Marker.end_timestamp >= view_start,
             )
         )
     )
-    sensor_nw_markers = sensor_nw_result.scalars().all()
     response.sensor_nonwear_periods = [
-        SensorNonwearPeriod(
-            start_timestamp=m.start_timestamp,
-            end_timestamp=m.end_timestamp,
-        )
-        for m in sensor_nw_markers
+        SensorNonwearPeriod(start_timestamp=row.start_timestamp, end_timestamp=row.end_timestamp)
+        for row in sensor_nw_result.all()
     ]
 
     # Set caching headers — ETag + short max-age for browser cache
