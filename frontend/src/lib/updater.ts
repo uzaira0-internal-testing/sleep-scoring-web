@@ -19,6 +19,7 @@ export interface UpdateProgress {
 
 export async function relaunchApp(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // @ts-expect-error Tauri plugin only available in desktop builds
   const { relaunch } = (await import("@tauri-apps/plugin-process")) as any;
   await relaunch();
 }

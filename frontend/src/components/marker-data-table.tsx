@@ -130,8 +130,8 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
         const result = await buildLocalTableData(currentFileId, currentDate, onsetTs, offsetTs, 100);
         if (!result) return null;
         return {
-          onset_data: toColumnar(result.onset_data),
-          offset_data: toColumnar(result.offset_data),
+          onset_data: toColumnar(result.onset_data ?? []),
+          offset_data: toColumnar(result.offset_data ?? []),
           period_index: result.period_index,
         };
       }

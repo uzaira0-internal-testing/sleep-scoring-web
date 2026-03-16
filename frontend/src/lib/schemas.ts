@@ -32,12 +32,8 @@ export const NonwearDataSourceSchema = z.enum(["choi_algorithm", "manual"]);
 
 /** Login form — site password + username */
 export const LoginFormSchema = z.object({
-  password: z.string().optional().default(""),
-  username: z
-    .string()
-    .max(100, "Username must be 100 characters or fewer")
-    .optional()
-    .default(""),
+  password: z.string(),
+  username: z.string().max(100, "Username must be 100 characters or fewer"),
 });
 export type LoginFormValues = z.infer<typeof LoginFormSchema>;
 

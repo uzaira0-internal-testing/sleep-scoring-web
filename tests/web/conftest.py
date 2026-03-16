@@ -15,6 +15,23 @@ from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from typing import Any
 
+# ── Set env vars BEFORE any app imports so Settings() reads them ─────
+# These must be set at module level, before `from sleep_scoring_web.main import app`
+# triggers get_settings() and caches the Settings singleton.
+_tmp_uploads = tempfile.mkdtemp(prefix="test_session_uploads_")
+_tmp_tus = tempfile.mkdtemp(prefix="test_session_tus_")
+_tmp_data = tempfile.mkdtemp(prefix="test_session_data_")
+_original_env = {
+    "UPLOAD_DIR": os.environ.get("UPLOAD_DIR"),
+    "TUS_UPLOAD_DIR": os.environ.get("TUS_UPLOAD_DIR"),
+    "DATA_DIR": os.environ.get("DATA_DIR"),
+    "SITE_PASSWORD": os.environ.get("SITE_PASSWORD"),
+}
+os.environ["UPLOAD_DIR"] = _tmp_uploads
+os.environ["TUS_UPLOAD_DIR"] = _tmp_tus
+os.environ["DATA_DIR"] = _tmp_data
+os.environ["SITE_PASSWORD"] = "testpass"
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -27,41 +44,16 @@ from sleep_scoring_web.schemas.enums import MarkerType
 
 @pytest.fixture(scope="session", autouse=True)
 def _patch_settings_dirs() -> Generator[None, None, None]:
-    """Patch settings directories to temp paths BEFORE any lifespan code runs.
+    """Ensure test temp dirs exist and clean up after the session.
 
-    Uses environment variables so the patch survives ``get_settings.cache_clear()``
-    (which test_schema_fuzzing.py calls at module level).  Env vars are read
-    fresh each time Settings() is instantiated, making this approach robust
-    against cache invalidation.
+    The actual env var patching happens at module level (above imports)
+    so that Settings() picks up test paths on first construction.
+    This fixture only handles cleanup.
     """
-    _tmp_uploads = tempfile.mkdtemp(prefix="test_session_uploads_")
-    _tmp_tus = tempfile.mkdtemp(prefix="test_session_tus_")
-    _tmp_data = tempfile.mkdtemp(prefix="test_session_data_")
-
-    original_env = {
-        "UPLOAD_DIR": os.environ.get("UPLOAD_DIR"),
-        "TUS_UPLOAD_DIR": os.environ.get("TUS_UPLOAD_DIR"),
-        "DATA_DIR": os.environ.get("DATA_DIR"),
-    }
-
-    os.environ["UPLOAD_DIR"] = _tmp_uploads
-    os.environ["TUS_UPLOAD_DIR"] = _tmp_tus
-    os.environ["DATA_DIR"] = _tmp_data
-
-    # Also patch the current settings object if already cached
-    try:
-        from sleep_scoring_web.config import get_settings
-        settings = get_settings()
-        settings.upload_dir = _tmp_uploads
-        settings.tus_upload_dir = _tmp_tus
-        settings.data_dir = _tmp_data
-    except Exception:  # noqa: BLE001
-        pass
-
     yield
 
     # Restore original env vars
-    for key, val in original_env.items():
+    for key, val in _original_env.items():
         if val is None:
             os.environ.pop(key, None)
         else:
