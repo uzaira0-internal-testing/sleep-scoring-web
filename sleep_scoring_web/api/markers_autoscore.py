@@ -646,7 +646,7 @@ async def auto_nonwear_markers(
     diary = diary_result.scalar_one_or_none()
     diary_nonwear: list[tuple[str | None, str | None]] = []
     if diary:
-        _, diary_nonwear = _extract_diary_periods(diary)
+        _, diary_nonwear = _extract_diary_periods(diary)  # pyright: ignore[reportAssignmentType]
 
     # Load sensor nonwear periods
     sensor_nw_result = await db.execute(

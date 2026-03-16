@@ -223,9 +223,7 @@ async def get_audit_summary(
     )
 
     # Total events
-    count_result = await db.execute(
-        sa_select(sa_func.count()).select_from(base.subquery())
-    )
+    count_result = await db.execute(sa_select(sa_func.count()).select_from(base.subquery()))
     total = count_result.scalar() or 0
 
     if total == 0:

@@ -1,4 +1,5 @@
 """Sentry SDK initialization for error tracking."""
+
 import logging
 import os
 
@@ -38,6 +39,7 @@ def _filter_events(event, hint):
         if exc_info is not None:
             _, exc_value, _ = exc_info
             from fastapi import HTTPException
+
             if isinstance(exc_value, HTTPException) and exc_value.status_code < 500:
                 return None
     except Exception:

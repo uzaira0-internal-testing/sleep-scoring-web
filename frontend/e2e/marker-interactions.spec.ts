@@ -180,6 +180,11 @@ test.describe("Marker Interactions", () => {
     await expect(onsetLine).toBeVisible({ timeout: 5000 });
     await expect(offsetLine).toBeVisible({ timeout: 5000 });
 
+    // Screenshot: marker selected with onset/offset lines visible
+    await expect(page).toHaveScreenshot("marker-selected-with-lines.png", {
+      maxDiffPixelRatio: 0.01,
+    });
+
     await assertPageHealthy(page);
   });
 
@@ -208,6 +213,11 @@ test.describe("Marker Interactions", () => {
     const afterBox = await onsetLine.boundingBox();
     expect(afterBox).toBeTruthy();
     expect(afterBox!.x).toBeGreaterThan(beforeBox!.x + 20);
+
+    // Screenshot: scoring page after dragging onset line
+    await expect(page).toHaveScreenshot("marker-after-onset-drag.png", {
+      maxDiffPixelRatio: 0.01,
+    });
 
     await assertPageHealthy(page);
   });

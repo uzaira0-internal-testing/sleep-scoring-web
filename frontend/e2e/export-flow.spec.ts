@@ -60,6 +60,11 @@ test.describe("Export Flow", () => {
     await expect(page.getByText("Export Options")).toBeVisible({
       timeout: 5000,
     });
+
+    // Screenshot: export page with file checkboxes and options
+    await expect(page).toHaveScreenshot("export-page-loaded.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 
   // =========================================================================
@@ -109,6 +114,11 @@ test.describe("Export Flow", () => {
         expect(Number(match[1])).toBe(Number(match[2]));
         expect(Number(match[1])).toBeGreaterThan(0);
       }
+
+      // Screenshot: export page with all files selected and download button enabled
+      await expect(page).toHaveScreenshot("export-files-selected.png", {
+        maxDiffPixelRatio: 0.01,
+      });
     }
   });
 
@@ -330,5 +340,10 @@ test.describe("Export Flow", () => {
     await metadataCheckbox.click();
     await page.waitForTimeout(200);
     await expect(metadataCheckbox).not.toBeChecked();
+
+    // Screenshot: export options section with checkboxes in default state
+    await expect(page).toHaveScreenshot("export-options-toggles.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 });

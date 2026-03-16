@@ -140,7 +140,9 @@ async def get_activity_data_with_scoring(
     username: Username,
     view_hours: Annotated[int, Query(ge=12, le=48)] = 24,
     algorithm: Annotated[str, Query(description="Sleep scoring algorithm to use")] = AlgorithmType.get_default(),
-    fields: Annotated[str | None, Query(description="Comma-separated optional fields to include (axis_x,axis_z,available_dates). Omit for all.")] = None,
+    fields: Annotated[
+        str | None, Query(description="Comma-separated optional fields to include (axis_x,axis_z,available_dates). Omit for all.")
+    ] = None,
 ) -> ActivityDataResponse:
     """
     Get activity data with sleep scoring algorithm results.

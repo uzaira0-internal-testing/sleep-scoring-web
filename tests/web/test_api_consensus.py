@@ -926,17 +926,16 @@ class TestConsensusBallotVoting:
         c1 = candidates[0]["candidate_id"]
         c2 = candidates[1]["candidate_id"]
 
-        await asyncio.gather(
-            client.post(
-                f"/api/v1/consensus/{file_id}/{analysis_date}/vote",
-                headers=admin_auth_headers,
-                json={"candidate_id": c1},
-            ),
-            client.post(
-                f"/api/v1/consensus/{file_id}/{analysis_date}/vote",
-                headers=annotator_auth_headers,
-                json={"candidate_id": c2},
-            ),
+        # Vote sequentially — SQLite doesn't support concurrent writes
+        await client.post(
+            f"/api/v1/consensus/{file_id}/{analysis_date}/vote",
+            headers=admin_auth_headers,
+            json={"candidate_id": c1},
+        )
+        await client.post(
+            f"/api/v1/consensus/{file_id}/{analysis_date}/vote",
+            headers=annotator_auth_headers,
+            json={"candidate_id": c2},
         )
 
         final_ballot_resp = await client.get(

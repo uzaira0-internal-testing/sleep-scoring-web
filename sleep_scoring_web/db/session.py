@@ -35,6 +35,14 @@ else:
 # Create get_db dependency using db-toolkit
 get_async_session = create_get_db(async_session_maker)
 
+# Attach slow query profiler (opt-in via SLOW_QUERY_THRESHOLD_MS env var)
+try:
+    from sleep_scoring_web.middleware.query_profiler import install_query_profiler
+
+    install_query_profiler(async_engine)
+except Exception:
+    pass
+
 
 async def init_db() -> None:
     """Initialize database tables and apply schema migrations."""
@@ -113,10 +121,7 @@ async def _apply_migrations() -> None:
                 exists = column in columns
             else:
                 result = await conn.execute(
-                    text(
-                        "SELECT 1 FROM information_schema.columns "
-                        "WHERE table_name = :table AND column_name = :column"
-                    ),
+                    text("SELECT 1 FROM information_schema.columns WHERE table_name = :table AND column_name = :column"),
                     {"table": table, "column": column},
                 )
                 exists = result.fetchone() is not None
@@ -130,9 +135,7 @@ async def _apply_migrations() -> None:
             result = await conn.execute(text("PRAGMA index_list(audit_log)"))
             index_names = [row[1] for row in result.fetchall()]
             if "uq_audit_session_sequence" not in index_names:
-                await conn.execute(
-                    text("CREATE UNIQUE INDEX uq_audit_session_sequence ON audit_log (session_id, sequence)")
-                )
+                await conn.execute(text("CREATE UNIQUE INDEX uq_audit_session_sequence ON audit_log (session_id, sequence)"))
         else:
             result = await conn.execute(
                 text(
@@ -141,9 +144,7 @@ async def _apply_migrations() -> None:
                 )
             )
             if result.fetchone() is None:
-                await conn.execute(
-                    text("ALTER TABLE audit_log ADD CONSTRAINT uq_audit_session_sequence UNIQUE (session_id, sequence)")
-                )
+                await conn.execute(text("ALTER TABLE audit_log ADD CONSTRAINT uq_audit_session_sequence UNIQUE (session_id, sequence)"))
 
         # Apply type migrations (INTEGER → FLOAT for GENEActiv g-force data)
         for table, column, new_type in type_migrations:
@@ -155,20 +156,12 @@ async def _apply_migrations() -> None:
             else:
                 # PostgreSQL: check current type and alter if needed
                 result = await conn.execute(
-                    text(
-                        "SELECT data_type FROM information_schema.columns "
-                        "WHERE table_name = :table AND column_name = :column"
-                    ),
+                    text("SELECT data_type FROM information_schema.columns WHERE table_name = :table AND column_name = :column"),
                     {"table": table, "column": column},
                 )
                 row = result.fetchone()
                 if row and row[0] not in ("double precision", "real", "numeric"):
-                    await conn.execute(
-                        text(
-                            f"ALTER TABLE {table} ALTER COLUMN {column} "
-                            f"TYPE {new_type} USING {column}::double precision"
-                        )
-                    )
+                    await conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN {column} TYPE {new_type} USING {column}::double precision"))
 
 
 async def drop_db() -> None:

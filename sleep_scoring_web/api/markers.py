@@ -328,7 +328,7 @@ async def get_markers(
             )
             .order_by(RawActivityData.timestamp)
         )
-        activity_rows_cache = activity_result.scalars().all()
+        activity_rows_cache = activity_result.scalars().all()  # pyright: ignore[reportAssignmentType]
         return activity_rows_cache
 
     metrics: list[SleepMetrics] = []

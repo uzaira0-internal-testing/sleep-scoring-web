@@ -26,9 +26,11 @@ from sleep_scoring_web.schemas.enums import MarkerCategory, MarkerType
 # Configuration
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class PlacementConfig:
     """Configuration for marker placement rules."""
+
     onset_min_consecutive_sleep: int = 3
     offset_min_consecutive_minutes: int = 5
     diary_tolerance_minutes: int = 15
@@ -43,9 +45,11 @@ class PlacementConfig:
 # Data Models
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class EpochData:
     """Features for a single epoch."""
+
     index: int
     timestamp: datetime
     sleep_score: int  # 0=wake, 1=sleep
@@ -56,6 +60,7 @@ class EpochData:
 @dataclass
 class DiaryPeriod:
     """A diary-reported period (sleep, nap, or nonwear)."""
+
     start_time: datetime | None = None
     end_time: datetime | None = None
     period_type: str = MarkerCategory.SLEEP
@@ -64,6 +69,7 @@ class DiaryPeriod:
 @dataclass
 class DiaryDay:
     """Diary data for a single day."""
+
     in_bed_time: datetime | None = None
     out_bed_time: datetime | None = None
     sleep_onset: datetime | None = None
@@ -75,6 +81,7 @@ class DiaryDay:
 @dataclass
 class PlacementResult:
     """Result of automated marker placement."""
+
     sleep_markers: list[dict[str, Any]] = field(default_factory=list)
     nap_markers: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -83,6 +90,7 @@ class PlacementResult:
 # =============================================================================
 # Core Diary-Centric Placement
 # =============================================================================
+
 
 def _find_valid_onset_near(
     epochs: list[EpochData],
@@ -298,17 +306,18 @@ def place_main_sleep(
     if not diary.sleep_onset or not diary.wake_time:
         return None
 
-    onset_idx = _find_valid_onset_near(
-        epochs, diary.sleep_onset, config.onset_min_consecutive_sleep
-    )
+    onset_idx = _find_valid_onset_near(epochs, diary.sleep_onset, config.onset_min_consecutive_sleep)
 
     # Bounded offset search: look within a window around diary wake.
     # Allow looking up to 60 epochs (1 hour) past wake — but no further.
     # This prevents offsets landing hours past diary wake when there's a
     # long continuous sleep run, while still allowing reasonable forward look.
     offset_idx = _find_valid_offset_near_bounded(
-        epochs, diary.wake_time, config.offset_min_consecutive_minutes,
-        config.epoch_length_seconds, config.max_forward_offset_epochs,
+        epochs,
+        diary.wake_time,
+        config.offset_min_consecutive_minutes,
+        config.epoch_length_seconds,
+        config.max_forward_offset_epochs,
     )
 
     if onset_idx is None or offset_idx is None:
@@ -319,9 +328,7 @@ def place_main_sleep(
     # Rule 8: if onset is before in-bed time, clamp to in-bed time
     if config.enable_rule_8_clamping and diary.in_bed_time and epochs[onset_idx].timestamp < diary.in_bed_time:
         # Find nearest valid onset AT or AFTER in-bed time
-        clamped = _find_valid_onset_at_or_after(
-            epochs, diary.in_bed_time, config.onset_min_consecutive_sleep
-        )
+        clamped = _find_valid_onset_at_or_after(epochs, diary.in_bed_time, config.onset_min_consecutive_sleep)
         if clamped is not None and clamped < offset_idx:
             onset_idx = clamped
 
@@ -473,12 +480,14 @@ def place_naps(
             continue
 
         onset_idx = _find_valid_onset_near_bounded(
-            epochs, nap_period.start_time,
+            epochs,
+            nap_period.start_time,
             min_consecutive=config.onset_min_consecutive_sleep,
             max_distance_epochs=max_search_epochs,
         )
         offset_idx = _find_valid_offset_near_bounded(
-            epochs, nap_period.end_time,
+            epochs,
+            nap_period.end_time,
             min_consecutive_minutes=config.offset_min_consecutive_minutes,
             epoch_length_seconds=config.epoch_length_seconds,
             max_forward_epochs=max_search_epochs,
@@ -553,16 +562,17 @@ def place_without_diary(
 # AM/PM Correction
 # =============================================================================
 
+
 def _flip_ampm(time_str: str) -> str | None:
     """Flip AM↔PM in a 12-hour time string. Returns None for 24h format."""
     s = time_str.strip()
     upper = s.upper()
     if "PM" in upper:
         idx = upper.index("PM")
-        return s[:idx] + "AM" + s[idx + 2:]
+        return s[:idx] + "AM" + s[idx + 2 :]
     if "AM" in upper:
         idx = upper.index("AM")
-        return s[:idx] + "PM" + s[idx + 2:]
+        return s[:idx] + "PM" + s[idx + 2 :]
     return None
 
 
@@ -638,11 +648,14 @@ def _try_ampm_corrections(
     if flipped_onset:
         flip_attempts.append((flipped_onset, wake_str, f"onset {onset_str} → {flipped_onset}", ""))
     if flipped_onset and flipped_wake:
-        flip_attempts.append((
-            flipped_onset, flipped_wake,
-            f"onset {onset_str} → {flipped_onset}",
-            f"wake {wake_str} → {flipped_wake}",
-        ))
+        flip_attempts.append(
+            (
+                flipped_onset,
+                flipped_wake,
+                f"onset {onset_str} → {flipped_onset}",
+                f"wake {wake_str} → {flipped_wake}",
+            )
+        )
 
     for alt_onset_str, alt_wake_str, onset_note, wake_note in flip_attempts:
         alt_onset = _parse_diary_time(alt_onset_str, base_date, is_evening=True) if alt_onset_str else None
@@ -672,6 +685,7 @@ def _try_ampm_corrections(
 # =============================================================================
 # API Helper
 # =============================================================================
+
 
 def _parse_time_to_24h(time_str: str) -> tuple[int, int] | None:
     """
@@ -797,13 +811,15 @@ def run_auto_scoring(
     nonwear_bools = [bool(nw) for nw in choi_nonwear] if choi_nonwear else [False] * len(timestamps)
     epochs: list[EpochData] = []
     for i, ts in enumerate(timestamps):
-        epochs.append(EpochData(
-            index=i,
-            timestamp=datetime.fromtimestamp(ts, tz=UTC),
-            sleep_score=sleep_scores[i],
-            activity=activity_counts[i],
-            is_choi_nonwear=nonwear_bools[i] if i < len(nonwear_bools) else False,
-        ))
+        epochs.append(
+            EpochData(
+                index=i,
+                timestamp=datetime.fromtimestamp(ts, tz=UTC),
+                sleep_score=sleep_scores[i],
+                activity=activity_counts[i],
+                is_choi_nonwear=nonwear_bools[i] if i < len(nonwear_bools) else False,
+            )
+        )
 
     if not epochs:
         return {"sleep_markers": [], "nap_markers": [], "notes": ["No activity data"]}
@@ -813,6 +829,7 @@ def run_auto_scoring(
     ampm_notes: list[str] = []
     if analysis_date:
         from datetime import date as date_type
+
         d = date_type.fromisoformat(analysis_date)
 
         onset_str = diary_onset_time or diary_bed_time
@@ -832,7 +849,7 @@ def run_auto_scoring(
         # Parse nap periods — naps happen during the day on the analysis date.
         # No day shifting needed (unlike evening onset or next-morning wake).
         nap_periods: list[DiaryPeriod] = []
-        for nap_start, nap_end in (diary_naps or []):
+        for nap_start, nap_end in diary_naps or []:
             if nap_start and nap_end:
                 ns = _parse_nap_time(nap_start, d)
                 ne = _parse_nap_time(nap_end, d)
@@ -843,7 +860,7 @@ def run_auto_scoring(
 
         # Parse nonwear periods
         nw_periods: list[DiaryPeriod] = []
-        for nw_start, nw_end in (diary_nonwear or []):
+        for nw_start, nw_end in diary_nonwear or []:
             if nw_start and nw_end:
                 ns = _parse_diary_time(nw_start, d, is_evening=False)
                 ne = _parse_diary_time(nw_end, d, is_evening=False)
@@ -861,9 +878,7 @@ def run_auto_scoring(
 
     notes: list[str] = ampm_notes.copy() if ampm_notes else []
     if config.onset_min_consecutive_sleep != 3 or config.offset_min_consecutive_minutes != 5:
-        notes.append(
-            f"Detection rule: {config.onset_min_consecutive_sleep}S/{config.offset_min_consecutive_minutes}S"
-        )
+        notes.append(f"Detection rule: {config.onset_min_consecutive_sleep}S/{config.offset_min_consecutive_minutes}S")
     sleep_markers: list[dict[str, Any]] = []
     nap_markers: list[dict[str, Any]] = []
 
@@ -884,12 +899,14 @@ def run_auto_scoring(
                 f"diary onset {diary.sleep_onset.strftime('%H:%M')}, "
                 f"diary wake {diary.wake_time.strftime('%H:%M')}"
             )
-            sleep_markers.append({
-                "onset_timestamp": onset_time.timestamp(),
-                "offset_timestamp": offset_time.timestamp(),
-                "marker_type": MarkerType.MAIN_SLEEP,
-                "marker_index": 1,
-            })
+            sleep_markers.append(
+                {
+                    "onset_timestamp": onset_time.timestamp(),
+                    "offset_timestamp": offset_time.timestamp(),
+                    "marker_type": MarkerType.MAIN_SLEEP,
+                    "marker_index": 1,
+                }
+            )
         else:
             notes.append(
                 f"No valid sleep period found near diary times "
@@ -915,16 +932,15 @@ def run_auto_scoring(
             nap_onset_time = epochs[nap_on].timestamp
             nap_offset_time = epochs[nap_off].timestamp
             duration_min = (nap_off - nap_on + 1) * epoch_length_seconds / 60
-            notes.append(
-                f"Nap {i + 1}: {nap_onset_time.strftime('%H:%M')} - "
-                f"{nap_offset_time.strftime('%H:%M')} ({duration_min:.0f} min)"
+            notes.append(f"Nap {i + 1}: {nap_onset_time.strftime('%H:%M')} - {nap_offset_time.strftime('%H:%M')} ({duration_min:.0f} min)")
+            nap_markers.append(
+                {
+                    "onset_timestamp": nap_onset_time.timestamp(),
+                    "offset_timestamp": nap_offset_time.timestamp(),
+                    "marker_type": MarkerType.NAP,
+                    "marker_index": len(sleep_markers) + i + 1,
+                }
             )
-            nap_markers.append({
-                "onset_timestamp": nap_onset_time.timestamp(),
-                "offset_timestamp": nap_offset_time.timestamp(),
-                "marker_type": MarkerType.NAP,
-                "marker_index": len(sleep_markers) + i + 1,
-            })
 
     return {
         "sleep_markers": sleep_markers,
@@ -949,6 +965,7 @@ def _diary_time_present(value: str | None) -> bool:
 @dataclass(frozen=True)
 class NonwearPlacementResult:
     """Result of nonwear auto-placement."""
+
     nonwear_markers: list[dict[str, Any]]
     notes: list[str]
 
@@ -1062,10 +1079,7 @@ def place_nonwear_markers(
             ext_end = candidate
 
         # Count zero-activity epochs within the entire detected range
-        zero_epochs = sum(
-            1 for i in range(ext_start, ext_end + 1)
-            if activity_counts[i] <= threshold
-        )
+        zero_epochs = sum(1 for i in range(ext_start, ext_end + 1) if activity_counts[i] <= threshold)
         total_epochs = ext_end - ext_start + 1
 
         # Require at least 80% of epochs in the range to be zero/near-zero
@@ -1088,10 +1102,7 @@ def place_nonwear_markers(
         # Check overlap with sleep markers
         nw_start_ts = timestamps[ext_start]
         nw_end_ts = timestamps[ext_end]
-        overlaps_sleep = any(
-            nw_start_ts < sm_end and nw_end_ts > sm_start
-            for sm_start, sm_end in sleep_intervals
-        )
+        overlaps_sleep = any(nw_start_ts < sm_end and nw_end_ts > sm_start for sm_start, sm_end in sleep_intervals)
         if overlaps_sleep:
             notes.append(f"Nonwear {diary_idx}: overlaps with sleep marker, skipped")
             continue
@@ -1108,9 +1119,7 @@ def place_nonwear_markers(
         confirmed_by = []
         if choi_nw_set and any(i in choi_nw_set for i in range(ext_start, ext_end + 1)):
             confirmed_by.append("Choi")
-        if sensor_nw_ranges and any(
-            si <= ext_start and ext_end <= ei for si, ei in sensor_nw_ranges
-        ):
+        if sensor_nw_ranges and any(si <= ext_start and ext_end <= ei for si, ei in sensor_nw_ranges):
             confirmed_by.append("sensor")
 
         note = f"Nonwear {diary_idx}: diary {diary_start_dt.strftime('%H:%M')}-{diary_end_dt.strftime('%H:%M')}"
@@ -1120,11 +1129,13 @@ def place_nonwear_markers(
             note += f" [confirmed by {', '.join(confirmed_by)}]"
         notes.append(note)
 
-        markers.append({
-            "start_timestamp": nw_start_ts,
-            "end_timestamp": nw_end_ts,
-            "marker_index": len(markers) + 1,
-        })
+        markers.append(
+            {
+                "start_timestamp": nw_start_ts,
+                "end_timestamp": nw_end_ts,
+                "marker_index": len(markers) + 1,
+            }
+        )
 
     # Second pass: Choi + sensor overlap with zero activity (no diary needed)
     # Find epochs where both Choi and sensor agree on nonwear AND activity <= threshold
@@ -1135,10 +1146,7 @@ def place_nonwear_markers(
             sensor_nw_set.update(range(si, ei + 1))
 
         # Find epochs where Choi + sensor + zero activity all agree
-        both_nw = sorted(
-            i for i in choi_nw_set & sensor_nw_set
-            if i < len(activity_counts) and activity_counts[i] <= threshold
-        )
+        both_nw = sorted(i for i in choi_nw_set & sensor_nw_set if i < len(activity_counts) and activity_counts[i] <= threshold)
 
         # Extract contiguous runs
         if both_nw:
@@ -1155,9 +1163,7 @@ def place_nonwear_markers(
             runs.append((run_start, prev))
 
             # Build set of already-placed marker epoch ranges to avoid duplicates
-            placed_ts_ranges = [
-                (m["start_timestamp"], m["end_timestamp"]) for m in markers
-            ]
+            placed_ts_ranges = [(m["start_timestamp"], m["end_timestamp"]) for m in markers]
 
             for run_start_idx, run_end_idx in runs:
                 duration_epochs = run_end_idx - run_start_idx + 1
@@ -1168,18 +1174,12 @@ def place_nonwear_markers(
                 run_end_ts = timestamps[run_end_idx]
 
                 # Skip if overlapping with sleep markers
-                overlaps_sleep = any(
-                    run_start_ts < sm_end and run_end_ts > sm_start
-                    for sm_start, sm_end in sleep_intervals
-                )
+                overlaps_sleep = any(run_start_ts < sm_end and run_end_ts > sm_start for sm_start, sm_end in sleep_intervals)
                 if overlaps_sleep:
                     continue
 
                 # Skip if overlapping with already-placed nonwear markers
-                overlaps_placed = any(
-                    run_start_ts < pm_end and run_end_ts > pm_start
-                    for pm_start, pm_end in placed_ts_ranges
-                )
+                overlaps_placed = any(run_start_ts < pm_end and run_end_ts > pm_start for pm_start, pm_end in placed_ts_ranges)
                 if overlaps_placed:
                     continue
 
@@ -1189,11 +1189,13 @@ def place_nonwear_markers(
                     f"{epoch_times[run_start_idx].strftime('%H:%M')}-{epoch_times[run_end_idx].strftime('%H:%M')} "
                     f"({dur_min}min, confirmed by Choi + sensor, zero activity)"
                 )
-                markers.append({
-                    "start_timestamp": run_start_ts,
-                    "end_timestamp": run_end_ts,
-                    "marker_index": len(markers) + 1,
-                })
+                markers.append(
+                    {
+                        "start_timestamp": run_start_ts,
+                        "end_timestamp": run_end_ts,
+                        "marker_index": len(markers) + 1,
+                    }
+                )
 
     if not markers:
         notes.append("No valid nonwear periods detected")
@@ -1215,9 +1217,7 @@ def _find_nearest_epoch(timestamps: list[float], target_ts: float) -> int | None
     return best_idx
 
 
-def _find_nearest_epoch_dt(
-    epoch_times: list[datetime], target: datetime
-) -> int | None:
+def _find_nearest_epoch_dt(epoch_times: list[datetime], target: datetime) -> int | None:
     """Find index of epoch nearest to target datetime."""
     if not epoch_times:
         return None

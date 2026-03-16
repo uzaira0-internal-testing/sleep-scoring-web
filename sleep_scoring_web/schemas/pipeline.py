@@ -57,7 +57,9 @@ class NonwearDetectorParamsSchema(BaseModel):
     """Parameters for nonwear period detection."""
 
     activity_threshold: int = Field(default=0, ge=0, le=1000, description="Maximum activity count to consider as zero/near-zero")
-    zero_activity_ratio: float = Field(default=0.80, ge=0.0, le=1.0, description="Minimum fraction of zero-activity epochs required in nonwear period")
+    zero_activity_ratio: float = Field(
+        default=0.80, ge=0.0, le=1.0, description="Minimum fraction of zero-activity epochs required in nonwear period"
+    )
     max_extension_minutes: int = Field(default=30, ge=0, le=120, description="Maximum outward extension from diary anchor in minutes")
     min_duration_minutes: int = Field(default=10, ge=1, le=120, description="Minimum nonwear period duration in minutes")
     epoch_length_seconds: int = Field(default=60, ge=1, le=300, description="Epoch duration in seconds")
@@ -82,10 +84,7 @@ PARAM_SCHEMAS: dict[str, type[BaseModel]] = {
 }
 
 # Pre-computed JSON Schemas — avoids calling model_json_schema() per request
-PARAM_JSON_SCHEMAS: dict[str, dict[str, Any]] = {
-    role: schema_cls.model_json_schema()
-    for role, schema_cls in PARAM_SCHEMAS.items()
-}
+PARAM_JSON_SCHEMAS: dict[str, dict[str, Any]] = {role: schema_cls.model_json_schema() for role, schema_cls in PARAM_SCHEMAS.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -129,10 +128,18 @@ class PipelineConfigRequest(BaseModel):
             period_constructor=self.period_constructor,
             nonwear_detector=self.nonwear_detector,
             diary_preprocessor=self.diary_preprocessor,
-            epoch_classifier_params=EpochClassifierParams(**self.epoch_classifier_params) if self.epoch_classifier_params else EpochClassifierParams(),
+            epoch_classifier_params=EpochClassifierParams(**self.epoch_classifier_params)
+            if self.epoch_classifier_params
+            else EpochClassifierParams(),
             bout_detector_params=BoutDetectorParams(**self.bout_detector_params) if self.bout_detector_params else BoutDetectorParams(),
             period_guider_params=PeriodGuiderParams(**self.period_guider_params) if self.period_guider_params else PeriodGuiderParams(),
-            period_constructor_params=PeriodConstructorParams(**self.period_constructor_params) if self.period_constructor_params else PeriodConstructorParams(),
-            nonwear_detector_params=NonwearDetectorParams(**self.nonwear_detector_params) if self.nonwear_detector_params else NonwearDetectorParams(),
-            diary_preprocessor_params=DiaryPreprocessorParams(**self.diary_preprocessor_params) if self.diary_preprocessor_params else DiaryPreprocessorParams(),
+            period_constructor_params=PeriodConstructorParams(**self.period_constructor_params)
+            if self.period_constructor_params
+            else PeriodConstructorParams(),
+            nonwear_detector_params=NonwearDetectorParams(**self.nonwear_detector_params)
+            if self.nonwear_detector_params
+            else NonwearDetectorParams(),
+            diary_preprocessor_params=DiaryPreprocessorParams(**self.diary_preprocessor_params)
+            if self.diary_preprocessor_params
+            else DiaryPreprocessorParams(),
         )

@@ -30,9 +30,7 @@ async def get_choi_column(db: AsyncSession, username: str) -> str:
     if not username:
         return DEFAULT_CHOI_COLUMN
 
-    result = await db.execute(
-        select(UserSettings).where(UserSettings.username == username)
-    )
+    result = await db.execute(select(UserSettings).where(UserSettings.username == username))
     settings = result.scalar_one_or_none()
     if settings and settings.extra_settings_json:
         col = settings.extra_settings_json.get("choi_axis", DEFAULT_CHOI_COLUMN)

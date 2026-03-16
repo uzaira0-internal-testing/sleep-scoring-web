@@ -112,9 +112,7 @@ async def get_settings(
     settings = result.scalar_one_or_none()
 
     # Load study-wide settings
-    study_result = await db.execute(
-        select(UserSettings).where(UserSettings.username == "__study__")
-    )
+    study_result = await db.execute(select(UserSettings).where(UserSettings.username == "__study__"))
     study_settings = study_result.scalar_one_or_none()
 
     defaults = get_default_settings()
@@ -294,9 +292,7 @@ async def get_study_settings(
     _: VerifiedPassword,
 ) -> StudySettingsResponse:
     """Get study-wide settings shared across all users."""
-    result = await db.execute(
-        select(UserSettings).where(UserSettings.username == STUDY_SETTINGS_USERNAME)
-    )
+    result = await db.execute(select(UserSettings).where(UserSettings.username == STUDY_SETTINGS_USERNAME))
     settings = result.scalar_one_or_none()
 
     if settings is None:
@@ -334,9 +330,7 @@ async def update_study_settings(
     """Update study-wide settings. These are shared across all users (admin only)."""
     if not is_admin_user(username):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
-    result = await db.execute(
-        select(UserSettings).where(UserSettings.username == STUDY_SETTINGS_USERNAME)
-    )
+    result = await db.execute(select(UserSettings).where(UserSettings.username == STUDY_SETTINGS_USERNAME))
     settings = result.scalar_one_or_none()
 
     if settings is None:
@@ -396,9 +390,7 @@ async def reset_study_settings(
     """Reset study-wide settings to defaults (admin only)."""
     if not is_admin_user(username):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
-    result = await db.execute(
-        select(UserSettings).where(UserSettings.username == STUDY_SETTINGS_USERNAME)
-    )
+    result = await db.execute(select(UserSettings).where(UserSettings.username == STUDY_SETTINGS_USERNAME))
     settings = result.scalar_one_or_none()
     if settings:
         await db.delete(settings)

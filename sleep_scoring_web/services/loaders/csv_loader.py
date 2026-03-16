@@ -170,9 +170,7 @@ class CSVLoaderService:
             elif num_cols <= len(GENEACTIV_EPOCH_COLUMNS):
                 col_names = GENEACTIV_EPOCH_COLUMNS[:num_cols]
             else:
-                col_names = GENEACTIV_EPOCH_COLUMNS + [
-                    f"extra_{i}" for i in range(len(GENEACTIV_EPOCH_COLUMNS), num_cols)
-                ]
+                col_names = GENEACTIV_EPOCH_COLUMNS + [f"extra_{i}" for i in range(len(GENEACTIV_EPOCH_COLUMNS), num_cols)]
             df = pd.read_csv(
                 file_path,
                 skiprows=data_start,
@@ -190,13 +188,15 @@ class CSVLoaderService:
                 break
         if ts_col is not None and df[ts_col].dtype == object:
             # Replace the LAST colon followed by 3 digits (milliseconds) with a period
-            df[ts_col] = df[ts_col].str.replace(
-                r":(\d{3})$", r".\1", regex=True
-            )
+            df[ts_col] = df[ts_col].str.replace(r":(\d{3})$", r".\1", regex=True)
 
         logger.info(
             "GENEActiv loader: data_start=%d, has_header=%s, sep=%r, cols=%d, rows=%d",
-            data_start, has_header, sep, num_cols, len(df),
+            data_start,
+            has_header,
+            sep,
+            num_cols,
+            len(df),
         )
         return df
 
@@ -245,9 +245,7 @@ class CSVLoaderService:
             raise ValueError(msg)
 
         # Detect GENEActiv format (by preset hint or auto-detection)
-        is_geneactiv = self.device_preset == "geneactiv" or (
-            suffix == ".csv" and self.detect_geneactiv(file_path)
-        )
+        is_geneactiv = self.device_preset == "geneactiv" or (suffix == ".csv" and self.detect_geneactiv(file_path))
 
         # Load CSV/Excel file
         try:

@@ -169,11 +169,7 @@ async def list_diary_entries(
     """Get all diary entries for a file, ordered by date."""
     await require_file_access(db, username, file_id)
 
-    result = await db.execute(
-        select(DiaryEntry)
-        .where(DiaryEntry.file_id == file_id)
-        .order_by(DiaryEntry.analysis_date)
-    )
+    result = await db.execute(select(DiaryEntry).where(DiaryEntry.file_id == file_id).order_by(DiaryEntry.analysis_date))
     entries = result.scalars().all()
     return [DiaryEntryResponse.model_validate(e) for e in entries]
 
@@ -382,9 +378,7 @@ async def upload_diary_csv(
         if ident.participant_id_norm:
             pid_to_identities.setdefault(ident.participant_id_norm, []).append(ident)
             if ident.timepoint_norm:
-                pid_tp_to_identities.setdefault(
-                    (ident.participant_id_norm, ident.timepoint_norm), []
-                ).append(ident)
+                pid_tp_to_identities.setdefault((ident.participant_id_norm, ident.timepoint_norm), []).append(ident)
 
     entries_imported = 0
     entries_skipped = 0
@@ -419,10 +413,7 @@ async def upload_diary_csv(
                     if row_stem:
                         candidates = stem_to_files.get(row_stem, [])
                     if not candidates and row_stem:
-                        fuzzy = [
-                            ident.file for ident in identities
-                            if row_stem in ident.normalized_stem or ident.normalized_stem in row_stem
-                        ]
+                        fuzzy = [ident.file for ident in identities if row_stem in ident.normalized_stem or ident.normalized_stem in row_stem]
                         seen_ids: set[int] = set()
                         dedup: list[FileModel] = []
                         for f in fuzzy:
@@ -445,9 +436,7 @@ async def upload_diary_csv(
                     entries_skipped += 1
                     continue
             else:
-                pid_norm = normalize_participant_id(
-                    row.get(pid_col) if pid_col is not None else filename_pid
-                )
+                pid_norm = normalize_participant_id(row.get(pid_col) if pid_col is not None else filename_pid)
                 if pid_norm is None:
                     entries_skipped += 1
                     continue
@@ -461,16 +450,13 @@ async def upload_diary_csv(
                         pid_pool = pid_to_identities.get(pid_norm, [])
                         if pid_pool:
                             candidates_ident = [
-                                ident for ident in pid_pool
-                                if ident.timepoint_norm == tp_norm or tp_norm in ident.normalized_filename
+                                ident for ident in pid_pool if ident.timepoint_norm == tp_norm or tp_norm in ident.normalized_filename
                             ]
                 else:
                     candidates_ident = pid_to_identities.get(pid_norm, [])
 
                 if not candidates_ident:
-                    candidates_ident = [
-                        ident for ident in identities if pid_norm in ident.normalized_filename
-                    ]
+                    candidates_ident = [ident for ident in identities if pid_norm in ident.normalized_filename]
 
                 seen_ids: set[int] = set()
                 dedup_ident = []
@@ -709,9 +695,7 @@ def _schedule_complexity_recompute(
 
         async with async_session_maker() as recompute_db:
             date_col = func.date(RawActivityData.timestamp).label("date")
-            result = await recompute_db.execute(
-                select(date_col).where(RawActivityData.file_id == fid).group_by(date_col).order_by(date_col)
-            )
+            result = await recompute_db.execute(select(date_col).where(RawActivityData.file_id == fid).group_by(date_col).order_by(date_col))
             dates = list(result.scalars().all())
             if dates:
                 await _compute_complexity_for_file(fid, dates)

@@ -43,9 +43,7 @@ def _build_nonwear_checker(sensor_nw_markers: list[Marker]) -> Callable[[float],
     Merges overlapping intervals then uses bisect for O(log n) per-timestamp lookup.
     """
     raw = sorted(
-        (nw.start_timestamp, nw.end_timestamp)
-        for nw in sensor_nw_markers
-        if nw.start_timestamp is not None and nw.end_timestamp is not None
+        (nw.start_timestamp, nw.end_timestamp) for nw in sensor_nw_markers if nw.start_timestamp is not None and nw.end_timestamp is not None
     )
     if not raw:
         return lambda _ts: False
@@ -303,7 +301,16 @@ async def get_onset_offset_data_columnar(
     Delegates to the row-based endpoint and converts the result.
     """
     row_response = await get_onset_offset_data(
-        file_id, analysis_date, period_index, db, _, username, window_minutes, onset_ts, offset_ts, algorithm,
+        file_id,
+        analysis_date,
+        period_index,
+        db,
+        _,
+        username,
+        window_minutes,
+        onset_ts,
+        offset_ts,
+        algorithm,
     )
     return OnsetOffsetColumnarResponse(
         onset_data=_points_to_columnar(row_response.onset_data),

@@ -5,6 +5,7 @@ import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { resolve } from "path";
 import { readFileSync } from "fs";
+import { visualizer } from "rollup-plugin-visualizer";
 
 // Tauri expects a fixed port for dev, and internalHost for mobile
 const host = process.env.TAURI_DEV_HOST;
@@ -17,6 +18,8 @@ export default defineConfig({
     tailwindcss(),
     react(),
     wasm(),
+    // Bundle analysis: ANALYZE=1 npx vite build → opens treemap
+    ...(process.env.ANALYZE ? [visualizer({ open: true, gzipSize: true, brotliSize: true, filename: "dist/stats.html" })] : []),
     VitePWA({
       registerType: "autoUpdate",
       workbox: {

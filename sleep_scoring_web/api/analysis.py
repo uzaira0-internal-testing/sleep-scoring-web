@@ -140,14 +140,16 @@ async def get_analysis_summary(
         file_total_dates = len(valid_dates_by_file.get(f.id, set()))
         has_diary = len(diary_dates_by_file.get(f.id, set())) > 0
 
-        files_summary.append(FileSummary(
-            file_id=f.id,
-            filename=f.filename,
-            participant_id=f.participant_id,
-            total_dates=file_total_dates,
-            scored_dates=file_scored,
-            has_diary=has_diary,
-        ))
+        files_summary.append(
+            FileSummary(
+                file_id=f.id,
+                filename=f.filename,
+                participant_id=f.participant_id,
+                total_dates=file_total_dates,
+                scored_dates=file_scored,
+                has_diary=has_diary,
+            )
+        )
         total_dates += file_total_dates
         scored_dates_total += file_scored
 
@@ -169,7 +171,9 @@ async def get_analysis_summary(
 
     # Sleep-period counts should reflect THIS user's markers in visible files.
     sleep_count_result = await db.execute(
-        select(func.count()).select_from(Marker).where(
+        select(func.count())
+        .select_from(Marker)
+        .where(
             Marker.file_id.in_(file_ids),
             Marker.marker_category == MarkerCategory.SLEEP,
             Marker.created_by == username,
@@ -179,7 +183,9 @@ async def get_analysis_summary(
 
     # Nap count is marker_type == NAP (not period_index > 0).
     nap_count_result = await db.execute(
-        select(func.count()).select_from(Marker).where(
+        select(func.count())
+        .select_from(Marker)
+        .where(
             Marker.file_id.in_(file_ids),
             Marker.marker_category == MarkerCategory.SLEEP,
             Marker.marker_type == MarkerType.NAP,

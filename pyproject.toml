@@ -147,15 +147,16 @@ ignore = [
     "FBT001",   # Boolean-typed positional argument (acceptable for config)
     "FBT002",   # Boolean default positional argument (acceptable for config)
     "PLR0913",  # Too many arguments (acceptable for complex functions)
+    "D101",     # Missing docstring in public class (Pydantic models are self-documenting)
     "D104",     # Missing docstring in public package (__init__.py files)
     "D107",     # Missing docstring in __init__ (simple init methods)
     # Additional unfixable or impractical to fix
     "S608",     # Hardcoded SQL - false positives (we use validated allowlists)
     "SLF001",   # Private member access (test code accessing internals)
-    "C901",     # Complex structure (architectural design choices)
-    "PLR0912",  # Too many branches (architectural design choices)
-    "PLR0915",  # Too many statements (architectural design choices)
     "PLR0911",  # Too many return statements (architectural design choices)
+    "ASYNC240", # pathlib in async (FastAPI runs sync I/O in threadpool)
+    "PERF403",  # Manual dict comprehension (readability preference)
+    "FAST001",  # FastAPI route parameter (false positive)
     "ANN401",   # Any type (legitimate use cases for dynamic typing)
     "FBT003",   # Boolean positional value in call (Qt API style)
     "S603",     # Subprocess without shell (false positive - we use lists)
@@ -226,7 +227,7 @@ ignore = [
     "SIM105",   # Use contextlib.suppress (test patterns)
     "TRY002",   # Create your own exception (test code)
     "S324",     # Insecure hash function (test checksums, not security)
-    "PD901",    # Avoid using the generic variable name `df` for DataFrames
+    # PD901 removed from ruff — no longer needed
     "PD011",    # Use .to_numpy() instead of .values
     "PGH003",   # Use specific rule codes when ignoring type issues
     "PT017",    # Pytest related issues
@@ -240,7 +241,21 @@ ignore = [
     "PT019",    # Fixture `_` without value is injected as parameter, use `@pytest.mark.usefixtures` instead
 ]
 
+[tool.ruff.lint.mccabe]
+max-complexity = 25  # Catches worst offenders; existing code has up to 54
+
+[tool.ruff.lint.pylint]
+max-branches = 25  # Existing code has outliers up to 124 (marker placement)
+max-statements = 100  # Existing code has outliers up to 334
+
 [tool.ruff.lint.per-file-ignores]
+# Existing complex modules — tracked for future refactoring
+"sleep_scoring_web/api/diary.py" = ["C901", "PLR0912", "PLR0915"]
+"sleep_scoring_web/api/markers_import.py" = ["C901", "PLR0912", "PLR0915"]
+"sleep_scoring_web/api/markers.py" = ["C901", "PLR0915"]
+"sleep_scoring_web/services/marker_placement.py" = ["C901", "PLR0912", "PLR0915"]
+"sleep_scoring_web/services/complexity.py" = ["C901", "PLR0915"]
+"sleep_scoring_web/services/upload_processor.py" = ["PLR0915"]
 "tests/**/*.py" = [
     "F401", "F841", "F821", "NPY002", "ARG005", "B023", "PIE790",
     "PYI024", "SIM105", "TRY002", "TRY003", "S324", "D", "ANN",
@@ -263,11 +278,11 @@ reportMissingParameterType = false  # Many legacy functions lack annotations
 reportMissingTypeArgument = false  # dict, list without type args
 reportUnnecessaryIsInstance = false  # Runtime checks for defensive coding
 reportUnnecessaryComparison = false  # None checks for defensive coding
-reportArgumentType = "warning"  # Type mismatches - warn but don't fail
-reportReturnType = "warning"  # Return type mismatches - warn but don't fail
-reportCallIssue = "warning"  # Call issues - warn but don't fail
+reportArgumentType = "warning"  # Sequence vs list noise — tighten after cleanup
+reportReturnType = "warning"  # Sequence vs list noise — tighten after cleanup
+reportCallIssue = "warning"  # Some false positives with overloaded functions
 reportOperatorIssue = "warning"  # Operator issues - warn but don't fail
-reportOptionalMemberAccess = "warning"  # Optional member access - warn but don't fail
+reportOptionalMemberAccess = "warning"  # 3 genuine null-access bugs — fix then promote to error
 reportOptionalOperand = "warning"  # Optional operand - warn but don't fail
 reportOptionalIterable = "warning"  # Optional iterable - warn but don't fail
 reportOptionalSubscript = "warning"  # Optional subscript - warn but don't fail
@@ -279,7 +294,8 @@ reportUnusedVariable = "warning"
 reportAttributeAccessIssue = false  # Qt widgets have dynamic attrs not in stubs
 reportPrivateUsage = false  # Intentional _method access across layers
 reportUnsupportedDunderAll = false  # __all__ with re-exports
-include = ["sleep_scoring_app"]
+reportRedeclaration = false  # Re-using variable names in different scopes
+include = ["sleep_scoring_web"]
 exclude = ["tests", "**/__pycache__", "main.py"]
 
 [tool.uv.workspace]
@@ -303,7 +319,20 @@ testpaths = ["tests/web", "tests/unit"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-addopts = "-v --tb=short --strict-markers"
+pythonpath = ["."]
+addopts = "-v --tb=short --strict-markers --strict-config"
+filterwarnings = [
+    "error::DeprecationWarning",
+    "error::PendingDeprecationWarning",
+    "ignore::DeprecationWarning:pkg_resources",
+    "ignore::DeprecationWarning:google",
+    "ignore:The default datetime adapter is deprecated:DeprecationWarning",
+    "ignore:The default datetime converter is deprecated:DeprecationWarning",
+    "ignore:datetime.datetime.utcnow:DeprecationWarning",
+    "ignore:datetime.datetime.utcfromtimestamp:DeprecationWarning",
+    "ignore::DeprecationWarning:schemathesis",
+    "ignore::DeprecationWarning:hypothesis",
+]
 # Parallel execution: invoke with `pytest -n auto` to use pytest-xdist.
 # Not enabled by default in addopts because some tests may not be isolation-safe.
 markers = [
@@ -337,4 +366,11 @@ exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
+]
+
+[dependency-groups]
+dev = [
+    "memray>=1.19.2",
+    "pyinstrument>=5.1.2",
+    "radon>=6.0.1",
 ]

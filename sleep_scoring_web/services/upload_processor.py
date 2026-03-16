@@ -158,9 +158,7 @@ async def process_uploaded_file(
         try:
             async with async_session_maker() as db:
                 # Delete any partial activity data
-                await db.execute(
-                    delete(RawActivityData).where(RawActivityData.file_id == file_id)
-                )
+                await db.execute(delete(RawActivityData).where(RawActivityData.file_id == file_id))
                 # Update file status
                 result = await db.execute(select(FileModel).where(FileModel.id == file_id))
                 file_model = result.scalar_one_or_none()

@@ -93,59 +93,29 @@ def convert_redcap_wide_to_long(df: pl.DataFrame) -> pl.DataFrame:
                 "participant_id": pid,
                 "startdate": date_val,
                 # Sleep times
-                "in_bed_time": _combine_time(
-                    row, f"inbed_hour{v}", f"inbed_min{v}", f"time_ampm{v}", col_set
-                ),
-                "sleep_onset_time": _combine_time(
-                    row, f"asleep_hour{v}", f"asleep_min{v}", f"time_ampm_2{v}", col_set
-                ),
-                "sleep_offset_time": _combine_time(
-                    row, f"wake_hour{v}", f"wake_min{v}", f"time_ampm_3{v}", col_set
-                ),
+                "in_bed_time": _combine_time(row, f"inbed_hour{v}", f"inbed_min{v}", f"time_ampm{v}", col_set),
+                "sleep_onset_time": _combine_time(row, f"asleep_hour{v}", f"asleep_min{v}", f"time_ampm_2{v}", col_set),
+                "sleep_offset_time": _combine_time(row, f"wake_hour{v}", f"wake_min{v}", f"time_ampm_3{v}", col_set),
                 # Nap 1
-                "napstart_1_time": _combine_time(
-                    row, f"napstart_hour_1{v}", f"napstart_min_1{v}", f"time_ampm_10{v}", col_set
-                ),
-                "napend_1_time": _combine_time(
-                    row, f"napend_hour_1{v}", f"napend_min_1{v}", f"time_ampm_13{v}", col_set
-                ),
+                "napstart_1_time": _combine_time(row, f"napstart_hour_1{v}", f"napstart_min_1{v}", f"time_ampm_10{v}", col_set),
+                "napend_1_time": _combine_time(row, f"napend_hour_1{v}", f"napend_min_1{v}", f"time_ampm_13{v}", col_set),
                 # Nap 2
-                "nap_onset_time_2": _combine_time(
-                    row, f"napstart_hour_2{v}", f"napstart_min_2{v}", f"time_ampm_11{v}", col_set
-                ),
-                "nap_offset_time_2": _combine_time(
-                    row, f"napend_hour_2{v}", f"napend_min_2{v}", f"time_ampm_14{v}", col_set
-                ),
+                "nap_onset_time_2": _combine_time(row, f"napstart_hour_2{v}", f"napstart_min_2{v}", f"time_ampm_11{v}", col_set),
+                "nap_offset_time_2": _combine_time(row, f"napend_hour_2{v}", f"napend_min_2{v}", f"time_ampm_14{v}", col_set),
                 # Nap 3
-                "nap_onset_time_3": _combine_time(
-                    row, f"napstart_hour_3{v}", f"napstart_min_3{v}", f"time_ampm_12{v}", col_set
-                ),
-                "nap_offset_time_3": _combine_time(
-                    row, f"napend_hour_3{v}", f"napend_min_3{v}", f"time_ampm_15{v}", col_set
-                ),
+                "nap_onset_time_3": _combine_time(row, f"napstart_hour_3{v}", f"napstart_min_3{v}", f"time_ampm_12{v}", col_set),
+                "nap_offset_time_3": _combine_time(row, f"napend_hour_3{v}", f"napend_min_3{v}", f"time_ampm_15{v}", col_set),
                 # Nonwear 1
-                "nonwear_start_time": _combine_time(
-                    row, f"takeoffstart_hour_1{v}", f"takeoffstart_min_1{v}", f"time_ampm_16{v}", col_set
-                ),
-                "nonwear_end_time": _combine_time(
-                    row, f"takeoffend_hour_1{v}", f"takeoffend_min_1{v}", f"time_ampm_17{v}", col_set
-                ),
+                "nonwear_start_time": _combine_time(row, f"takeoffstart_hour_1{v}", f"takeoffstart_min_1{v}", f"time_ampm_16{v}", col_set),
+                "nonwear_end_time": _combine_time(row, f"takeoffend_hour_1{v}", f"takeoffend_min_1{v}", f"time_ampm_17{v}", col_set),
                 "nonwear_reason": _convert_reason(row, f"why_timeoff_1{v}", col_set),
                 # Nonwear 2
-                "nonwear_start_time_2": _combine_time(
-                    row, f"takeoffstart_hour_2{v}", f"takeoffstart_min_2{v}", f"time_ampm_18{v}", col_set
-                ),
-                "nonwear_end_time_2": _combine_time(
-                    row, f"takeoffend_hour_2{v}", f"takeoffend_min_2{v}", f"time_ampm_19{v}", col_set
-                ),
+                "nonwear_start_time_2": _combine_time(row, f"takeoffstart_hour_2{v}", f"takeoffstart_min_2{v}", f"time_ampm_18{v}", col_set),
+                "nonwear_end_time_2": _combine_time(row, f"takeoffend_hour_2{v}", f"takeoffend_min_2{v}", f"time_ampm_19{v}", col_set),
                 "nonwear_reason_2": _convert_reason(row, f"why_timeoff_2{v}", col_set),
                 # Nonwear 3
-                "nonwear_start_time_3": _combine_time(
-                    row, f"takeoffstart_hour_3{v}", f"takeoffstart_min_3{v}", f"time_ampm_20{v}", col_set
-                ),
-                "nonwear_end_time_3": _combine_time(
-                    row, f"takeoffend_hour_3{v}", f"takeoffend_min_3{v}", f"time_ampm_21{v}", col_set
-                ),
+                "nonwear_start_time_3": _combine_time(row, f"takeoffstart_hour_3{v}", f"takeoffstart_min_3{v}", f"time_ampm_20{v}", col_set),
+                "nonwear_end_time_3": _combine_time(row, f"takeoffend_hour_3{v}", f"takeoffend_min_3{v}", f"time_ampm_21{v}", col_set),
                 "nonwear_reason_3": _convert_reason(row, f"why_timeoff_3{v}", col_set),
             }
 

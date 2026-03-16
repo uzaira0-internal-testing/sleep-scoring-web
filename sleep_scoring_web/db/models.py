@@ -433,9 +433,7 @@ class NightComplexity(Base):
 
     file: Mapped[File] = relationship("File")
 
-    __table_args__ = (
-        Index("ix_night_complexity_file_date", "file_id", "analysis_date", unique=True),
-    )
+    __table_args__ = (Index("ix_night_complexity_file_date", "file_id", "analysis_date", unique=True),)
 
 
 class UserSettings(Base):

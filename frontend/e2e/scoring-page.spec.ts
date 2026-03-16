@@ -28,6 +28,11 @@ test.describe("Scoring Page", () => {
       e.includes("before initialization")
     );
     expect(criticalErrors).toEqual([]);
+
+    // Screenshot: scoring page after successful login and load
+    await expect(page).toHaveScreenshot("scoring-page-loaded.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 
   test("displays activity plot with data", async ({ page }) => {
@@ -60,6 +65,11 @@ test.describe("Scoring Page", () => {
     // Verify file selector dropdown is present (first select is the file dropdown)
     const fileSelect = fileSelector(page);
     await expect(fileSelect).toBeVisible();
+
+    // Screenshot: scoring page with activity plot and data panels
+    await expect(page).toHaveScreenshot("scoring-page-with-activity-plot.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 
   test("date navigation works", async ({ page }) => {
@@ -170,6 +180,11 @@ test.describe("Scoring Page", () => {
     expect(markerBox!.y).toBeLessThan(overlayBox!.y + overlayBox!.height);
     // Marker should have meaningful height (similar to overlay)
     expect(markerBox!.height).toBeGreaterThan(overlayBox!.height * 0.8);
+
+    // Screenshot: scoring page after marker creation
+    await expect(page).toHaveScreenshot("scoring-page-marker-created.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 
   test("marker data table shows table titles when marker selected", async ({ page }) => {

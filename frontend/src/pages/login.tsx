@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Activity, Loader2, Lock, User, Wifi, WifiOff, Plus, Trash2, Globe, HardDrive, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +20,7 @@ import { switchDb } from "@/lib/workspace-db";
 import { switchApi } from "@/lib/workspace-api";
 import { queryClient } from "@/query-client";
 import { migrateFromLegacy } from "@/lib/workspace-migration";
+import { LoginFormSchema, type LoginFormValues } from "@/lib/schemas";
 
 type LoginPhase = "loading" | "mode-picker" | "workspace-picker" | "login-form";
 type LoginMode = "server" | "local";
@@ -60,6 +63,12 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedWorkspace, setSelectedWorkspace] = useState<WorkspaceEntry | null>(null);
+
+  // Form validation via react-hook-form + Zod
+  const { register, handleSubmit: rhfHandleSubmit, formState: { errors: formErrors } } = useForm<LoginFormValues>({
+    resolver: zodResolver(LoginFormSchema),
+    defaultValues: { password: "", username: "" },
+  });
 
   // New workspace form state
   const [newServerUrl, setNewServerUrl] = useState("");
@@ -259,14 +268,12 @@ export function LoginPage() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (formValues: LoginFormValues) => {
     setError(null);
     setIsLoading(true);
 
-    const formData = new FormData(e.currentTarget);
-    const username = (formData.get("username") as string)?.trim() || "anonymous";
-    const password = formData.get("password") as string || "";
+    const username = formValues.username?.trim() || "anonymous";
+    const password = formValues.password || "";
 
     try {
       const serverUrl = isCreatingNew ? newServerUrl.trim().replace(/\/+$/, "") : (selectedWorkspace?.serverUrl ?? "");
@@ -474,7 +481,7 @@ export function LoginPage() {
           <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={rhfHandleSubmit(handleSubmit)} className="space-y-4">
               {/* Server URL — only when user chose "Connect to Server" */}
               {showServerUrl && (
                 <div className="space-y-2">
@@ -525,12 +532,12 @@ export function LoginPage() {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
                     <Input
                       id="password"
-                      name="password"
                       type="password"
                       placeholder={passwordPlaceholder}
                       autoComplete="current-password"
                       className="pl-9"
                       required={loginMode === "server" && authRequired}
+                      {...register("password")}
                     />
                   </div>
                 </div>
@@ -544,16 +551,19 @@ export function LoginPage() {
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
                   <Input
                     id="username"
-                    name="username"
                     type="text"
                     placeholder="For audit logging (optional)"
                     autoComplete="username"
                     className="pl-9"
+                    {...register("username")}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Helps track who made scoring changes. Leave blank for anonymous.
                 </p>
+                {formErrors.username && (
+                  <p className="text-xs text-destructive">{formErrors.username.message}</p>
+                )}
               </div>
 
               {error && (

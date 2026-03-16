@@ -316,8 +316,7 @@ async def upload_file(
 
     Set replace=true to re-upload an existing file (deletes old data first).
     """
-    logger.info("Upload request: filename=%r, replace=%s, content_type=%s, size=%s",
-                file.filename, replace, file.content_type, file.size)
+    logger.info("Upload request: filename=%r, replace=%s, content_type=%s, size=%s", file.filename, replace, file.content_type, file.size)
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -386,7 +385,7 @@ async def upload_file(
         await file.close()
 
     # Create file record
-    inferred_pid, _ = infer_participant_id_and_timepoint_from_filename(filename)
+    inferred_pid, _ = infer_participant_id_and_timepoint_from_filename(filename)  # pyright: ignore[reportAssignmentType]
     file_record = FileModel(
         filename=filename,
         original_path=str(upload_path),
@@ -573,9 +572,7 @@ async def list_files(
 ) -> dict:
     """List uploaded files. Users with assignments see only their files (even admins)."""
     # Check if user has any assignments — assignments always take priority
-    assignment_result = await db.execute(
-        select(FileAssignment.file_id).where(FileAssignment.username == username)
-    )
+    assignment_result = await db.execute(select(FileAssignment.file_id).where(FileAssignment.username == username))
     assigned_ids = list(assignment_result.scalars().all())
     is_admin = is_admin_user(username)
 
@@ -585,11 +582,7 @@ async def list_files(
 
     if assigned_ids:
         # User has assignments → show only assigned files (admin or not)
-        result = await db.execute(
-            select(FileModel)
-            .where(FileModel.id.in_(assigned_ids))
-            .order_by(FileModel.uploaded_at.desc())
-        )
+        result = await db.execute(select(FileModel).where(FileModel.id.in_(assigned_ids)).order_by(FileModel.uploaded_at.desc()))
         files = result.scalars().all()
     else:
         # No assignments → show all files
@@ -715,11 +708,13 @@ async def create_assignments(
         )
         if existing.scalar_one_or_none():
             continue
-        db.add(FileAssignment(
-            file_id=fid,
-            username=target_username,
-            assigned_by=username,
-        ))
+        db.add(
+            FileAssignment(
+                file_id=fid,
+                username=target_username,
+                assigned_by=username,
+            )
+        )
         created += 1
 
     await db.commit()
@@ -737,9 +732,7 @@ async def delete_user_assignments(
     from sqlalchemy import delete as sa_delete
 
     _require_admin(username)
-    result = await db.execute(
-        sa_delete(FileAssignment).where(FileAssignment.username == target_username)
-    )
+    result = await db.execute(sa_delete(FileAssignment).where(FileAssignment.username == target_username))
     await db.commit()
     return {"deleted": result.rowcount}
 
@@ -825,13 +818,15 @@ async def get_assignment_progress(
         user = users[a.username]
         file_total = total_dates_by_file.get(a.file_id, 0)
         file_scored = scored_dates.get((a.username, a.file_id), 0)
-        user["files"].append({
-            "file_id": a.file_id,
-            "filename": a.filename,
-            "total_dates": file_total,
-            "scored_dates": file_scored,
-            "assigned_at": str(a.assigned_at) if a.assigned_at else None,
-        })
+        user["files"].append(
+            {
+                "file_id": a.file_id,
+                "filename": a.filename,
+                "total_dates": file_total,
+                "scored_dates": file_scored,
+                "assigned_at": str(a.assigned_at) if a.assigned_at else None,
+            }
+        )
         user["total_files"] += 1
         user["total_dates"] += file_total
         user["scored_dates"] += file_scored
@@ -856,10 +851,7 @@ async def get_unassigned_files(
         .where(FileModel.status == FileStatus.READY)
         .order_by(FileModel.filename)
     )
-    return [
-        {"id": row[0], "filename": row[1], "participant_id": row[2], "status": row[3]}
-        for row in result.all()
-    ]
+    return [{"id": row[0], "filename": row[1], "participant_id": row[2], "status": row[3]} for row in result.all()]
 
 
 @router.post("/purge-excluded")
@@ -872,9 +864,7 @@ async def purge_excluded_files(
     """Delete all files whose names contain IGNORE or ISSUE."""
     _require_admin(username)
 
-    result = await db.execute(
-        select(FileModel).where(_excluded_filename_sql_filter()).order_by(FileModel.id)
-    )
+    result = await db.execute(select(FileModel).where(_excluded_filename_sql_filter()).order_by(FileModel.id))
     files = result.scalars().all()
 
     deleted_filenames: list[str] = []
@@ -954,7 +944,7 @@ async def backfill_participant_ids(
         eligible_total += 1
         if f.participant_id:
             continue
-        inferred_pid, _ = infer_participant_id_and_timepoint_from_filename(f.filename)
+        inferred_pid, _ = infer_participant_id_and_timepoint_from_filename(f.filename)  # pyright: ignore[reportAssignmentType]
         if inferred_pid:
             f.participant_id = inferred_pid
             updated += 1
@@ -989,9 +979,7 @@ async def get_file_dates(
     all_dates = [str(d) for d in result.scalars().all()]
 
     # Check if diary entries exist for this file
-    diary_result = await db.execute(
-        select(DiaryEntry.analysis_date).where(DiaryEntry.file_id == file_id)
-    )
+    diary_result = await db.execute(select(DiaryEntry.analysis_date).where(DiaryEntry.file_id == file_id))
     diary_dates = {str(d) for d in diary_result.scalars().all()}
 
     if diary_dates:
@@ -1022,15 +1010,11 @@ async def get_file_dates_status(
 
     # Get all activity dates
     date_col = func.date(RawActivityData.timestamp).label("date")
-    result = await db.execute(
-        select(date_col).where(RawActivityData.file_id == file_id).group_by(date_col).order_by(date_col)
-    )
+    result = await db.execute(select(date_col).where(RawActivityData.file_id == file_id).group_by(date_col).order_by(date_col))
     all_dates = [str(d) for d in result.scalars().all()]
 
     # Filter by diary (study-period dates only)
-    diary_result = await db.execute(
-        select(DiaryEntry.analysis_date).where(DiaryEntry.file_id == file_id)
-    )
+    diary_result = await db.execute(select(DiaryEntry.analysis_date).where(DiaryEntry.file_id == file_id))
     diary_dates = {str(d) for d in diary_result.scalars().all()}
     dates = [d for d in all_dates if d in diary_dates] if diary_dates else all_dates
 
@@ -1053,9 +1037,7 @@ async def get_file_dates_status(
     auto_annotations = {str(a.analysis_date): a for a in result.scalars().all()}
 
     # Get complexity scores
-    result = await db.execute(
-        select(NightComplexity).where(NightComplexity.file_id == file_id)
-    )
+    result = await db.execute(select(NightComplexity).where(NightComplexity.file_id == file_id))
     complexity_map = {str(n.analysis_date): n for n in result.scalars().all()}
 
     # Auto-compute missing complexity rows on-demand so scoring view is prepopulated
@@ -1065,9 +1047,7 @@ async def get_file_dates_status(
         try:
             missing_date_objs = [datetime.strptime(d, "%Y-%m-%d").date() for d in missing_complexity_dates]
             await _compute_complexity_for_file(file_id, missing_date_objs)
-            refreshed = await db.execute(
-                select(NightComplexity).where(NightComplexity.file_id == file_id)
-            )
+            refreshed = await db.execute(select(NightComplexity).where(NightComplexity.file_id == file_id))
             complexity_map = {str(n.analysis_date): n for n in refreshed.scalars().all()}
         except Exception:
             logger.exception(
@@ -1097,15 +1077,17 @@ async def get_file_dates_status(
             has_auto_score = len(auto_markers) > 0
 
         complexity = complexity_map.get(date_str)
-        out.append(DateStatus(
-            date=date_str,
-            has_markers=has_markers or is_no_sleep,
-            is_no_sleep=is_no_sleep,
-            needs_consensus=needs_consensus,
-            has_auto_score=has_auto_score,
-            complexity_pre=complexity.complexity_pre if complexity else None,
-            complexity_post=complexity.complexity_post if complexity else None,
-        ))
+        out.append(
+            DateStatus(
+                date=date_str,
+                has_markers=has_markers or is_no_sleep,
+                is_no_sleep=is_no_sleep,
+                needs_consensus=needs_consensus,
+                has_auto_score=has_auto_score,
+                complexity_pre=complexity.complexity_pre if complexity else None,
+                complexity_post=complexity.complexity_post if complexity else None,
+            )
+        )
     return out
 
 
@@ -1130,9 +1112,7 @@ async def compute_complexity(
 
     # Get all dates
     date_col = func.date(RawActivityData.timestamp).label("date")
-    result = await db.execute(
-        select(date_col).where(RawActivityData.file_id == file_id).group_by(date_col).order_by(date_col)
-    )
+    result = await db.execute(select(date_col).where(RawActivityData.file_id == file_id).group_by(date_col).order_by(date_col))
     dates = list(result.scalars().all())
 
     background_tasks.add_task(_compute_complexity_for_file, file_id, dates)
@@ -1296,12 +1276,11 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
                 )
                 sleep_markers_db = sleep_marker_result.scalars().all()
                 marker_pairs = [
-                    (m.start_timestamp, m.end_timestamp)
-                    for m in sleep_markers_db
-                    if m.start_timestamp is not None and m.end_timestamp is not None
+                    (m.start_timestamp, m.end_timestamp) for m in sleep_markers_db if m.start_timestamp is not None and m.end_timestamp is not None
                 ]
                 if marker_pairs:
                     from sleep_scoring_web.services.complexity import compute_post_complexity
+
                     post_score, features = compute_post_complexity(
                         complexity_pre=score,
                         features=features,

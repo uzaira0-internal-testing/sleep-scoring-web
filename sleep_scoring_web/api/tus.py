@@ -10,10 +10,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 from tuspyserver import create_tus_router
 
+from sleep_scoring_web.api.deps import DbSession, VerifiedPassword  # noqa: TC001 — FastAPI needs these at runtime
 from sleep_scoring_web.config import settings
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.session import async_session_maker
@@ -22,8 +24,6 @@ from sleep_scoring_web.schemas.models import ProcessingStatusResponse
 from sleep_scoring_web.services.file_identity import infer_participant_id_and_timepoint_from_filename
 from sleep_scoring_web.services.processing_tracker import get_progress
 from sleep_scoring_web.services.upload_processor import process_uploaded_file
-
-from sleep_scoring_web.api.deps import DbSession, VerifiedPassword  # noqa: TC001, E402 — FastAPI needs these at runtime
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +60,16 @@ def _on_upload_complete(file_path: str, metadata: dict) -> None:
     )
 
     # Create file record and spawn processing in background
-    task = asyncio.ensure_future(_create_and_process(
-        file_path=file_path,
-        filename=filename,
-        is_gzip=is_gzip,
-        username=username,
-        skip_rows=skip_rows,
-        device_preset=device_preset,
-    ))
+    task = asyncio.ensure_future(
+        _create_and_process(
+            file_path=file_path,
+            filename=filename,
+            is_gzip=is_gzip,
+            username=username,
+            skip_rows=skip_rows,
+            device_preset=device_preset,
+        )
+    )
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
@@ -84,9 +86,7 @@ async def _create_and_process(
     try:
         async with async_session_maker() as db:
             # Check for existing file
-            result = await db.execute(
-                select(FileModel).where(FileModel.filename == filename)
-            )
+            result = await db.execute(select(FileModel).where(FileModel.filename == filename))
             existing = result.scalar_one_or_none()
             if existing:
                 logger.warning("File %s already exists (id=%d), skipping TUS upload", filename, existing.id)

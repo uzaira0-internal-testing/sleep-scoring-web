@@ -39,6 +39,11 @@ test.describe("File Management", () => {
 
     const fileSel = fileSelector(page);
     await expect(fileSel).toBeVisible({ timeout: 10000 });
+
+    // Screenshot: scoring page with file selector visible
+    await expect(page).toHaveScreenshot("file-management-file-selector.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 
   // =========================================================================
@@ -339,6 +344,11 @@ test.describe("File Management", () => {
     expect(canvasBox).toBeTruthy();
     expect(canvasBox!.width).toBeGreaterThan(400);
     expect(canvasBox!.height).toBeGreaterThan(200);
+
+    // Screenshot: chart canvas with proper dimensions rendered
+    await expect(page).toHaveScreenshot("file-management-chart-canvas.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 
   // =========================================================================

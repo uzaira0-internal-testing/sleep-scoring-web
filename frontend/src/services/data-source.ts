@@ -5,6 +5,7 @@ import type { SleepMarkerJson, NonwearMarkerJson, ActivityDay } from "@/db/schem
 import { runAutoScoring, placeNonwearMarkers } from "@/services/marker-placement";
 import { computePreComplexity, computePostComplexity } from "@/services/complexity";
 import { getDetectionRuleParams } from "@/constants/options";
+import { MarkersResponseSchema, ActivityDataResponseSchema } from "@/lib/schemas";
 
 // =============================================================================
 // Diary field extraction helpers (used by LocalDataSource)
@@ -193,7 +194,15 @@ export class ServerDataSource implements DataSource {
       headers: this.getHeaders(),
     });
     if (!response.ok) throw new Error(`Failed to load activity: ${response.status}`);
-    const data = await response.json();
+    const raw = await response.json();
+
+    // Validate API response shape at runtime
+    const parsed = ActivityDataResponseSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.error("[loadActivityData] API response schema mismatch — backend may have changed:", parsed.error.issues);
+    }
+    const data = parsed.success ? parsed.data : raw;
+
     // Normalize: API wraps columnar data in `data` field (ActivityDataResponse.data)
     const d = data.data ?? data;
     return {
@@ -222,7 +231,15 @@ export class ServerDataSource implements DataSource {
     });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`Failed to load markers: ${response.status}`);
-    const data = await response.json();
+    const raw = await response.json();
+
+    // Validate API response shape at runtime
+    const parsed = MarkersResponseSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.error("[loadMarkers] API response schema mismatch — backend may have changed:", parsed.error.issues);
+    }
+    const data = parsed.success ? parsed.data : raw;
+
     return {
       sleepMarkers: (data.sleep_markers ?? []).map((m: Record<string, unknown>) => ({
         onsetTimestamp: (m.onset_timestamp as number | null),

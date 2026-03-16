@@ -115,7 +115,7 @@ def infer_participant_id_and_timepoint_from_filename(filename: str) -> tuple[str
     tp_match = re.search(r"(?i)(?:^|[-_\s])(?P<tp>T\d{1,2})(?=$|[-_\s(])", base)
     if tp_match:
         tp = tp_match.group("tp").upper()
-        pid_raw = base[:tp_match.start()].rstrip(" -_")
+        pid_raw = base[: tp_match.start()].rstrip(" -_")
         pid_norm = normalize_participant_id(pid_raw)
         pid = pid_raw if pid_norm is not None else None
         return pid, tp
@@ -173,9 +173,7 @@ def build_file_identity(file_obj: Any) -> FileIdentity:
     normalized_stem = filename_stem(normalized_name) or ""
 
     explicit_pid_norm = normalize_participant_id(getattr(file_obj, "participant_id", None))
-    inferred_pid_raw, inferred_tp_raw = infer_participant_id_and_timepoint_from_filename(
-        getattr(file_obj, "filename", "")
-    )
+    inferred_pid_raw, inferred_tp_raw = infer_participant_id_and_timepoint_from_filename(getattr(file_obj, "filename", ""))
     inferred_pid_norm = normalize_participant_id(inferred_pid_raw)
     inferred_tp_norm = normalize_timepoint(inferred_tp_raw)
 

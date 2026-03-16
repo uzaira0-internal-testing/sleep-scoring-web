@@ -79,6 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Ensure TUS upload directory exists
     from pathlib import Path
+
     Path(settings.tus_upload_dir).mkdir(parents=True, exist_ok=True)
 
     # Start automatic file watcher
@@ -131,14 +132,28 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=[
-        "Content-Type", "Authorization", "X-Username", "X-Site-Password",
+        "Content-Type",
+        "Authorization",
+        "X-Username",
+        "X-Site-Password",
         # TUS protocol headers
-        "Tus-Resumable", "Upload-Length", "Upload-Offset", "Upload-Metadata",
-        "Tus-Version", "Tus-Extension", "Tus-Max-Size",
+        "Tus-Resumable",
+        "Upload-Length",
+        "Upload-Offset",
+        "Upload-Metadata",
+        "Tus-Version",
+        "Tus-Extension",
+        "Tus-Max-Size",
     ],
     expose_headers=[
-        "Location", "Upload-Offset", "Tus-Resumable", "Tus-Version",
-        "Tus-Extension", "Tus-Max-Size", "Upload-Expires", "Upload-Length",
+        "Location",
+        "Upload-Offset",
+        "Tus-Resumable",
+        "Tus-Version",
+        "Tus-Extension",
+        "Tus-Max-Size",
+        "Upload-Expires",
+        "Upload-Length",
     ],
 )
 

@@ -29,6 +29,11 @@ test.describe("Settings Comprehensive", () => {
     await expect(
       page.getByRole("heading", { name: /study settings/i })
     ).toBeVisible({ timeout: 15000 });
+
+    // Screenshot: study settings page after load
+    await expect(page).toHaveScreenshot("study-settings-page.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 
   test("algorithm dropdown has 4 options", async ({ page }) => {
@@ -258,6 +263,11 @@ test.describe("Settings Comprehensive", () => {
     await expect(page.locator("text=TECH-001")).toBeVisible();
     await expect(page.locator("text=T1")).toBeVisible();
     await expect(page.getByText("TECH", { exact: true })).toBeVisible();
+
+    // Screenshot: filename patterns section with extraction results
+    await expect(page).toHaveScreenshot("study-settings-filename-patterns.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 
   test("changing test filename updates pattern results", async ({ page }) => {
@@ -377,6 +387,11 @@ test.describe("Settings Comprehensive", () => {
     await expect(
       page.getByRole("heading", { name: /data settings/i })
     ).toBeVisible({ timeout: 15000 });
+
+    // Screenshot: data settings page after load
+    await expect(page).toHaveScreenshot("data-settings-page.png", {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 
   test("device preset dropdown is visible with options", async ({ page }) => {

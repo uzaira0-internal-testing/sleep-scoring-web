@@ -34,11 +34,7 @@ def _evict_stale_entries() -> None:
     """Remove entries older than 1 hour and cap at _MAX_ENTRIES most recent."""
     now = datetime.now()
     # Remove entries older than the stale threshold
-    stale_ids = [
-        fid
-        for fid, p in _processing_status.items()
-        if now - p.updated_at > _STALE_THRESHOLD
-    ]
+    stale_ids = [fid for fid, p in _processing_status.items() if now - p.updated_at > _STALE_THRESHOLD]
     for fid in stale_ids:
         del _processing_status[fid]
 

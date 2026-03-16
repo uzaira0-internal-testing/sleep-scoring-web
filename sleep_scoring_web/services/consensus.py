@@ -61,4 +61,3 @@ def compute_candidate_hash(
     payload = canonicalize_candidate_payload(sleep_markers, nonwear_markers, is_no_sleep)
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
-

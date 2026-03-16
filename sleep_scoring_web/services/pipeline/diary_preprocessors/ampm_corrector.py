@@ -51,6 +51,7 @@ class AmPmDiaryPreprocessor:
 
         if params is None:
             from sleep_scoring_web.services.pipeline.params import DiaryPreprocessorParams as DPParams
+
             params = DPParams()
 
         # Main sleep times — with or without AM/PM correction

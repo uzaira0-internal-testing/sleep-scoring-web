@@ -115,9 +115,7 @@ def process_raw_geneactiv(
         # Fix GENEActiv colon-millisecond timestamps
         ts_col = "timestamp" if "timestamp" in chunk_df.columns else chunk_df.columns[0]
         if chunk_df[ts_col].dtype == object:
-            chunk_df[ts_col] = chunk_df[ts_col].str.replace(
-                r":(\d{3})$", r".\1", regex=True
-            )
+            chunk_df[ts_col] = chunk_df[ts_col].str.replace(r":(\d{3})$", r".\1", regex=True)
         chunk_df[ts_col] = pd.to_datetime(chunk_df[ts_col])
 
         if first_timestamp is None:
@@ -163,9 +161,7 @@ def process_raw_geneactiv(
                 epoch_timestamps.append(timestamps[idx])
             else:  # pragma: no cover — defensive: timestamps always have enough entries
                 # Extrapolate from last known timestamp
-                epoch_timestamps.append(
-                    timestamps[-1] + pd.Timedelta(seconds=EPOCH_SECONDS * (ei - len(epoch_counts) + 1))
-                )
+                epoch_timestamps.append(timestamps[-1] + pd.Timedelta(seconds=EPOCH_SECONDS * (ei - len(epoch_counts) + 1)))
 
         # Create epoch DataFrame matching the database schema
         epoch_df = pd.DataFrame(
@@ -177,9 +173,7 @@ def process_raw_geneactiv(
             }
         )
         # Calculate vector magnitude from counts
-        epoch_df["vector_magnitude"] = np.sqrt(
-            epoch_df["axis_x"] ** 2 + epoch_df["axis_y"] ** 2 + epoch_df["axis_z"] ** 2
-        )
+        epoch_df["vector_magnitude"] = np.sqrt(epoch_df["axis_x"] ** 2 + epoch_df["axis_y"] ** 2 + epoch_df["axis_z"] ** 2)
 
         all_epoch_dfs.append(epoch_df)
         total_epochs_inserted += len(epoch_df)
@@ -189,7 +183,9 @@ def process_raw_geneactiv(
             progress_callback("converting_counts", pct, total_epochs_inserted)
 
     # Process any remaining leftover samples (final partial epoch)
-    if leftover_samples is not None and len(leftover_samples) >= samples_per_epoch:  # pragma: no cover — defensive: leftover is always < epoch after chunk loop
+    if (
+        leftover_samples is not None and len(leftover_samples) >= samples_per_epoch
+    ):  # pragma: no cover — defensive: leftover is always < epoch after chunk loop
         n_complete = (len(leftover_samples) // samples_per_epoch) * samples_per_epoch
         complete_xyz = leftover_samples[:n_complete]
         epoch_counts = get_counts(complete_xyz, freq=freq, epoch=EPOCH_SECONDS)
@@ -200,9 +196,7 @@ def process_raw_geneactiv(
             if idx < len(leftover_timestamps):
                 epoch_timestamps.append(leftover_timestamps[idx])
             else:
-                epoch_timestamps.append(
-                    leftover_timestamps[-1] + pd.Timedelta(seconds=EPOCH_SECONDS)
-                )
+                epoch_timestamps.append(leftover_timestamps[-1] + pd.Timedelta(seconds=EPOCH_SECONDS))
 
         epoch_df = pd.DataFrame(
             {
@@ -212,9 +206,7 @@ def process_raw_geneactiv(
                 "axis_z": epoch_counts[:, 2] if epoch_counts.shape[1] > 2 else 0,
             }
         )
-        epoch_df["vector_magnitude"] = np.sqrt(
-            epoch_df["axis_x"] ** 2 + epoch_df["axis_y"] ** 2 + epoch_df["axis_z"] ** 2
-        )
+        epoch_df["vector_magnitude"] = np.sqrt(epoch_df["axis_x"] ** 2 + epoch_df["axis_y"] ** 2 + epoch_df["axis_z"] ** 2)
         all_epoch_dfs.append(epoch_df)
         total_epochs_inserted += len(epoch_df)
 

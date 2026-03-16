@@ -8,6 +8,7 @@ Uses httpx for async testing with FastAPI.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import tempfile
 from collections.abc import AsyncGenerator, Generator
@@ -28,38 +29,43 @@ from sleep_scoring_web.schemas.enums import MarkerType
 def _patch_settings_dirs() -> Generator[None, None, None]:
     """Patch settings directories to temp paths BEFORE any lifespan code runs.
 
-    The FastAPI lifespan handler calls ``Path(settings.tus_upload_dir).mkdir()``
-    and ``start_file_watcher()`` (which creates ``settings.data_dir``).  These
-    default to paths under ``/app`` which don't exist in the test environment.
-
-    This session-scoped autouse fixture runs before every other fixture and
-    ensures the directories point to writable temp paths for the entire test
-    session.  Per-function fixtures (``setup_db``) may override ``upload_dir``
-    and ``tus_upload_dir`` with their own per-test temp dirs for isolation; this
-    fixture simply provides a safe fallback so the lifespan never hits
-    ``/app``.
+    Uses environment variables so the patch survives ``get_settings.cache_clear()``
+    (which test_schema_fuzzing.py calls at module level).  Env vars are read
+    fresh each time Settings() is instantiated, making this approach robust
+    against cache invalidation.
     """
-    from sleep_scoring_web.config import get_settings
-
-    settings = get_settings()
-
-    original_upload_dir = settings.upload_dir
-    original_tus_dir = settings.tus_upload_dir
-    original_data_dir = settings.data_dir
-
     _tmp_uploads = tempfile.mkdtemp(prefix="test_session_uploads_")
     _tmp_tus = tempfile.mkdtemp(prefix="test_session_tus_")
     _tmp_data = tempfile.mkdtemp(prefix="test_session_data_")
 
-    settings.upload_dir = _tmp_uploads
-    settings.tus_upload_dir = _tmp_tus
-    settings.data_dir = _tmp_data
+    original_env = {
+        "UPLOAD_DIR": os.environ.get("UPLOAD_DIR"),
+        "TUS_UPLOAD_DIR": os.environ.get("TUS_UPLOAD_DIR"),
+        "DATA_DIR": os.environ.get("DATA_DIR"),
+    }
+
+    os.environ["UPLOAD_DIR"] = _tmp_uploads
+    os.environ["TUS_UPLOAD_DIR"] = _tmp_tus
+    os.environ["DATA_DIR"] = _tmp_data
+
+    # Also patch the current settings object if already cached
+    try:
+        from sleep_scoring_web.config import get_settings
+        settings = get_settings()
+        settings.upload_dir = _tmp_uploads
+        settings.tus_upload_dir = _tmp_tus
+        settings.data_dir = _tmp_data
+    except Exception:  # noqa: BLE001
+        pass
 
     yield
 
-    settings.upload_dir = original_upload_dir
-    settings.tus_upload_dir = original_tus_dir
-    settings.data_dir = original_data_dir
+    # Restore original env vars
+    for key, val in original_env.items():
+        if val is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = val
 
     shutil.rmtree(_tmp_uploads, ignore_errors=True)
     shutil.rmtree(_tmp_tus, ignore_errors=True)

@@ -27,9 +27,7 @@ async def get_assigned_file_ids(db, username: str) -> list[int]:
     """Get all file IDs assigned to a username."""
     if not username:
         return []
-    result = await db.execute(
-        select(FileAssignment.file_id).where(FileAssignment.username == username)
-    )
+    result = await db.execute(select(FileAssignment.file_id).where(FileAssignment.username == username))
     return list(result.scalars().all())
 
 
@@ -58,9 +56,7 @@ async def require_file_access(db, username: str, file_id: int) -> None:
     )
 
 
-async def get_accessible_files(
-    db: AsyncSession, username: str
-) -> list[FileModel]:
+async def get_accessible_files(db: AsyncSession, username: str) -> list[FileModel]:
     """
     Load non-excluded files the user can access in a single DB query.
 
@@ -74,12 +70,7 @@ async def get_accessible_files(
     if is_admin_user(username):
         stmt = select(FileModel).where(exclusion_filter)
     else:
-        assigned_ids = (
-            select(FileAssignment.file_id)
-            .where(FileAssignment.username == username)
-            .correlate(None)
-            .scalar_subquery()
-        )
+        assigned_ids = select(FileAssignment.file_id).where(FileAssignment.username == username).correlate(None).scalar_subquery()
         stmt = select(FileModel).where(
             FileModel.id.in_(assigned_ids),
             exclusion_filter,
@@ -100,9 +91,7 @@ async def require_file_and_access(db, username: str, file_id: int):
     from sleep_scoring_web.services.file_identity import is_excluded_file_obj
 
     # Load the file first
-    result = await db.execute(
-        select(FileModel).where(FileModel.id == file_id)
-    )
+    result = await db.execute(select(FileModel).where(FileModel.id == file_id))
     file = result.scalar_one_or_none()
     if not file or is_excluded_file_obj(file):
         raise HTTPException(

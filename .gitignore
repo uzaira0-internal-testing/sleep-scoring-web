@@ -245,6 +245,10 @@ scripts/*
 !scripts/deploy.sh
 !scripts/backup-db.sh
 !scripts/restore-pitr.sh
+!scripts/test-all.sh
+!scripts/smoke-test.sh
+!scripts/profile.sh
+!scripts/check-contract-drift.sh
 
 # Frontend overrides — un-ignore paths blocked by Python patterns above
 !frontend/
@@ -265,3 +269,4 @@ node_modules/
 
 # Docker env files
 docker/.env
+profiling-reports/

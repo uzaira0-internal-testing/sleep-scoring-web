@@ -338,9 +338,7 @@ def _candidate_ambiguity_penalty(
     details: dict = {}
     penalty = 0.0
 
-    onsets, offsets = _find_sleep_run_boundaries(
-        sleep_scores, timestamps, night_start, night_end
-    )
+    onsets, offsets = _find_sleep_run_boundaries(sleep_scores, timestamps, night_start, night_end)
     details["onset_candidates_total"] = len(onsets)
     details["offset_candidates_total"] = len(offsets)
 
@@ -571,9 +569,7 @@ def compute_pre_complexity(
     # (incomplete diary already returned -1 above)
 
     # 3. Diary-algorithm gap (-15 max)
-    gap_penalty, onset_gap, offset_gap = _diary_algorithm_gap_penalty(
-        timestamps, sleep_scores, diary_onset_time, diary_wake_time, analysis_date
-    )
+    gap_penalty, onset_gap, offset_gap = _diary_algorithm_gap_penalty(timestamps, sleep_scores, diary_onset_time, diary_wake_time, analysis_date)
     features["diary_algorithm_gap_penalty"] = round(gap_penalty, 1)
     if onset_gap is not None:
         features["diary_onset_gap_min"] = round(onset_gap, 1)
@@ -585,9 +581,7 @@ def compute_pre_complexity(
     # Choi + sensor overlap = confirmed nonwear (full penalty weight).
     # Choi alone = still adds complexity (scorer must decide if real).
     # Sensor alone = no penalty (no algorithmic evidence to confuse scorer).
-    confirmed = _build_confirmed_nonwear_mask(
-        choi_nonwear, sensor_nonwear_periods or [], timestamps
-    )
+    confirmed = _build_confirmed_nonwear_mask(choi_nonwear, sensor_nonwear_periods or [], timestamps)
     choi_night_epochs = sum(choi_nonwear[night_start:night_end])
     confirmed_epochs = sum(confirmed[night_start:night_end])
     choi_only_epochs = choi_night_epochs - confirmed_epochs
@@ -708,8 +702,13 @@ def compute_pre_complexity(
     diary_wake_ts = float(calendar.timegm(diary_wake_dt.timetuple()))
 
     ca_penalty, ca_details = _candidate_ambiguity_penalty(
-        timestamps, sleep_scores, choi_nonwear,
-        diary_onset_ts, diary_wake_ts, night_start, night_end,
+        timestamps,
+        sleep_scores,
+        choi_nonwear,
+        diary_onset_ts,
+        diary_wake_ts,
+        night_start,
+        night_end,
     )
     features.update(ca_details)
     total_penalty += ca_penalty
@@ -750,12 +749,8 @@ def compute_post_complexity(
             algo_offset_ts = timestamps[i]
 
     if algo_onset_ts is not None and algo_offset_ts is not None:
-        closest_onset_dist = min(
-            abs(m[0] - algo_onset_ts) for m in sleep_markers
-        )
-        closest_offset_dist = min(
-            abs(m[1] - algo_offset_ts) for m in sleep_markers
-        )
+        closest_onset_dist = min(abs(m[0] - algo_onset_ts) for m in sleep_markers)
+        closest_offset_dist = min(abs(m[1] - algo_offset_ts) for m in sleep_markers)
 
         onset_epochs = closest_onset_dist / 60.0
         offset_epochs = closest_offset_dist / 60.0

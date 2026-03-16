@@ -18,6 +18,7 @@ from sleep_scoring_web.api.access import (
     require_file_access,
     user_can_access_file,
 )
+from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword  # noqa: TC001 — FastAPI needs these at runtime
 from sleep_scoring_web.config import get_settings
 from sleep_scoring_web.db.models import (
     ConsensusCandidate,
@@ -36,8 +37,6 @@ from sleep_scoring_web.services.consensus_realtime import (
     broadcast_consensus_update,
     consensus_realtime_broker,
 )
-
-from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword  # noqa: TC001, E402 — FastAPI needs these at runtime
 
 router = APIRouter(prefix="/consensus", tags=["consensus"])
 
@@ -395,6 +394,7 @@ async def consensus_stream(websocket: WebSocket) -> None:
 
     # Enforce assignment access before subscribing to this file/date channel.
     from sleep_scoring_web.db.session import async_session_maker
+
     async with async_session_maker() as db:
         allowed = await user_can_access_file(db, username, file_id)
     if not allowed:
@@ -490,9 +490,7 @@ async def get_consensus_overview(
             and_(
                 UserAnnotation.status == VerificationStatus.SUBMITTED,
                 # Filter to exact (file_id, analysis_date) pairs — not just file_id
-                tuple_(UserAnnotation.file_id, UserAnnotation.analysis_date).in_(
-                    file_date_pairs
-                ),
+                tuple_(UserAnnotation.file_id, UserAnnotation.analysis_date).in_(file_date_pairs),
             )
         )
     )
@@ -505,9 +503,7 @@ async def get_consensus_overview(
     # Batch: check which file/date pairs have resolutions
     resolved_result = await db.execute(
         select(ResolvedAnnotation.file_id, ResolvedAnnotation.analysis_date).where(
-            tuple_(ResolvedAnnotation.file_id, ResolvedAnnotation.analysis_date).in_(
-                file_date_pairs
-            )
+            tuple_(ResolvedAnnotation.file_id, ResolvedAnnotation.analysis_date).in_(file_date_pairs)
         )
     )
     resolved_set = {(r.file_id, r.analysis_date) for r in resolved_result.all()}
@@ -729,6 +725,7 @@ async def resolve_consensus(
 
     # Admin check: only users in ADMIN_USERNAMES can resolve consensus
     from sleep_scoring_web.config import get_settings
+
     settings = get_settings()
     if username.lower() not in settings.admin_usernames_list:
         raise HTTPException(

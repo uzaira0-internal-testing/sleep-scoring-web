@@ -614,7 +614,7 @@ class TestLargeBatchInsert:
             rows.append(
                 RawActivityData(
                     file_id=file.id,
-                    timestamp=datetime(2024, 1, 1, 0, i, 0),
+                    timestamp=datetime(2024, 1, 1, i // 60, i % 60, 0),
                     epoch_index=i,
                     axis_x=float(i) if i % 2 == 0 else None,
                     axis_y=float(i) if i % 3 == 0 else None,
@@ -664,7 +664,7 @@ class TestCascadeDelete:
             pg_session.add(
                 RawActivityData(
                     file_id=file_id,
-                    timestamp=datetime(2024, 1, 1, 0, i, 0),
+                    timestamp=datetime(2024, 1, 1, i // 60, i % 60, 0),
                     epoch_index=i,
                     axis_y=float(i),
                 )
@@ -757,7 +757,7 @@ class TestCascadeDelete:
                 pg_session.add(
                     RawActivityData(
                         file_id=f.id,
-                        timestamp=datetime(2024, 1, 1, 0, i, 0),
+                        timestamp=datetime(2024, 1, 1, i // 60, i % 60, 0),
                         epoch_index=i,
                         axis_y=float(i),
                     )
@@ -893,16 +893,17 @@ class TestUniqueConstraintViolations:
         file = _make_file(filename="marker_uq_composite.csv")
         pg_session.add(file)
         await pg_session.flush()
+        file_id = file.id  # capture before rollback expires the object
 
         analysis = date(2024, 1, 1)
 
         # First marker — period 1
-        m1 = _make_marker(file.id, analysis, period_index=1, created_by="scorer1")
+        m1 = _make_marker(file_id, analysis, period_index=1, created_by="scorer1")
         pg_session.add(m1)
         await pg_session.commit()
 
         # Same composite key — must fail
-        m2 = _make_marker(file.id, analysis, period_index=1, created_by="scorer1")
+        m2 = _make_marker(file_id, analysis, period_index=1, created_by="scorer1")
         pg_session.add(m2)
         with pytest.raises(IntegrityError):
             await pg_session.flush()
@@ -910,7 +911,7 @@ class TestUniqueConstraintViolations:
 
         # Different period_index — must succeed
         m3 = _make_marker(
-            file.id,
+            file_id,
             analysis,
             period_index=2,
             created_by="scorer1",
@@ -921,7 +922,7 @@ class TestUniqueConstraintViolations:
         await pg_session.commit()
 
         result = await pg_session.execute(
-            select(Marker).where(Marker.file_id == file.id)
+            select(Marker).where(Marker.file_id == file_id)
         )
         assert len(result.scalars().all()) == 2
 

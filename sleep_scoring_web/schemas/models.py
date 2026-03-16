@@ -38,6 +38,7 @@ def _normalize_timestamp(v: float | None) -> float | None:
         raise ValueError(msg)
     return v
 
+
 # =============================================================================
 # Sleep Period & Marker Models
 # =============================================================================

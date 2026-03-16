@@ -433,25 +433,31 @@ class ExportService:
                 )
             else:
                 rule_raw = (ann.detection_rule if ann else None) or ""
-                row.update(_empty_metric_fields(
-                    detection_rule=_DETECTION_RULE_DISPLAY.get(rule_raw, rule_raw),
-                    verification_status="Draft",
-                ))
+                row.update(
+                    _empty_metric_fields(
+                        detection_rule=_DETECTION_RULE_DISPLAY.get(rule_raw, rule_raw),
+                        verification_status="Draft",
+                    )
+                )
 
             sleep_rows.append(row)
 
         # Query nonwear markers (manual only, exclude sensor/read-only)
-        nonwear_query = select(Marker).where(and_(
-            Marker.file_id.in_(file_ids),
-            Marker.marker_category == MarkerCategory.NONWEAR,
-            Marker.exclude_sensor_nonwear_filter(),
-            Marker.end_timestamp.isnot(None),
-        ))
+        nonwear_query = select(Marker).where(
+            and_(
+                Marker.file_id.in_(file_ids),
+                Marker.marker_category == MarkerCategory.NONWEAR,
+                Marker.exclude_sensor_nonwear_filter(),
+                Marker.end_timestamp.isnot(None),
+            )
+        )
         if start_date and end_date:
-            nonwear_query = nonwear_query.where(and_(
-                Marker.analysis_date >= start_date,
-                Marker.analysis_date <= end_date,
-            ))
+            nonwear_query = nonwear_query.where(
+                and_(
+                    Marker.analysis_date >= start_date,
+                    Marker.analysis_date <= end_date,
+                )
+            )
         nonwear_query = nonwear_query.order_by(Marker.file_id, Marker.analysis_date, Marker.period_index)
         nonwear_result = await self.db.execute(nonwear_query)
         nonwear_markers = nonwear_result.scalars().all()
@@ -470,23 +476,25 @@ class ExportService:
             onset_dt = datetime.fromtimestamp(nw.start_timestamp, tz=UTC) if nw.start_timestamp else None
             offset_dt = datetime.fromtimestamp(nw.end_timestamp, tz=UTC) if nw.end_timestamp else None
 
-            nonwear_rows.append({
-                "Filename": file.filename,
-                "File ID": file.id,
-                "Participant ID": file.participant_id or "",
-                "Study Date": str(nw.analysis_date) if nw.analysis_date else "",
-                "Period Index": nw.period_index if nw.period_index is not None else "",
-                "Marker Type": _MARKER_TYPE_DISPLAY.get(nw.marker_type, nw.marker_type or "Manual Nonwear"),
-                "Onset Time": onset_dt.strftime("%H:%M") if onset_dt else "",
-                "Offset Time": offset_dt.strftime("%H:%M") if offset_dt else "",
-                "Onset Datetime": onset_dt.strftime("%Y-%m-%d %H:%M:%S") if onset_dt else "",
-                "Offset Datetime": offset_dt.strftime("%Y-%m-%d %H:%M:%S") if offset_dt else "",
-                "Scored By": nw.created_by or "",
-                "Is No Sleep": "True" if (ann and ann.is_no_sleep) else "False",
-                "Needs Consensus": "True" if (ann and ann.needs_consensus) else "False",
-                "Notes": (ann.notes or "") if ann else "",
-                **_empty_metric_fields(),
-            })
+            nonwear_rows.append(
+                {
+                    "Filename": file.filename,
+                    "File ID": file.id,
+                    "Participant ID": file.participant_id or "",
+                    "Study Date": str(nw.analysis_date) if nw.analysis_date else "",
+                    "Period Index": nw.period_index if nw.period_index is not None else "",
+                    "Marker Type": _MARKER_TYPE_DISPLAY.get(nw.marker_type, nw.marker_type or "Manual Nonwear"),
+                    "Onset Time": onset_dt.strftime("%H:%M") if onset_dt else "",
+                    "Offset Time": offset_dt.strftime("%H:%M") if offset_dt else "",
+                    "Onset Datetime": onset_dt.strftime("%Y-%m-%d %H:%M:%S") if onset_dt else "",
+                    "Offset Datetime": offset_dt.strftime("%Y-%m-%d %H:%M:%S") if offset_dt else "",
+                    "Scored By": nw.created_by or "",
+                    "Is No Sleep": "True" if (ann and ann.is_no_sleep) else "False",
+                    "Needs Consensus": "True" if (ann and ann.needs_consensus) else "False",
+                    "Notes": (ann.notes or "") if ann else "",
+                    **_empty_metric_fields(),
+                }
+            )
 
         # Add rows for no-sleep dates (have annotation but no marker rows)
         for key, ann in ann_lookup.items():
@@ -498,25 +506,27 @@ class ExportService:
             if not file:
                 continue
             rule_raw = ann.detection_rule or ""
-            sleep_rows.append({
-                "Filename": file.filename,
-                "File ID": file.id,
-                "Participant ID": file.participant_id or "",
-                "Study Date": str(ann.analysis_date),
-                "Period Index": "",
-                "Marker Type": "",
-                "Onset Time": "",
-                "Offset Time": "",
-                "Onset Datetime": "",
-                "Offset Datetime": "",
-                "Scored By": ann.username or "",
-                "Is No Sleep": "True",
-                "Needs Consensus": "True" if ann.needs_consensus else "False",
-                "Notes": ann.notes or "",
-                **_empty_metric_fields(
-                    detection_rule=_DETECTION_RULE_DISPLAY.get(rule_raw, rule_raw),
-                ),
-            })
+            sleep_rows.append(
+                {
+                    "Filename": file.filename,
+                    "File ID": file.id,
+                    "Participant ID": file.participant_id or "",
+                    "Study Date": str(ann.analysis_date),
+                    "Period Index": "",
+                    "Marker Type": "",
+                    "Onset Time": "",
+                    "Offset Time": "",
+                    "Onset Datetime": "",
+                    "Offset Datetime": "",
+                    "Scored By": ann.username or "",
+                    "Is No Sleep": "True",
+                    "Needs Consensus": "True" if ann.needs_consensus else "False",
+                    "Notes": ann.notes or "",
+                    **_empty_metric_fields(
+                        detection_rule=_DETECTION_RULE_DISPLAY.get(rule_raw, rule_raw),
+                    ),
+                }
+            )
 
         def _sort_key(r: dict[str, Any]) -> tuple:
             return (
