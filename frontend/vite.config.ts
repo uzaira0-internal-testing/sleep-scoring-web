@@ -24,25 +24,11 @@ export default defineConfig({
     viteCompression({ algorithm: "gzip", threshold: 1024 }),
     viteCompression({ algorithm: "brotliCompress", threshold: 1024, ext: ".br" }),
     VitePWA({
-      registerType: "autoUpdate",
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,wasm,svg,png,ico}"],
-        // Only cache API responses when there's a real server behind them.
-        // In Tauri, /api/ paths return SPA HTML (asset protocol fallback),
-        // which must NOT be cached as API data.
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\//,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              expiration: { maxEntries: 50, maxAgeSeconds: 300 },
-              cacheableResponse: { headers: { "content-type": "application/json" } },
-            },
-          },
-        ],
-      },
-      manifest: false, // Using public/manifest.json directly
+      // DISABLED: SW + BASE_PATH causes stale cache issues on deployment.
+      // The self-healing script in index.html unregisters old SWs.
+      // Re-enable once BASE_PATH-aware SW registration is implemented.
+      selfDestroying: true,
+      manifest: false,
     }),
   ],
   base: "./",
