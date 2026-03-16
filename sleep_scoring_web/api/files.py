@@ -1036,11 +1036,15 @@ async def get_file_dates_status(
         )
         SELECT
             fd.d::text AS date,
-            ua.is_no_sleep,
-            ua.needs_consensus,
-            ua.sleep_markers_json,
-            ua.nonwear_markers_json,
-            auto_ua.sleep_markers_json AS auto_sleep_markers_json,
+            COALESCE(ua.is_no_sleep, false) AS is_no_sleep,
+            COALESCE(ua.needs_consensus, false) AS needs_consensus,
+            COALESCE(ua.is_no_sleep, false)
+                OR (ua.sleep_markers_json IS NOT NULL AND ua.sleep_markers_json::text NOT IN ('[]', 'null'))
+                OR (ua.nonwear_markers_json IS NOT NULL AND ua.nonwear_markers_json::text NOT IN ('[]', 'null'))
+                AS has_markers,
+            auto_ua.sleep_markers_json IS NOT NULL
+                AND auto_ua.sleep_markers_json::text NOT IN ('[]', 'null')
+                AS has_auto_score,
             nc.complexity_pre,
             nc.complexity_post
         FROM filtered_dates fd
@@ -1080,7 +1084,7 @@ async def get_file_dates_status(
             missing_date_objs = [datetime.strptime(d, "%Y-%m-%d").date() for d in missing_complexity_dates]
             await _compute_complexity_for_file(file_id, missing_date_objs)
             # Re-fetch after computing
-            result = await db.execute(raw_sql, {"file_id": file_id, "username": username})
+            result = await db.execute(raw_sql, {"file_id": file_id, "username": username, "is_admin": is_admin_user(username)})
             rows = result.fetchall()
         except Exception:
             logger.exception(
@@ -1089,33 +1093,18 @@ async def get_file_dates_status(
                 len(missing_complexity_dates),
             )
 
-    out = []
-    for row in rows:
-        is_no_sleep = bool(row.is_no_sleep) if row.is_no_sleep is not None else False
-        needs_consensus = bool(row.needs_consensus) if row.needs_consensus is not None else False
-
-        has_markers = False
-        if row.sleep_markers_json or row.nonwear_markers_json:
-            sleep_markers = row.sleep_markers_json or []
-            nonwear_markers = row.nonwear_markers_json or []
-            has_markers = len(sleep_markers) > 0 or len(nonwear_markers) > 0
-
-        has_auto_score = False
-        if row.auto_sleep_markers_json:
-            has_auto_score = len(row.auto_sleep_markers_json) > 0
-
-        out.append(
-            DateStatus(
-                date=row.date,
-                has_markers=has_markers or is_no_sleep,
-                is_no_sleep=is_no_sleep,
-                needs_consensus=needs_consensus,
-                has_auto_score=has_auto_score,
-                complexity_pre=row.complexity_pre,
-                complexity_post=row.complexity_post,
-            )
+    return [
+        DateStatus(
+            date=row.date,
+            has_markers=bool(row.has_markers),
+            is_no_sleep=bool(row.is_no_sleep),
+            needs_consensus=bool(row.needs_consensus),
+            has_auto_score=bool(row.has_auto_score),
+            complexity_pre=row.complexity_pre,
+            complexity_post=row.complexity_post,
         )
-    return out
+        for row in rows
+    ]
 
 
 @router.post("/{file_id}/compute-complexity")
