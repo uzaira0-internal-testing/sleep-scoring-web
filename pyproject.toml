@@ -69,6 +69,7 @@ web = [
     "agcounts>=0.2.0",
     "tuspyserver>=4.2.3",
     "sentry-sdk[fastapi]>=2.0.0",
+    "arq>=0.25.0",
 ]
 # Development dependencies - testing and code quality tools
 dev = [

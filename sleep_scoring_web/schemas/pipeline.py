@@ -39,6 +39,9 @@ class PeriodGuiderParamsSchema(BaseModel):
     """Parameters for sleep period search anchoring (GGIR: guider)."""
 
     diary_tolerance_minutes: int = Field(default=15, ge=1, le=120, description="Tolerance window around diary times for candidate selection")
+    l5_window_hours: int = Field(default=12, ge=6, le=24, description="Total search window (hours) centered on L5 midpoint")
+    bout_merge_gap_minutes: int = Field(default=60, ge=5, le=180, description="Max wake gap (minutes) to merge adjacent sleep bouts")
+    bout_padding_minutes: int = Field(default=30, ge=0, le=120, description="Padding (minutes) around longest bout each side")
 
 
 class PeriodConstructorParamsSchema(BaseModel):
@@ -58,9 +61,8 @@ class NonwearDetectorParamsSchema(BaseModel):
 
     activity_threshold: int = Field(default=0, ge=0, le=1000, description="Maximum activity count to consider as zero/near-zero")
     zero_activity_ratio: float = Field(
-        default=0.80, ge=0.0, le=1.0, description="Minimum fraction of zero-activity epochs required in nonwear period"
+        default=0.65, ge=0.0, le=1.0, description="Minimum fraction of zero-activity epochs required in nonwear period"
     )
-    max_extension_minutes: int = Field(default=30, ge=0, le=120, description="Maximum outward extension from diary anchor in minutes")
     min_duration_minutes: int = Field(default=10, ge=1, le=120, description="Minimum nonwear period duration in minutes")
     epoch_length_seconds: int = Field(default=60, ge=1, le=300, description="Epoch duration in seconds")
 

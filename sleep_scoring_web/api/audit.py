@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword  # noqa: TC001 — FastAPI needs these at runtime
 from sleep_scoring_web.db.models import AuditLogEntry
+from sleep_scoring_web.db.models import File as FileModel
 
 logger = get_logger(__name__)
 
@@ -95,6 +96,18 @@ async def log_audit_events(
     This handles the case where the client crashes after server receipt
     but before deleting from IndexedDB, causing a re-send on next load.
     """
+    # Verify the file still exists — prevents FK violations when a file is deleted
+    # while the frontend still holds a reference to the old file_id.
+    file_exists = await db.execute(sa_select(FileModel.id).where(FileModel.id == request.file_id))
+    if file_exists.scalar_one_or_none() is None:
+        logger.warning(
+            "Audit log: file_id=%d not found in files table, discarding %d events (user=%s)",
+            request.file_id,
+            len(request.events),
+            username,
+        )
+        return AuditBatchResponse(logged=0)
+
     # Collect unique keys from the incoming batch
     incoming_keys = {(e.session_id, e.sequence) for e in request.events}
 
@@ -138,8 +151,8 @@ async def log_audit_events(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        # Narrow check: only suppress the dedup constraint violation
         exc_str = str(exc).lower()
+        # Dedup: concurrent flush of same (session_id, sequence) pair — silently skip
         if "uq_audit_session_sequence" in exc_str:
             logger.debug(
                 "Concurrent flush dedup for file=%d date=%s user=%s",
@@ -148,7 +161,16 @@ async def log_audit_events(
                 username,
             )
             return AuditBatchResponse(logged=0)
-        # Unexpected constraint violation (FK, NOT NULL, etc.) — propagate
+        # FK violation: file was deleted between our existence check and the insert
+        if "audit_log_file_id_fkey" in exc_str or "foreign key" in exc_str:
+            logger.warning(
+                "Audit log FK violation: file_id=%d no longer in files table, discarding %d events (user=%s)",
+                request.file_id,
+                len(new_events),
+                username,
+            )
+            return AuditBatchResponse(logged=0)
+        # Truly unexpected constraint violation — propagate as 500
         logger.exception("Unexpected IntegrityError in audit log: %s", exc)
         raise
 

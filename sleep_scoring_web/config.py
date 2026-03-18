@@ -74,6 +74,10 @@ class Settings(AuthSettingsMixin, BaseSettings):
     data_dir: str = "/app/data"
     scan_data_dir_on_startup: bool = False  # Never block startup - use background tasks
 
+    # Redis / arq background jobs
+    redis_url: str = "redis://redis:6379"
+    arq_max_jobs: int = 2  # Max concurrent file processing jobs
+
     # Data Processing
     default_epoch_length: int = 60
     default_skip_rows: int = 10

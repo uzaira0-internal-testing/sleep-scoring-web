@@ -14,21 +14,6 @@ function formatEta(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}m`;
 }
 
-function phaseLabel(phase: string | null): string {
-  if (!phase) return "Processing...";
-  switch (phase) {
-    case "decompressing":
-      return "Decompressing...";
-    case "reading_csv":
-      return "Reading CSV...";
-    case "converting_counts":
-      return "Converting raw data to counts...";
-    case "inserting_db":
-      return "Saving to database...";
-    default:
-      return phase;
-  }
-}
 
 interface UploadProgressProps {
   progress: TusProgress;
@@ -56,27 +41,25 @@ export function UploadProgress({
   // Calculate overall progress across phases
   let overallPercent = 0;
   if (progress.phase === "compressing") {
-    overallPercent = progress.percent * 0.1; // 0-10%
+    overallPercent = progress.percent * 0.05; // 0-5%
   } else if (progress.phase === "uploading") {
-    overallPercent = 10 + progress.percent * 0.5; // 10-60%
-  } else if (progress.phase === "processing") {
-    overallPercent = 60 + progress.processingPercent * 0.4; // 60-100%
+    overallPercent = 5 + progress.percent * 0.95; // 5-100%
   } else if (isDone) {
     overallPercent = 100;
   }
 
   return (
     <div className={`rounded-lg border p-3 text-sm ${
-      isError ? "border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950" :
-      isDone ? "border-green-300 bg-green-50 dark:border-green-800 dark:bg-green-950" :
-      "border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950"
+      isError ? "border-destructive/40 bg-destructive/10 text-foreground" :
+      isDone ? "border-success/40 bg-success/10 text-foreground" :
+      "border-primary/40 bg-primary/10 text-foreground"
     }`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
-          {isActive && <Loader2 className="h-4 w-4 animate-spin text-blue-500" />}
-          {isDone && <Check className="h-4 w-4 text-green-500" />}
-          {isError && <AlertTriangle className="h-4 w-4 text-red-500" />}
+          {isActive && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+          {isDone && <Check className="h-4 w-4 text-success" />}
+          {isError && <AlertTriangle className="h-4 w-4 text-destructive" />}
           <span className="font-medium truncate max-w-[250px]">
             {progress.fileName}
           </span>
@@ -117,9 +100,9 @@ export function UploadProgress({
 
       {/* Progress bar */}
       {isActive && (
-        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mb-1">
+        <div className="w-full bg-muted rounded-full h-1.5 mb-1">
           <div
-            className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+            className="bg-primary h-1.5 rounded-full transition-all duration-300"
             style={{ width: `${Math.min(overallPercent, 100)}%` }}
           />
         </div>
@@ -135,13 +118,7 @@ export function UploadProgress({
             {progress.eta > 0 && ` · ${formatEta(progress.eta)} remaining`}
           </span>
         )}
-        {progress.phase === "processing" && (
-          <span>
-            {phaseLabel(progress.processingPhase)}
-            {progress.processingPercent > 0 && ` ${progress.processingPercent.toFixed(0)}%`}
-          </span>
-        )}
-        {isDone && "Upload and processing complete"}
+        {isDone && "Upload complete"}
         {isError && (progress.error || "Upload failed")}
       </div>
     </div>

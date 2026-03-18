@@ -299,7 +299,7 @@ class TestPipelineParams:
         assert pp.bout_detector == "consecutive_run"
         assert pp.period_guider == "diary"
         assert pp.period_constructor == "onset_offset"
-        assert pp.nonwear_detector == "choi"
+        assert pp.nonwear_detector == "flat_activity"
         assert pp.diary_preprocessor == "ampm_corrector"
 
     def test_from_legacy_defaults(self) -> None:
@@ -336,9 +336,10 @@ class TestPipelineParams:
     def test_nonwear_detector_params_defaults(self) -> None:
         p = NonwearDetectorParams()
         assert p.activity_threshold == 0
-        assert p.zero_activity_ratio == 0.80
-        assert p.max_extension_minutes == 30
+        assert p.zero_activity_ratio == 0.65
         assert p.min_duration_minutes == 10
+        assert p.flat_activity_min_minutes == 60
+        assert p.flat_activity_resumption_threshold == 500
 
     def test_diary_preprocessor_params_defaults(self) -> None:
         p = DiaryPreprocessorParams()
@@ -1284,19 +1285,20 @@ class TestScoringPipeline:
         assert pipeline._nonwear_detector is not None
 
     def test_pipeline_result_has_nonwear(self) -> None:
-        """Pipeline with long zero-activity region should detect nonwear."""
+        """Pipeline with long zero-activity region followed by strong resumption detects nonwear."""
         params = PipelineParams(
             period_guider="none",
             diary_preprocessor="passthrough",
         )
         pipeline = ScoringPipeline(params)
         start = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
-        # 4 hours data: 30 min activity, 100 min zero (nonwear), 110 min activity
-        activity = [100.0] * 30 + [0.0] * 100 + [100.0] * 110
+        # 4 hours data: 30 min active, 100 min flat zero (device removed), 110 min active
+        # Activity must exceed resumption_threshold (500) so flat_activity detector triggers
+        activity = [1000.0] * 30 + [0.0] * 100 + [1000.0] * 110
         n = len(activity)
         timestamps = _make_timestamps(n, start)
         result = pipeline.run(timestamps, activity)
-        # Choi should detect the 100-minute zero period as nonwear
+        # flat_activity detector should detect the 100-minute zero period as nonwear
         assert len(result.nonwear_periods) >= 1
 
     def test_pipeline_no_main_sleep_note(self) -> None:

@@ -90,7 +90,11 @@ def is_excluded_activity_filename(value: Any) -> bool:
 
 
 def is_excluded_file_obj(file_obj: Any) -> bool:
-    """Convenience wrapper for DB file rows."""
+    """Convenience wrapper for DB file rows. Excludes raw (unprocessed) files."""
+    from sleep_scoring_web.schemas.enums import FileStatus
+
+    if getattr(file_obj, "status", None) == FileStatus.RAW:
+        return True
     return is_excluded_activity_filename(getattr(file_obj, "filename", ""))
 
 

@@ -48,10 +48,7 @@ export const Idle: Story = {
       speed: 0,
       eta: 0,
       fileName: "participant_001.csv",
-      processingPhase: null,
-      processingPercent: 0,
       error: null,
-      fileId: null,
     } satisfies TusProgress,
   },
 };
@@ -67,10 +64,7 @@ export const Compressing: Story = {
       speed: 0,
       eta: 0,
       fileName: "participant_001.csv",
-      processingPhase: null,
-      processingPercent: 0,
       error: null,
-      fileId: null,
     } satisfies TusProgress,
   },
 };
@@ -86,10 +80,7 @@ export const Uploading: Story = {
       speed: 2_097_152,
       eta: 4,
       fileName: "participant_001.csv",
-      processingPhase: null,
-      processingPercent: 0,
       error: null,
-      fileId: null,
     } satisfies TusProgress,
   },
 };
@@ -106,34 +97,12 @@ export const Paused: Story = {
       speed: 0,
       eta: 0,
       fileName: "participant_001.csv",
-      processingPhase: null,
-      processingPercent: 0,
       error: null,
-      fileId: null,
     } satisfies TusProgress,
   },
 };
 
-/** Server-side processing phase. */
-export const Processing: Story = {
-  args: {
-    progress: {
-      phase: "processing",
-      percent: 100,
-      bytesUploaded: 24_117_248,
-      bytesTotal: 24_117_248,
-      speed: 0,
-      eta: 0,
-      fileName: "participant_001.csv",
-      processingPhase: "converting_counts",
-      processingPercent: 55,
-      error: null,
-      fileId: null,
-    } satisfies TusProgress,
-  },
-};
-
-/** Upload and processing complete. */
+/** Upload complete. */
 export const Done: Story = {
   args: {
     progress: {
@@ -144,10 +113,7 @@ export const Done: Story = {
       speed: 0,
       eta: 0,
       fileName: "participant_001.csv",
-      processingPhase: null,
-      processingPercent: 100,
       error: null,
-      fileId: 42,
     } satisfies TusProgress,
   },
 };
@@ -163,10 +129,7 @@ export const Error: Story = {
       speed: 0,
       eta: 0,
       fileName: "participant_001.csv",
-      processingPhase: null,
-      processingPercent: 0,
       error: "Network connection lost. Please try again.",
-      fileId: null,
     } satisfies TusProgress,
   },
 };

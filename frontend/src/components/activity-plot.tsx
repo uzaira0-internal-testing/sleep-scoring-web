@@ -804,8 +804,11 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       // once per rAF frame so DOM mutations are capped at display refresh rate
       let pendingDragLeft = parseFloat(line.style.left);
       let pendingDragLinePx = pendingDragLeft - plotLeft + 6;
-      let pendingDragSnappedSec = 0;
+      // Use the marker's actual timestamp as the safe initial value so that
+      // applyDragFrame() on a pure click (or ghost mousemove) is a no-op
+      let pendingDragSnappedSec = timestampSec ?? 0;
       let dragRafId: number | null = null;
+      let hasMoved = false;
 
       // Apply pending drag state to DOM — called from rAF or synchronously on mouseup
       const applyDragFrame = () => {
@@ -920,6 +923,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         pendingDragLeft = newLeft;
         pendingDragLinePx = linePx;
         pendingDragSnappedSec = snapToEpoch(currentTs);
+        hasMoved = true;
 
         // Coalesce: cancel old rAF, schedule new — ensures latest position is
         // always applied within one frame regardless of mouse polling rate
@@ -939,7 +943,10 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         // Cancel any pending rAF and apply final position synchronously so
         // the last frame is never dropped regardless of rAF timing
         if (dragRafId !== null) { cancelAnimationFrame(dragRafId); dragRafId = null; }
-        applyDragFrame();
+        // Only apply if the user actually moved the marker — pure clicks must not
+        // overwrite the timestamp (pendingDragSnappedSec could still be wrong if
+        // posToVal returned an unexpected value at mousedown)
+        if (hasMoved) applyDragFrame();
 
         getMarkerState().setSelectedPeriod(index);
         if (chartRef.current) {

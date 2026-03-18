@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-<!-- Deploy test: 2026-01-11-v1 -->
-
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **IMPORTANT: The desktop PyQt6 application (`sleep_scoring_app/`, `tests/`) is ARCHIVED and NOT under active development. Do NOT modify, fix, or refactor any desktop app code. All development effort goes to the web application (frontend + backend).**
@@ -50,11 +48,18 @@ cd frontend
 # Typecheck (NEVER run in parallel — OOM risk, see memory/tsc-oom.md)
 npx tsc --noEmit
 
+# Lint
+npx eslint src/
+
 # Dev server
 npx vite dev
 
 # Production build
 npx vite build
+
+# E2E tests (requires Docker stack running)
+npx playwright test
+npx playwright test e2e/scoring-page.spec.ts   # single file
 
 # NOTE: bun is NOT in system PATH — always use npx
 ```
@@ -67,6 +72,12 @@ ruff check sleep_scoring_web/ && ruff format sleep_scoring_web/
 
 # Type check
 basedpyright sleep_scoring_web/
+
+# Tests (uses pytest-xdist parallel by default via addopts "-n auto")
+uv run pytest                                          # all tests
+uv run pytest tests/unit/test_pipeline.py              # single file
+uv run pytest tests/unit/test_pipeline.py::test_name   # single test
+uv run pytest -k "choi"                                # by keyword
 ```
 
 ### Rust WASM Crate
@@ -109,6 +120,13 @@ Web application for visual sleep scoring of accelerometer data. React+Vite front
 │  └── Sleep scoring algorithms (Python)                      │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### UV Workspace (Python Monorepo)
+
+The backend uses `uv` workspaces. Internal packages in `packages/` are resolved locally via `[tool.uv.sources]`:
+- `db-toolkit`, `fastapi-errors`, `fastapi-pagination`, `fastapi-logging`, `fastapi-ratelimit`, `fastapi-files`, `fastapi-tasks`, `deploy-toolkit`, `global-pass-honor-username-auth`
+
+These are real pip-installable packages but resolved from `packages/` during development.
 
 ### Dual Data Mode
 
@@ -329,7 +347,29 @@ Golden tests don't cover these edge cases. A file scored server-side vs client-s
 
 Data loading that returns empty/None when data was expected should log at WARNING level with context.
 
-### 3. Docker Build: bun.lock Sync
+### 5. TODO: DETACH Nonwear Detection + GENEActiv Temperature Column
+
+Implement the DETACH algorithm (Vert et al. 2022, PMID 35596151) for temperature-based nonwear detection, and add temperature as a stored/plottable variable for GENEActiv files.
+
+**Reference:** "Detecting accelerometer non-wear periods using change in acceleration combined with rate-of-change in temperature" — uses raw accelerometer + temperature sensor data with a CART decision tree to detect nonwear periods as short as 5 minutes (vs Choi's 90-minute minimum).
+
+**Architecture decisions (agreed):**
+- **Runs at upload time** during `process_raw_geneactiv()` chunked processing, same pattern as agcounts — process raw 100Hz data, store only the results
+- **DETACH processes raw-rate data** (NOT downsampled) — acceleration change + temperature rate-of-change at full sample rate (could be 100Hz, 50Hz, or 30Hz — auto-detect from CSV header)
+- **Temperature downsampled to per-epoch mean** (60s) and stored in `RawActivityData.temperature` for visualization on the activity plot
+- **DETACH nonwear results stored as pre-computed Markers** tagged with source `"detach"`, fitting the existing nonwear rendering pipeline
+- **Register as pipeline component** via `@register("nonwear_detector", "detach")` implementing the `NonwearDetector` protocol — follows the existing pattern in `sleep_scoring_web/services/pipeline/nonwear_detectors/`
+
+**Implementation steps:**
+1. DB migration: add `temperature` float column to `RawActivityData`
+2. Modify `geneactiv_processor.py`: include temperature in `usecols`, compute epoch mean, add to epoch DataFrame via `_build_epoch_df()`
+3. Implement DETACH algorithm in `sleep_scoring_web/services/algorithms/detach.py`
+4. Create pipeline wrapper `sleep_scoring_web/services/pipeline/nonwear_detectors/detach.py` with `@register("nonwear_detector", "detach")`
+5. Run DETACH during chunked processing in `process_raw_geneactiv()`, store results as Markers
+6. Frontend: add temperature as optional secondary y-axis on activity plot
+7. Handle variable sample rates (30/50/100Hz) — auto-detect from GENEActiv CSV header (already done via `_detect_frequency()`)
+
+### 6. Docker Build: bun.lock Sync
 
 When adding npm packages via `npm install` on the host (because bun isn't in PATH), `bun.lock` must also be updated for the Docker build (which uses `bun install`). Either:
 - Run `docker run --rm -v "$(pwd)/frontend:/app" -w /app oven/bun:1-alpine bun install` to update bun.lock

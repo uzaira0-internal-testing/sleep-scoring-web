@@ -55,6 +55,7 @@ class EpochData:
     sleep_score: int  # 0=wake, 1=sleep
     activity: float
     is_choi_nonwear: bool
+    is_sensor_nonwear: bool = False
 
 
 @dataclass
@@ -96,12 +97,18 @@ def _find_valid_onset_near(
     epochs: list[EpochData],
     target_ts: datetime,
     min_consecutive: int,
+    before_tolerance_epochs: int = 15,
 ) -> int | None:
     """
     Find the nearest valid onset point to a target timestamp.
 
     A valid onset is the start of min_consecutive (3) or more consecutive
     sleep epochs. Searches outward from target in both directions.
+
+    before_tolerance_epochs: how many extra epochs a before-diary onset may be
+    farther than the nearest after-diary onset and still be preferred.  Defaults
+    to 15 (= diary_tolerance_minutes).  Prevents a distant before-onset from
+    winning over a much closer after-onset.
 
     Returns the epoch index, or None if no valid onset found.
     """
@@ -111,6 +118,7 @@ def _find_valid_onset_near(
         return None
 
     # Precompute all valid onset positions (start of 3+ consecutive sleep)
+    # Skip runs that start in a Choi-confirmed nonwear epoch.
     valid_onsets: list[int] = []
     i = 0
     while i < len(epochs):
@@ -119,7 +127,7 @@ def _find_valid_onset_near(
             while i < len(epochs) and epochs[i].sleep_score == 1:
                 i += 1
             run_len = i - run_start
-            if run_len >= min_consecutive:
+            if run_len >= min_consecutive and not (epochs[run_start].is_choi_nonwear and epochs[run_start].is_sensor_nonwear):
                 valid_onsets.append(run_start)
         else:
             i += 1
@@ -127,23 +135,36 @@ def _find_valid_onset_near(
     if not valid_onsets:
         return None
 
-    # Onset should be AT or BEFORE the diary time (more inclusive).
-    # Only fall back to after-target candidates if none exist before.
+    # Prefer onset AT or BEFORE diary time (more inclusive — person may have
+    # fallen asleep slightly earlier than reported).  But only when the nearest
+    # before-onset is within 2× the diary tolerance of the nearest after-onset;
+    # a candidate 4 hours before diary should never beat one 12 minutes after.
     before = [idx for idx in valid_onsets if idx <= center]
-    after = [idx for idx in valid_onsets if idx > center]
+    after  = [idx for idx in valid_onsets if idx > center]
 
-    pool = before or after
-    best: int | None = None
-    best_dist = float("inf")
-    for idx in pool:
-        dist = abs(idx - center)
-        if dist < best_dist:
-            best_dist = dist
-            best = idx
-        elif dist == best_dist and best is not None and idx < best:
-            best = idx
+    def _nearest(pool: list[int]) -> tuple[int | None, float]:
+        best: int | None = None
+        best_dist = float("inf")
+        for idx in pool:
+            dist = abs(idx - center)
+            if dist < best_dist or (dist == best_dist and best is not None and idx < best):
+                best_dist = dist
+                best = idx
+        return best, best_dist
 
-    return best
+    best_before, dist_before = _nearest(before)
+    best_after,  dist_after  = _nearest(after)
+
+    if best_before is None:
+        return best_after
+    if best_after is None:
+        return best_before
+
+    # Use before-candidate only when it is not more than before_tolerance_epochs
+    # farther than the after-candidate.
+    if dist_before <= dist_after + before_tolerance_epochs:
+        return best_before
+    return best_after
 
 
 def _find_valid_offset_near(
@@ -208,15 +229,21 @@ def _find_valid_offset_near_bounded(
     target_ts: datetime,
     min_consecutive_minutes: int,
     epoch_length_seconds: int,
-    max_forward_epochs: int = 60,
+    max_forward_epochs: int | None = None,
+    diary_tolerance_epochs: int | None = None,
 ) -> int | None:
     """
-    Find the nearest valid offset near a target, with a bounded forward look.
+    Find the nearest valid offset near a target, with an optional bounded forward look.
 
-    Like _find_valid_offset_near but limits how far PAST the target the offset
-    can land.  Offsets are ALWAYS placed at actual sleep→wake transitions (the
-    last sleep epoch before wake), never in the middle of a continuous sleep
-    run.  Runs whose natural end exceeds the forward bound are skipped.
+    Like _find_valid_offset_near but optionally limits how far PAST the target
+    the offset can land.  Offsets are ALWAYS placed at actual sleep→wake
+    transitions (the last sleep epoch before wake), never in the middle of a
+    continuous sleep run.  Runs whose natural end exceeds the forward bound are
+    skipped (when max_forward_epochs is set).
+
+    max_forward_epochs=None means no forward cap (offset may land anywhere past
+    the target).  Pass an integer to cap how far past the target is allowed —
+    useful for nap placement to prevent grabbing the main sleep endpoint.
 
     Returns the epoch index, or None if no valid offset found.
     """
@@ -225,9 +252,10 @@ def _find_valid_offset_near_bounded(
         return None
 
     min_epochs = max(1, min_consecutive_minutes * 60 // epoch_length_seconds)
-    max_idx = min(center + max_forward_epochs, len(epochs) - 1)
+    max_idx = (center + max_forward_epochs) if max_forward_epochs is not None else len(epochs) - 1
 
     # Precompute all valid offset positions — only at REAL run ends (sleep→wake)
+    # Skip runs that end in a Choi-confirmed nonwear epoch.
     valid_offsets: list[int] = []
     i = 0
     while i < len(epochs):
@@ -237,7 +265,7 @@ def _find_valid_offset_near_bounded(
                 i += 1
             run_end = i - 1  # Last sleep epoch — always a real transition
             run_len = i - run_start
-            if run_len >= min_epochs and run_end <= max_idx:
+            if run_len >= min_epochs and run_end <= max_idx and not (epochs[run_end].is_choi_nonwear and epochs[run_end].is_sensor_nonwear):
                 valid_offsets.append(run_end)
         else:
             i += 1
@@ -245,23 +273,14 @@ def _find_valid_offset_near_bounded(
     if not valid_offsets:
         return None
 
-    # Offset should be AT or AFTER the diary time (more inclusive).
-    # Only fall back to before-target candidates if none exist after.
-    after = [idx for idx in valid_offsets if idx >= center]
-    before = [idx for idx in valid_offsets if idx < center]
-
-    pool = after or before
-    best: int | None = None
-    best_dist = float("inf")
-    for idx in pool:
-        dist = abs(idx - center)
-        if dist < best_dist:
-            best_dist = dist
-            best = idx
-        elif dist == best_dist and best is not None and idx > best:
-            best = idx
-
-    return best
+    # With a diary: apply tolerance band — prefer the latest offset within
+    # diary_tolerance_epochs of the nearest candidate (stays close to diary wake).
+    # Without a diary: just pick the most inclusive (latest) offset.
+    if diary_tolerance_epochs is not None:
+        min_dist = min(abs(idx - center) for idx in valid_offsets)
+        band = [idx for idx in valid_offsets if abs(idx - center) <= min_dist + diary_tolerance_epochs]
+        return max(band)
+    return max(valid_offsets)
 
 
 def _nearest_epoch_index(epochs: list[EpochData], target: datetime) -> int | None:
@@ -288,6 +307,7 @@ def place_main_sleep(
     epochs: list[EpochData],
     diary: DiaryDay,
     config: PlacementConfig,
+    diary_tolerance_epochs: int | None = None,
 ) -> tuple[int, int] | None:
     """
     Place main sleep period using diary onset/offset as reference.
@@ -306,7 +326,12 @@ def place_main_sleep(
     if not diary.sleep_onset or not diary.wake_time:
         return None
 
-    onset_idx = _find_valid_onset_near(epochs, diary.sleep_onset, config.onset_min_consecutive_sleep)
+    onset_idx = _find_valid_onset_near(
+        epochs,
+        diary.sleep_onset,
+        config.onset_min_consecutive_sleep,
+        before_tolerance_epochs=config.diary_tolerance_minutes,
+    )
 
     # Bounded offset search: look within a window around diary wake.
     # Allow looking up to 60 epochs (1 hour) past wake — but no further.
@@ -317,7 +342,8 @@ def place_main_sleep(
         diary.wake_time,
         config.offset_min_consecutive_minutes,
         config.epoch_length_seconds,
-        config.max_forward_offset_epochs,
+        max_forward_epochs=None,  # No forward cap for main sleep
+        diary_tolerance_epochs=diary_tolerance_epochs,
     )
 
     if onset_idx is None or offset_idx is None:
@@ -325,9 +351,16 @@ def place_main_sleep(
     if onset_idx >= offset_idx:
         return None
 
-    # Rule 8: if onset is before in-bed time, clamp to in-bed time
-    if config.enable_rule_8_clamping and diary.in_bed_time and epochs[onset_idx].timestamp < diary.in_bed_time:
-        # Find nearest valid onset AT or AFTER in-bed time
+    # Rule 8: if DIARY onset (lights_out) is before DIARY in-bed time — a data-entry
+    # inconsistency where someone reported falling asleep before getting into bed —
+    # use in-bed time as the placement reference instead of the diary onset.
+    # This compares diary times only; the scored onset position is irrelevant here.
+    if (
+        config.enable_rule_8_clamping
+        and diary.in_bed_time
+        and diary.sleep_onset
+        and diary.sleep_onset < diary.in_bed_time
+    ):
         clamped = _find_valid_onset_at_or_after(epochs, diary.in_bed_time, config.onset_min_consecutive_sleep)
         if clamped is not None and clamped < offset_idx:
             onset_idx = clamped
@@ -439,7 +472,7 @@ def _find_valid_onset_near_bounded(
             while i < len(epochs) and epochs[i].sleep_score == 1:
                 i += 1
             run_len = i - run_start
-            if run_len >= min_consecutive and lo <= run_start <= hi:
+            if run_len >= min_consecutive and lo <= run_start <= hi and not (epochs[run_start].is_choi_nonwear and epochs[run_start].is_sensor_nonwear):
                 valid_onsets.append(run_start)
         else:
             i += 1
@@ -483,7 +516,7 @@ def place_naps(
             epochs,
             nap_period.start_time,
             min_consecutive=config.onset_min_consecutive_sleep,
-            max_distance_epochs=max_search_epochs,
+            max_distance_epochs=len(epochs),  # unbounded — diary is anchor
         )
         offset_idx = _find_valid_offset_near_bounded(
             epochs,
@@ -776,6 +809,7 @@ def run_auto_scoring(
     activity_counts: list[float],
     sleep_scores: list[int],
     choi_nonwear: list[int] | None = None,
+    sensor_nonwear_periods: list[tuple[float, float]] | None = None,
     diary_bed_time: str | None = None,
     diary_onset_time: str | None = None,
     diary_wake_time: str | None = None,
@@ -811,6 +845,9 @@ def run_auto_scoring(
     nonwear_bools = [bool(nw) for nw in choi_nonwear] if choi_nonwear else [False] * len(timestamps)
     epochs: list[EpochData] = []
     for i, ts in enumerate(timestamps):
+        sensor_nw = False
+        if sensor_nonwear_periods:
+            sensor_nw = any(si <= ts <= ei for si, ei in sensor_nonwear_periods)
         epochs.append(
             EpochData(
                 index=i,
@@ -818,6 +855,7 @@ def run_auto_scoring(
                 sleep_score=sleep_scores[i],
                 activity=activity_counts[i],
                 is_choi_nonwear=nonwear_bools[i] if i < len(nonwear_bools) else False,
+                is_sensor_nonwear=sensor_nw,
             )
         )
 
@@ -884,6 +922,10 @@ def run_auto_scoring(
 
     # Main sleep placement
     main_result: tuple[int, int] | None = None
+    # True when diary was present and valid but algorithm found no scoreable period
+    # (e.g. entire window is nonwear, or no sleep signal near diary times).
+    # False means either no diary supplied, or sleep was found successfully.
+    algorithm_ran_no_sleep = False
 
     if diary and diary.sleep_onset and diary.wake_time:
         main_result = place_main_sleep(epochs, diary, config)
@@ -913,6 +955,7 @@ def run_auto_scoring(
                 f"(onset {diary.sleep_onset.strftime('%H:%M')}, "
                 f"wake {diary.wake_time.strftime('%H:%M')})"
             )
+            algorithm_ran_no_sleep = True
     elif diary and not diary.sleep_onset and not diary.wake_time:
         notes.append("Diary exists but no onset/wake times — auto-score requires diary times")
     else:
@@ -946,6 +989,7 @@ def run_auto_scoring(
         "sleep_markers": sleep_markers,
         "nap_markers": nap_markers,
         "notes": notes,
+        "no_sleep": algorithm_ran_no_sleep,
     }
 
 
@@ -981,19 +1025,17 @@ def place_nonwear_markers(
     analysis_date: str,
     epoch_length_seconds: int = 60,
     threshold: int = 0,
-    max_extension_minutes: int = 30,
     min_duration_minutes: int = 10,
-    zero_activity_ratio: float = 0.80,
+    zero_activity_ratio: float = 0.65,
 ) -> NonwearPlacementResult:
     """
     Auto-place nonwear markers using diary anchors with zero-activity detection.
 
     Algorithm:
     1. Parse diary nonwear start/end as anchor windows
-    2. Extend outward while activity <= threshold
-    3. Cap extensions at Choi/sensor boundaries (or max_extension_minutes if neither)
-    4. Skip periods < min_duration_minutes of qualifying activity
-    5. Skip periods overlapping with sleep markers
+    2. Extend outward greedily while activity <= threshold (stops at first non-zero epoch)
+    3. Skip periods < min_duration_minutes of qualifying activity
+    4. Skip periods overlapping with sleep markers
     """
     if not timestamps or not activity_counts:
         return NonwearPlacementResult(nonwear_markers=[], notes=["No activity data"])
@@ -1040,8 +1082,6 @@ def place_nonwear_markers(
     for sm_start, sm_end in existing_sleep_markers:
         sleep_intervals.append((sm_start, sm_end))
 
-    has_external_signals = bool(choi_nw_set) or bool(sensor_nw_ranges)
-
     for diary_start_dt, diary_end_dt, diary_idx in valid_diary_periods:
         # Find epoch indices for diary window
         start_idx = _find_nearest_epoch_dt(epoch_times, diary_start_dt)
@@ -1050,33 +1090,81 @@ def place_nonwear_markers(
             notes.append(f"Nonwear {diary_idx}: diary times outside data range, skipped")
             continue
 
-        # Extend backward from start while activity <= threshold
-        ext_start = start_idx
-        max_ext_epochs = (max_extension_minutes * 60) // epoch_length_seconds
-        while ext_start > 0:
-            candidate = ext_start - 1
-            if activity_counts[candidate] > threshold:
-                break
-            # Check extension cap
-            if has_external_signals:
-                if not _epoch_in_nonwear_signal(candidate, choi_nw_set, sensor_nw_ranges):
-                    break
-            elif (start_idx - candidate) >= max_ext_epochs:
-                break
-            ext_start = candidate
+        # Step 1 — Contract: if the diary boundary lands on a non-zero epoch,
+        # move inward to the first zero within the diary window.  This handles
+        # cases where the reported nonwear time includes a few minutes of
+        # activity at the edges before the actual nonwear run begins.
+        diary_start_idx = start_idx
+        diary_end_idx = end_idx
 
-        # Extend forward from end while activity <= threshold
+        ext_start = start_idx
+        while ext_start < end_idx and activity_counts[ext_start] > threshold:
+            ext_start += 1
+
         ext_end = end_idx
-        while ext_end < len(timestamps) - 1:
-            candidate = ext_end + 1
-            if activity_counts[candidate] > threshold:
+        while ext_end > ext_start and activity_counts[ext_end] > threshold:
+            ext_end -= 1
+
+        # If the diary window contains no zero-activity epochs at all, skip.
+        if activity_counts[ext_start] > threshold:
+            notes.append(
+                f"Nonwear {diary_idx}: no zero-activity epochs within diary window "
+                f"{diary_start_dt.strftime('%H:%M')}-{diary_end_dt.strftime('%H:%M')}, skipped"
+            )
+            continue
+
+        # Step 2 — Extend: once anchored on consecutive zeros, expand greedily
+        # in both directions as far as zeros continue.  Diary alignment is the
+        # primary confirmation; Choi/sensor signals are used for notes only
+        # (Choi requires 90+ min and misses short zero runs at period edges).
+
+        # Simple greedy extension (guaranteed all-zero boundary).
+        simple_start = ext_start
+        while simple_start > 0 and activity_counts[simple_start - 1] <= threshold:
+            simple_start -= 1
+        simple_end = ext_end
+        while simple_end < len(timestamps) - 1 and activity_counts[simple_end + 1] <= threshold:
+            simple_end += 1
+
+        # Spike-tolerant extension: also cross isolated spikes (non-zero epoch
+        # flanked by zeros) that fall within a Choi/sensor nonwear region.
+        spike_start = ext_start
+        while spike_start > 0:
+            candidate = spike_start - 1
+            if activity_counts[candidate] <= threshold:
+                spike_start = candidate
+            elif (
+                _epoch_in_nonwear_signal(candidate, choi_nw_set, sensor_nw_ranges)
+                and candidate > 0
+                and activity_counts[candidate - 1] <= threshold
+            ):
+                spike_start = candidate
+            else:
                 break
-            if has_external_signals:
-                if not _epoch_in_nonwear_signal(candidate, choi_nw_set, sensor_nw_ranges):
-                    break
-            elif (candidate - end_idx) >= max_ext_epochs:
+
+        spike_end = ext_end
+        while spike_end < len(timestamps) - 1:
+            candidate = spike_end + 1
+            if activity_counts[candidate] <= threshold:
+                spike_end = candidate
+            elif (
+                _epoch_in_nonwear_signal(candidate, choi_nw_set, sensor_nw_ranges)
+                and candidate < len(timestamps) - 1
+                and activity_counts[candidate + 1] <= threshold
+            ):
+                spike_end = candidate
+            else:
                 break
-            ext_end = candidate
+
+        # Use spike-tolerant range only if it still satisfies the zero ratio.
+        # If it doesn't, fall back to the conservative simple range rather than
+        # rejecting the period entirely.
+        spike_zeros = sum(1 for i in range(spike_start, spike_end + 1) if activity_counts[i] <= threshold)
+        spike_total = spike_end - spike_start + 1
+        if spike_total > 0 and (spike_zeros / spike_total) >= zero_activity_ratio:
+            ext_start, ext_end = spike_start, spike_end
+        else:
+            ext_start, ext_end = simple_start, simple_end
 
         # Count zero-activity epochs within the entire detected range
         zero_epochs = sum(1 for i in range(ext_start, ext_end + 1) if activity_counts[i] <= threshold)
@@ -1107,19 +1195,25 @@ def place_nonwear_markers(
             notes.append(f"Nonwear {diary_idx}: overlaps with sleep marker, skipped")
             continue
 
-        # Build extension note
+        # Build adjustment note (extension or contraction relative to diary times)
         ext_note_parts = []
-        if ext_start < start_idx:
-            ext_min = (start_idx - ext_start) * epoch_length_seconds // 60
+        if ext_start < diary_start_idx:
+            ext_min = (diary_start_idx - ext_start) * epoch_length_seconds // 60
             ext_note_parts.append(f"extended {ext_min}min before diary start")
-        if ext_end > end_idx:
-            ext_min = (ext_end - end_idx) * epoch_length_seconds // 60
+        elif ext_start > diary_start_idx:
+            ext_min = (ext_start - diary_start_idx) * epoch_length_seconds // 60
+            ext_note_parts.append(f"contracted {ext_min}min after diary start")
+        if ext_end > diary_end_idx:
+            ext_min = (ext_end - diary_end_idx) * epoch_length_seconds // 60
             ext_note_parts.append(f"extended {ext_min}min after diary end")
+        elif ext_end < diary_end_idx:
+            ext_min = (diary_end_idx - ext_end) * epoch_length_seconds // 60
+            ext_note_parts.append(f"contracted {ext_min}min before diary end")
 
         confirmed_by = []
         if choi_nw_set and any(i in choi_nw_set for i in range(ext_start, ext_end + 1)):
             confirmed_by.append("Choi")
-        if sensor_nw_ranges and any(si <= ext_start and ext_end <= ei for si, ei in sensor_nw_ranges):
+        if sensor_nw_ranges and any(si <= ext_end and ext_start <= ei for si, ei in sensor_nw_ranges):
             confirmed_by.append("sensor")
 
         note = f"Nonwear {diary_idx}: diary {diary_start_dt.strftime('%H:%M')}-{diary_end_dt.strftime('%H:%M')}"
@@ -1137,65 +1231,80 @@ def place_nonwear_markers(
             }
         )
 
-    # Second pass: Choi + sensor overlap with zero activity (no diary needed)
-    # Find epochs where both Choi and sensor agree on nonwear AND activity <= threshold
-    if choi_nw_set and sensor_nw_ranges:
-        # Build set of epochs covered by sensor nonwear
+    # Signal-based detection (no diary needed).
+    # Uses Choi+sensor when both are available (higher confidence),
+    # or Choi-only when sensor data is absent.
+    #
+    # Algorithm: scan zero-activity runs first (greedy expansion is automatic),
+    # then check whether each run contains enough signal epochs to be valid.
+    # This produces one marker per contiguous zero region regardless of whether
+    # the underlying signal (Choi/sensor) has internal gaps.
+    if choi_nw_set:
         sensor_nw_set: set[int] = set()
         for si, ei in sensor_nw_ranges:
             sensor_nw_set.update(range(si, ei + 1))
 
-        # Find epochs where Choi + sensor + zero activity all agree
-        both_nw = sorted(i for i in choi_nw_set & sensor_nw_set if i < len(activity_counts) and activity_counts[i] <= threshold)
+        has_sensor = bool(sensor_nw_set)
+        label = "Choi+sensor" if has_sensor else "Choi"
 
-        # Extract contiguous runs
-        if both_nw:
-            runs: list[tuple[int, int]] = []
-            run_start = both_nw[0]
-            prev = both_nw[0]
-            for idx in both_nw[1:]:
-                if idx == prev + 1:
-                    prev = idx
-                else:
-                    runs.append((run_start, prev))
-                    run_start = idx
-                    prev = idx
-            runs.append((run_start, prev))
+        def _is_signal(i: int) -> bool:
+            """True when epoch has a nonwear signal (Choi alone or Choi+sensor)."""
+            if not has_sensor:
+                return i in choi_nw_set
+            return i in choi_nw_set and i in sensor_nw_set
 
-            # Build set of already-placed marker epoch ranges to avoid duplicates
-            placed_ts_ranges = [(m["start_timestamp"], m["end_timestamp"]) for m in markers]
+        placed_ts_ranges = [(m["start_timestamp"], m["end_timestamp"]) for m in markers]
 
-            for run_start_idx, run_end_idx in runs:
-                duration_epochs = run_end_idx - run_start_idx + 1
-                if duration_epochs < min_epochs:
-                    continue
+        # Walk through epochs, find each contiguous zero-activity run, check signal.
+        i = 0
+        while i < len(timestamps):
+            if activity_counts[i] > threshold:
+                i += 1
+                continue
 
-                run_start_ts = timestamps[run_start_idx]
-                run_end_ts = timestamps[run_end_idx]
+            # Found start of a zero-activity run — extend to its full end.
+            run_start_idx = i
+            while i < len(timestamps) and activity_counts[i] <= threshold:
+                i += 1
+            run_end_idx = i - 1
 
-                # Skip if overlapping with sleep markers
-                overlaps_sleep = any(run_start_ts < sm_end and run_end_ts > sm_start for sm_start, sm_end in sleep_intervals)
-                if overlaps_sleep:
-                    continue
+            # Require enough signal epochs within this zero run to be valid.
+            signal_count = sum(1 for j in range(run_start_idx, run_end_idx + 1) if _is_signal(j))
+            if signal_count < min_epochs:
+                continue
 
-                # Skip if overlapping with already-placed nonwear markers
-                overlaps_placed = any(run_start_ts < pm_end and run_end_ts > pm_start for pm_start, pm_end in placed_ts_ranges)
-                if overlaps_placed:
-                    continue
+            # Extend start backward through any leading signal epochs even if
+            # activity > 0 (e.g. sensor marks nonwear from 11:56 but zeros only
+            # begin at 12:06 — the marker should start at 11:56, not 12:06).
+            while run_start_idx > 0 and _is_signal(run_start_idx - 1):
+                run_start_idx -= 1
+            # Extend end forward symmetrically.
+            while run_end_idx < len(timestamps) - 1 and _is_signal(run_end_idx + 1):
+                run_end_idx += 1
 
-                dur_min = duration_epochs * epoch_length_seconds // 60
-                notes.append(
-                    f"Nonwear (Choi+sensor): "
-                    f"{epoch_times[run_start_idx].strftime('%H:%M')}-{epoch_times[run_end_idx].strftime('%H:%M')} "
-                    f"({dur_min}min, confirmed by Choi + sensor, zero activity)"
-                )
-                markers.append(
-                    {
-                        "start_timestamp": run_start_ts,
-                        "end_timestamp": run_end_ts,
-                        "marker_index": len(markers) + 1,
-                    }
-                )
+            run_start_ts = timestamps[run_start_idx]
+            run_end_ts = timestamps[run_end_idx]
+
+            if any(run_start_ts < sm_end and run_end_ts > sm_start for sm_start, sm_end in sleep_intervals):
+                continue
+
+            if any(run_start_ts < pm_end and run_end_ts > pm_start for pm_start, pm_end in placed_ts_ranges):
+                continue
+
+            dur_min = (run_end_idx - run_start_idx + 1) * epoch_length_seconds // 60
+            notes.append(
+                f"Nonwear ({label}): "
+                f"{epoch_times[run_start_idx].strftime('%H:%M')}-{epoch_times[run_end_idx].strftime('%H:%M')} "
+                f"({dur_min}min, confirmed by {label}, zero activity)"
+            )
+            markers.append(
+                {
+                    "start_timestamp": run_start_ts,
+                    "end_timestamp": run_end_ts,
+                    "marker_index": len(markers) + 1,
+                }
+            )
+            placed_ts_ranges.append((run_start_ts, run_end_ts))
 
     if not markers:
         notes.append("No valid nonwear periods detected")

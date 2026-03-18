@@ -298,6 +298,28 @@ export function ScoringPage() {
     setAutoNonwearResult(null);
   }, [currentFileId, currentDate]);
 
+  // Silently refresh the auto_score consensus candidate whenever the user
+  // navigates to a new date. Fire-and-forget — no spinner, no UI feedback.
+  // Server mode only (local mode has no consensus panel).
+  // Uses getState() to read settings at fire-time without making them
+  // navigation triggers — settings changes are picked up on next navigation.
+  useEffect(() => {
+    if (isLocal || !currentFileId || !currentDate) return;
+    const { currentAlgorithm: algo, sleepDetectionRule: rule, periodGuider: guider } = useSleepScoringStore.getState();
+    if (guider !== "diary") {
+      // Non-diary guiders: use v2 pipeline endpoint (works without diary)
+      const body = JSON.stringify({ epoch_classifier: algo, period_guider: guider });
+      fetchWithAuth(`${getApiBase()}/markers/${currentFileId}/${currentDate}/auto-score-v2`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      }).catch(() => {});
+    } else {
+      const params = new URLSearchParams({ algorithm: algo, detection_rule: rule });
+      fetchWithAuth(`${getApiBase()}/markers/${currentFileId}/${currentDate}/auto-score?${params}`, { method: "POST" }).catch(() => {});
+    }
+  }, [currentFileId, currentDate, isLocal]);
+
   const copyCandidateMarkers = useCallback(async (candidate: ConsensusBallotCandidate) => {
     // Read fresh state via getState() to avoid stale closure after await
     const preState = useSleepScoringStore.getState();
@@ -611,6 +633,26 @@ export function ScoringPage() {
       disabled: !isLocal && f.status !== "ready",
     }));
 
+  // Up/down arrow keys navigate between files (global, blocked when any input is focused)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.target as HTMLElement).isContentEditable) return;
+      if (!fileOptions.length || !currentFileId) return;
+      e.preventDefault();
+      const currentIdx = fileOptions.findIndex((o) => o.value === String(currentFileId));
+      const nextIdx = e.key === "ArrowDown" ? currentIdx + 1 : currentIdx - 1;
+      if (nextIdx < 0 || nextIdx >= fileOptions.length) return;
+      const next = fileOptions[nextIdx];
+      if (!next || next.disabled) return;
+      handleFileChange(next.value);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fileOptions, currentFileId, handleFileChange]);
+
   // Show empty state
   if (!filesLoading && (!dsFiles || dsFiles.length === 0)) {
     return (
@@ -670,7 +712,7 @@ export function ScoringPage() {
               : ACTIVITY_SOURCE_OPTIONS}
             value={preferredDisplayColumn}
             onChange={(e) => setPreferredDisplayColumn(e.target.value as "axis_x" | "axis_y" | "axis_z" | "vector_magnitude")}
-            className="w-[140px]"
+            className="w-[170px]"
           />
         </div>
 

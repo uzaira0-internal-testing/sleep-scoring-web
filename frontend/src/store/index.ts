@@ -132,6 +132,7 @@ interface PreferencesState {
   showNonwearOverlays: boolean;
   autoScoreOnNavigate: boolean;
   autoNonwearOnNavigate: boolean;
+  periodGuider: string;
 }
 
 /**
@@ -282,6 +283,7 @@ interface SleepScoringState
   setShowNonwearOverlays: (show: boolean) => void;
   setAutoScoreOnNavigate: (enabled: boolean) => void;
   setAutoNonwearOnNavigate: (enabled: boolean) => void;
+  setPeriodGuider: (guider: string) => void;
 
   // Study settings actions
   setSleepDetectionRule: (rule: StudySettingsState["sleepDetectionRule"]) => void;
@@ -373,6 +375,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         showNonwearOverlays: true,
         autoScoreOnNavigate: false,
         autoNonwearOnNavigate: false,
+        periodGuider: "diary",
 
         // Initial study settings
         sleepDetectionRule: SLEEP_DETECTION_RULES.CONSECUTIVE_3S_5S,
@@ -1008,6 +1011,8 @@ export const useSleepScoringStore = create<SleepScoringState>()(
 
         setAutoNonwearOnNavigate: (enabled) => set({ autoNonwearOnNavigate: enabled }),
 
+        setPeriodGuider: (guider) => set({ periodGuider: guider }),
+
         // Study settings actions
         setSleepDetectionRule: (rule) => set({ sleepDetectionRule: rule }),
 
@@ -1081,6 +1086,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           showNonwearOverlays: state.showNonwearOverlays,
           autoScoreOnNavigate: state.autoScoreOnNavigate,
           autoNonwearOnNavigate: state.autoNonwearOnNavigate,
+          periodGuider: state.periodGuider,
           // Study settings
           sleepDetectionRule: state.sleepDetectionRule,
           nightStartHour: state.nightStartHour,

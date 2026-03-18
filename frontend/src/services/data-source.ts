@@ -128,6 +128,7 @@ export interface AutoNonwearResult {
 export interface AutoScoreOptions {
   algorithm: string;
   detectionRule: string;
+  periodGuider?: string;
 }
 
 /**
@@ -186,8 +187,8 @@ export class ServerDataSource implements DataSource {
     const params = new URLSearchParams();
     if (options?.viewHours) params.set("view_hours", String(options.viewHours));
     if (options?.algorithm) params.set("algorithm", options.algorithm);
-    // Only request extra axes when needed — saves ~3KB gzipped per request
-    params.set("fields", "available_dates");
+    // Request available_dates alongside axis data (axis_x/axis_z are gated on this param)
+    params.set("fields", "axis_x,axis_z,available_dates");
     const qs = params.toString();
     const url = `${getApiBase()}/activity/${fileId}/${date}/score${qs ? `?${qs}` : ""}`;
     const response = await fetch(url, {
@@ -326,6 +327,26 @@ export class ServerDataSource implements DataSource {
   }
 
   async autoScore(fileId: number, date: string, options: AutoScoreOptions): Promise<AutoScoreResult> {
+    const guider = options.periodGuider ?? "diary";
+
+    // Non-diary guiders use the v2 pipeline endpoint
+    if (guider !== "diary") {
+      const rule = getDetectionRuleParams(options.detectionRule);
+      const body = {
+        epoch_classifier: options.algorithm,
+        period_guider: guider,
+        period_constructor_params: {
+          onset_min_consecutive_sleep: rule.onsetN,
+          offset_min_consecutive_minutes: rule.offsetN,
+        },
+      };
+      return fetchWithAuth<AutoScoreResult>(
+        `${getApiBase()}/markers/${fileId}/${date}/auto-score-v2`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      );
+    }
+
+    // Diary guider uses v1 endpoint
     const rule = getDetectionRuleParams(options.detectionRule);
     const params = new URLSearchParams({
       algorithm: options.algorithm,
@@ -561,6 +582,10 @@ export class LocalDataSource implements DataSource {
   }
 
   async autoScore(fileId: number, date: string, options: AutoScoreOptions): Promise<AutoScoreResult> {
+    if (options.periodGuider && options.periodGuider !== "diary") {
+      return { sleep_markers: [], nap_markers: [], notes: [`Period guider "${options.periodGuider}" is not supported in local mode — only "diary" is available`] };
+    }
+
     const day = await localDb.getActivityDay(fileId, date);
     if (!day) {
       return { sleep_markers: [], nap_markers: [], notes: ["No activity data in IndexedDB"] };

@@ -619,6 +619,128 @@ class TestOnsetEquidistant:
         assert result == 0
 
 
+class TestOnsetNearDistanceBias:
+    """
+    _find_valid_onset_near must not blindly prefer a 'before' onset that is
+    hours away over a 'after' onset that is minutes away.
+
+    Regression: before the 60-epoch tolerance fix the algorithm would pick a
+    valid onset 4+ hours before diary over one 12 minutes after diary simply
+    because it was categorised as 'before'.
+    """
+
+    def test_distant_before_loses_to_close_after(self) -> None:
+        """
+        A valid onset 250 epochs BEFORE diary should lose to one 12 epochs
+        AFTER diary.  Real-world case: device removed at 5:52 PM, diary says
+        10 PM onset — algorithm was picking 5:52 PM.
+
+        Layout (300 epochs):
+          epochs 0-9:   sleep run (valid onset at 0, ~250 epochs before target)
+          epochs 10-239: wake
+          epochs 240-299: sleep run (valid onset at 240, 12 epochs after target 228)
+        Target = epoch 228  (≈ diary onset 10 PM)
+        Expected = 240  (12 epochs after, not 0 which is 228 epochs before)
+        """
+        scores = (
+            [1] * 10          # onset candidate at 0 — very far before diary
+            + [0] * 230       # long wake gap
+            + [1] * 60        # onset candidate at 240 — 12 epochs after diary
+        )
+        epochs = _make_epochs(scores)
+        target = epochs[228].timestamp   # 12 epochs before the close onset
+        result = _find_valid_onset_near(epochs, target, min_consecutive=3)
+        assert result == 240, (
+            f"Expected close after-onset at 240, got {result}. "
+            "Distant before-onset (0) should not beat a much closer after-onset."
+        )
+
+    def test_close_before_still_wins_over_after(self) -> None:
+        """
+        A valid onset just slightly before diary (30 epochs) should still win
+        over one 90 epochs after — the 'before' preference is preserved when
+        the distance gap is small.
+
+        Layout:
+          epochs 0-4:  wake
+          epochs 5-14: sleep run (onset at 5, 25 epochs before target 30)
+          epochs 15-39: wake
+          epochs 40-49: sleep run (onset at 40, 10 epochs after target 30)
+        Target = epoch 30
+        Expected = 5 (before, 25 away) since 25 <= 10 + 15
+        """
+        scores = (
+            [0] * 5
+            + [1] * 10   # onset at 5, 25 before target
+            + [0] * 25
+            + [1] * 10   # onset at 40, 10 after target
+        )
+        epochs = _make_epochs(scores)
+        target = epochs[30].timestamp
+        result = _find_valid_onset_near(epochs, target, min_consecutive=3)
+        assert result == 5, (
+            f"Expected before-onset at 5, got {result}. "
+            "A before-onset within the 60-epoch tolerance should still be preferred."
+        )
+
+    def test_exactly_at_tolerance_boundary(self) -> None:
+        """
+        dist_before == dist_after + 15 exactly → before wins (boundary is inclusive).
+        The default before_tolerance_epochs matches diary_tolerance_minutes = 15.
+
+        before onset at idx 0, target at 40, dist_before = 40
+        after onset at idx 65, dist_after = 25
+        40 <= 25 + 15 → True → before onset wins
+        """
+        scores = (
+            [1] * 5        # onset at 0, 40 before target
+            + [0] * 35
+            + [0] * 25     # target at 40
+            + [1] * 5      # onset at 65, 25 after target
+        )
+        epochs = _make_epochs(scores)
+        target = epochs[40].timestamp
+        result = _find_valid_onset_near(epochs, target, min_consecutive=3)
+        assert result == 0
+
+    def test_just_past_tolerance_boundary(self) -> None:
+        """
+        dist_before == dist_after + 16 → after wins.
+
+        before onset at idx 0, target at 41, dist_before = 41
+        after onset at idx 66, dist_after = 25
+        41 > 25 + 15 → after onset wins
+        """
+        scores = (
+            [1] * 5        # onset at 0, 41 before target
+            + [0] * 36
+            + [0] * 25     # target at 41
+            + [1] * 5      # onset at 66, 25 after target
+        )
+        epochs = _make_epochs(scores)
+        target = epochs[41].timestamp
+        result = _find_valid_onset_near(epochs, target, min_consecutive=3)
+        assert result == 66
+
+    def test_no_after_candidate_always_returns_before(self) -> None:
+        """When only before-candidates exist, the nearest is always returned."""
+        # onset at 0 (dist 24), onset at 15 (dist 9) — nearest before is 15
+        scores = [1] * 5 + [0] * 10 + [1] * 5 + [0] * 5
+        epochs = _make_epochs(scores)
+        # Target past all sleep
+        target = epochs[24].timestamp
+        result = _find_valid_onset_near(epochs, target, min_consecutive=3)
+        assert result == 15  # nearest before onset
+
+    def test_no_before_candidate_always_returns_after(self) -> None:
+        """When only after-candidates exist, the nearest is always returned."""
+        scores = [0] * 5 + [1] * 5 + [0] * 5 + [1] * 5
+        epochs = _make_epochs(scores)
+        target = epochs[0].timestamp  # before all sleep
+        result = _find_valid_onset_near(epochs, target, min_consecutive=3)
+        assert result == 5  # nearest after onset
+
+
 class TestOffsetEquidistant:
     """Cover equidistant tie-breaking in _find_valid_offset_near (lines 192-193)."""
 
@@ -692,11 +814,10 @@ class TestOffsetNearBounded:
         )
         assert result == 9
 
-    def test_bounded_equidistant_picks_later(self) -> None:
-        """Equidistant offsets in bounded search pick the later one."""
-        # Run1: 0-5 (end=5), Run2: 9-14 (end=14). Center=9, max_forward=60.
-        # max_idx = 69 but array is only 15 long, so max_idx = 14.
-        # Both end at <=14. After pool (>=9): [14]. Before pool (<9): [5].
+    def test_bounded_close_candidates_picks_later(self) -> None:
+        """Within the 15-epoch tolerance band, pick the later (more inclusive) offset."""
+        # Run1: 0-5 (end=5, dist=4 from center=9), Run2: 9-14 (end=14, dist=5).
+        # min_dist=4, band=within 4+15=19 → both qualify → pick later (14).
         scores = [1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1]
         epochs = _make_epochs(scores)
         target = epochs[9].timestamp
@@ -705,6 +826,39 @@ class TestOffsetNearBounded:
             epoch_length_seconds=60, max_forward_epochs=60
         )
         assert result == 14
+
+    def test_later_run_within_window_preferred(self) -> None:
+        """
+        Among offsets within max_forward_epochs, the latest is always preferred
+        (Rule 1: be inclusive — if sleep continues after a wake bout, extend to it).
+
+        Run1: 0-4 (end=4), Run2: 55-59 (end=59, dist=1 from center=60).
+        Run3: 80-85 (end=85, dist=25 from center=60) — within max_forward_epochs=60.
+        Run3 has 6 consecutive sleep epochs (≥ 5 min), so it qualifies.
+        max_forward_epochs is the only guard; within that window prefer the latest.
+        """
+        scores = [1] * 5 + [0] * 50 + [1] * 5 + [0] * 20 + [1] * 6 + [0] * 14
+        epochs = _make_epochs(scores)
+        target = epochs[60].timestamp
+        result = _find_valid_offset_near_bounded(
+            epochs, target, min_consecutive_minutes=5,
+            epoch_length_seconds=60, max_forward_epochs=60
+        )
+        assert result == 85  # Run3 preferred: latest within max_forward_epochs window
+
+    def test_run_beyond_max_forward_excluded(self) -> None:
+        """A run ending beyond max_forward_epochs is excluded regardless."""
+        # center=60, max_forward=30 → max_idx=90.
+        # Run2: 55-59 (end=59), Run3: 92-97 (end=97 > 90) → excluded.
+        # Only run2 qualifies.
+        scores = [1] * 5 + [0] * 50 + [1] * 5 + [0] * 32 + [1] * 6 + [0] * 2
+        epochs = _make_epochs(scores)
+        target = epochs[60].timestamp
+        result = _find_valid_offset_near_bounded(
+            epochs, target, min_consecutive_minutes=5,
+            epoch_length_seconds=60, max_forward_epochs=30
+        )
+        assert result == 59  # Run3 at 97 is beyond max_forward, excluded
 
 
 class TestOnsetNearBounded:
@@ -1494,8 +1648,8 @@ class TestNonwearPlacementAdvanced:
         assert len(result.nonwear_markers) == 1
         assert any("sensor" in n for n in result.notes)
 
-    def test_extension_capped_by_max_extension(self) -> None:
-        """Without external signals, extension is capped by max_extension_minutes."""
+    def test_extension_covers_all_consecutive_zeros(self) -> None:
+        """With no cap, extension greedily covers all consecutive zeros in both directions."""
         n = 60
         start = datetime(2024, 1, 2, 10, 0, 0, tzinfo=UTC)
         timestamps = _make_timestamps(n, start=start)
@@ -1508,10 +1662,12 @@ class TestNonwearPlacementAdvanced:
             sensor_nonwear_periods=[],
             existing_sleep_markers=[],
             analysis_date="2024-01-01",
-            max_extension_minutes=5,
         )
         assert len(result.nonwear_markers) == 1
-        # Check extension note mentions the extension
+        # Extension should reach both ends of the all-zero data
+        marker = result.nonwear_markers[0]
+        assert marker["start_timestamp"] == timestamps[0]
+        assert marker["end_timestamp"] == timestamps[-1]
         ext_notes = [n for n in result.notes if "extended" in n]
         assert len(ext_notes) >= 1
 
@@ -1520,17 +1676,17 @@ class TestNonwearPlacementAdvanced:
         n = 60
         start = datetime(2024, 1, 2, 10, 0, 0, tzinfo=UTC)
         timestamps = _make_timestamps(n, start=start)
-        activity = [0.0] * n
+        # Only 5 minutes of zeros, then activity; min_duration_minutes=120 should reject it
+        activity = [0.0] * 5 + [10.0] * 55
 
         result = place_nonwear_markers(
             timestamps=timestamps, activity_counts=activity,
-            diary_nonwear=[("10:10", "10:12")],  # Only 2 minutes of diary window
+            diary_nonwear=[("10:01", "10:04")],  # Diary lands within the 5-min zero run
             choi_nonwear=None,
             sensor_nonwear_periods=[],
             existing_sleep_markers=[],
             analysis_date="2024-01-01",
             min_duration_minutes=120,  # Very high threshold
-            max_extension_minutes=0,
         )
         assert len(result.nonwear_markers) == 0
         assert any("min" in n.lower() for n in result.notes)
@@ -1676,8 +1832,9 @@ class TestNonwearPlacementAdvanced:
             existing_sleep_markers=[],
             analysis_date="2024-01-01",
         )
-        # Two runs: 5-15 (11 epochs) and 25-35 (11 epochs), both >= 10 min
-        assert len(result.nonwear_markers) == 2
+        # The 9-epoch zero-activity gap is crossed by greedy expansion,
+        # so the two signal runs merge into one marker covering epochs 5-35.
+        assert len(result.nonwear_markers) == 1
 
 
 class TestFindNearestEpoch:

@@ -218,23 +218,38 @@ async def get_onset_offset_data(
     choi_column = await get_choi_column(db, username)
     scorer = create_algorithm(algorithm)
 
-    def compute_algorithm_results(rows: list[RawActivityData]) -> tuple[list[int], list[int]]:
-        """Compute sleep scoring and Choi results for a set of rows."""
-        if not rows:
-            return [], []
+    # Sleep scoring is local (per-epoch), so run on the windowed rows only.
+    onset_sleep = scorer.score([row.axis_y or 0 for row in onset_rows]) if onset_rows else []
+    offset_sleep = scorer.score([row.axis_y or 0 for row in offset_rows]) if offset_rows else []
 
-        axis_y_data = [row.axis_y or 0 for row in rows]
-        sleep_results = scorer.score(axis_y_data)
+    # Choi is context-sensitive (requires 90+ consecutive minutes of zeros).
+    # Running it on the ±window rows produces wrong results when the nonwear period
+    # extends outside the visible window. Fix: run Choi on the full noon-to-noon day
+    # (extended to cover the actual onset/offset windows), then look up results by timestamp.
+    day_start = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
+    day_end = day_start + timedelta(hours=24)
+    choi_context_start = min(day_start, onset_start, offset_start)
+    choi_context_end = max(day_end, onset_end, offset_end)
 
-        # Choi nonwear detection using user's preferred column
-        choi = ChoiAlgorithm()
-        choi_input = extract_choi_input(rows, choi_column)
-        choi_results = choi.detect_mask(choi_input)
+    choi_context_result = await db.execute(
+        select(RawActivityData)
+        .where(
+            and_(
+                RawActivityData.file_id == file_id,
+                RawActivityData.timestamp >= choi_context_start,
+                RawActivityData.timestamp < choi_context_end,
+            )
+        )
+        .order_by(RawActivityData.timestamp)
+    )
+    choi_context_rows = choi_context_result.scalars().all()
 
-        return sleep_results, choi_results
-
-    onset_sleep, onset_choi = compute_algorithm_results(onset_rows)
-    offset_sleep, offset_choi = compute_algorithm_results(offset_rows)
+    choi_results_list = ChoiAlgorithm().detect_mask(extract_choi_input(choi_context_rows, choi_column))
+    choi_by_timestamp: dict[datetime, int] = {
+        row.timestamp: choi_results_list[i]
+        for i, row in enumerate(choi_context_rows)
+        if i < len(choi_results_list)
+    }
 
     # Convert to response format with all columns
     onset_data = [
@@ -244,7 +259,7 @@ async def get_onset_offset_data(
             axis_y=row.axis_y or 0,
             vector_magnitude=row.vector_magnitude or 0,
             algorithm_result=onset_sleep[i] if i < len(onset_sleep) else None,
-            choi_result=onset_choi[i] if i < len(onset_choi) else None,
+            choi_result=choi_by_timestamp.get(row.timestamp),
             is_nonwear=is_in_nonwear(naive_to_unix(row.timestamp)),
         )
         for i, row in enumerate(onset_rows)
@@ -257,7 +272,7 @@ async def get_onset_offset_data(
             axis_y=row.axis_y or 0,
             vector_magnitude=row.vector_magnitude or 0,
             algorithm_result=offset_sleep[i] if i < len(offset_sleep) else None,
-            choi_result=offset_choi[i] if i < len(offset_choi) else None,
+            choi_result=choi_by_timestamp.get(row.timestamp),
             is_nonwear=is_in_nonwear(naive_to_unix(row.timestamp)),
         )
         for i, row in enumerate(offset_rows)

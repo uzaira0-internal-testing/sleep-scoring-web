@@ -69,7 +69,6 @@ class DiaryAnchoredNonwearDetector:
             analysis_date=analysis_date_str,
             epoch_length_seconds=params.epoch_length_seconds,
             threshold=params.activity_threshold,
-            max_extension_minutes=params.max_extension_minutes,
             min_duration_minutes=params.min_duration_minutes,
             zero_activity_ratio=params.zero_activity_ratio,
         )

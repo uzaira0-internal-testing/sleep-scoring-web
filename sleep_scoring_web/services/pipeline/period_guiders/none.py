@@ -8,7 +8,7 @@ from sleep_scoring_web.services.pipeline.registry import register
 
 if TYPE_CHECKING:  # pragma: no cover
     from sleep_scoring_web.services.pipeline.params import PeriodGuiderParams
-    from sleep_scoring_web.services.pipeline.protocols import Bout, ClassifiedEpochs, DiaryInput, EpochSeries, GuideWindow, NapGuideWindow
+    from sleep_scoring_web.services.pipeline.protocols import Bout, ClassifiedEpochs, DiaryInput, EpochSeries, GuideWindow, NapGuideWindow, NonwearPeriodResult
 
 
 @register("period_guider", "none")
@@ -27,5 +27,6 @@ class NullPeriodGuider:
         *,
         params: PeriodGuiderParams | None = None,
         diary_data: DiaryInput | None = None,
+        excluded_nonwear: list[NonwearPeriodResult] | None = None,
     ) -> tuple[GuideWindow | None, list[NapGuideWindow], list[str]]:
         return None, [], ["No period guider active (diary-free mode)"]

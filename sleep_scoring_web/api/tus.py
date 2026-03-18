@@ -18,19 +18,16 @@ from tuspyserver import create_tus_router
 from sleep_scoring_web.api.deps import DbSession, VerifiedPassword  # noqa: TC001 — FastAPI needs these at runtime
 from sleep_scoring_web.config import settings
 from sleep_scoring_web.db.models import File as FileModel
-from sleep_scoring_web.db.session import async_session_maker
 from sleep_scoring_web.schemas.enums import FileStatus
 from sleep_scoring_web.schemas.models import ProcessingStatusResponse
-from sleep_scoring_web.services.file_identity import infer_participant_id_and_timepoint_from_filename
 from sleep_scoring_web.services.processing_tracker import get_progress
-from sleep_scoring_web.services.upload_processor import process_uploaded_file
 
 logger = logging.getLogger(__name__)
 
 # Custom router for processing status (separate from TUS router)
 router = APIRouter()
 
-# Track background tasks to prevent GC and surface exceptions
+# Track short-lived enqueue tasks to prevent GC
 _background_tasks: set[asyncio.Task] = set()
 
 
@@ -38,13 +35,15 @@ def _on_upload_complete(file_path: str, metadata: dict) -> None:
     """
     Called by tuspyserver when a file upload is fully complete.
 
-    Creates a FileModel in the database and spawns background processing.
+    Enqueues a background job via arq to create the DB record and process the file.
+    The actual work runs in a separate worker process — the web event loop stays free.
     """
     filename = metadata.get("filename", "unknown.csv")
     is_gzip = metadata.get("is_gzip", "false").lower() == "true"
     username = metadata.get("username", "anonymous")
     skip_rows_str = metadata.get("skip_rows", "10")
     device_preset = metadata.get("device_preset")
+    replace = metadata.get("replace", "false").lower() == "true"
 
     try:
         skip_rows = int(skip_rows_str)
@@ -59,68 +58,29 @@ def _on_upload_complete(file_path: str, metadata: dict) -> None:
         username,
     )
 
-    # Create file record and spawn processing in background
-    task = asyncio.ensure_future(
-        _create_and_process(
-            file_path=file_path,
-            filename=filename,
-            is_gzip=is_gzip,
-            username=username,
-            skip_rows=skip_rows,
-            device_preset=device_preset,
-        )
-    )
+    async def _enqueue() -> None:
+        try:
+            from sleep_scoring_web import queue
+            from sleep_scoring_web.worker import process_file_job
+
+            pool = queue.get_pool()
+            job = await pool.enqueue_job(
+                process_file_job.__name__,
+                file_path=file_path,
+                filename=filename,
+                is_gzip=is_gzip,
+                username=username,
+                skip_rows=skip_rows,
+                device_preset=device_preset,
+                replace=replace,
+            )
+            logger.info("Enqueued processing job %s for %s", job and job.job_id, filename)
+        except Exception:
+            logger.exception("Failed to enqueue processing job for %s", filename)
+
+    task = asyncio.ensure_future(_enqueue())
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
-
-
-async def _create_and_process(
-    file_path: str,
-    filename: str,
-    is_gzip: bool,
-    username: str,
-    skip_rows: int,
-    device_preset: str | None,
-) -> None:
-    """Create FileModel and start background processing."""
-    try:
-        async with async_session_maker() as db:
-            # Check for existing file
-            result = await db.execute(select(FileModel).where(FileModel.filename == filename))
-            existing = result.scalar_one_or_none()
-            if existing:
-                logger.warning("File %s already exists (id=%d), skipping TUS upload", filename, existing.id)
-                return
-
-            # Infer participant_id from filename
-            participant_id, _timepoint = infer_participant_id_and_timepoint_from_filename(filename)
-
-            file_model = FileModel(
-                filename=filename,
-                original_path=file_path,
-                file_type="csv",
-                participant_id=participant_id,
-                status=FileStatus.PROCESSING,
-                uploaded_by=username,
-            )
-            db.add(file_model)
-            await db.commit()
-            await db.refresh(file_model)
-            file_id = file_model.id
-
-        # Run processing directly (already in a background task)
-        await process_uploaded_file(
-            file_id=file_id,
-            tus_file_path=file_path,
-            original_filename=filename,
-            is_gzip=is_gzip,
-            username=username,
-            skip_rows=skip_rows,
-            device_preset=device_preset,
-        )
-
-    except Exception:
-        logger.exception("Failed to create file record for TUS upload: %s", filename)
 
 
 def _pre_create_hook(metadata: dict, upload_info: dict) -> None:

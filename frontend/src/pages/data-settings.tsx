@@ -522,7 +522,7 @@ export function DataSettingsPage() {
     if (hasLargeFile && csvFiles.length === 1) {
       // Single large file → use TUS resumable upload
       tusReset();
-      tusUpload(csvFiles);
+      tusUpload(csvFiles, replaceOnUpload);
       return;
     }
 
@@ -563,7 +563,7 @@ export function DataSettingsPage() {
           `Uploading (resumable) ${uploaded + failed + 1}/${csvFiles.length}: ${file.name}`
         );
         try {
-          await tusUpload([file]);
+          await tusUpload([file], replaceOnUpload);
           uploaded++;
         } catch (err) {
           failed++;
@@ -732,92 +732,7 @@ export function DataSettingsPage() {
       {/* File Uploads / Open Files Section                                */}
       {/* ================================================================ */}
 
-      {/* Local File Opening (always available) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5" />
-            {caps.server ? "Open Local Files" : "Activity Data Files"}
-          </CardTitle>
-          <CardDescription>
-            Open CSV files from your computer. Files are processed locally using WASM and stored in your browser.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={openLocalFiles}
-              disabled={isProcessing}
-              className="gap-2"
-            >
-              {isProcessing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <FolderOpen className="h-4 w-4" />
-              )}
-              Open Files
-            </Button>
-            <Button
-              variant="outline"
-              onClick={openLocalFolder}
-              disabled={isProcessing}
-              className="gap-2"
-            >
-              <FolderOpen className="h-4 w-4" />
-              Open Folder
-            </Button>
-          </div>
-
-          {localProgress && <LocalProcessingProgress progress={localProgress} isProcessing={isProcessing} />}
-
-          {/* Local files list */}
-          {localFiles.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                Local files ({localFiles.length})
-              </p>
-              <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
-                {localFiles.map((f) => (
-                  <div key={f.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                      <span className="truncate">{f.filename}</span>
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-700 dark:text-blue-400">
-                        local
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                      <span className="text-xs text-muted-foreground">{f.availableDates.length} dates</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        onClick={async () => {
-                          const ok = await confirm({ title: "Delete File", description: `Delete ${f.filename}?`, variant: "destructive", confirmLabel: "Delete" });
-                          if (ok && f.id) {
-                            try {
-                              await deleteFileRecord(f.id);
-                              setLocalFiles((prev) => prev.filter((lf) => lf.id !== f.id));
-                            } catch (err) {
-                              console.error("Failed to delete file:", err);
-                              await alert({ title: "Delete Failed", description: `Could not delete ${f.filename}. Please try again.` });
-                            }
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Activity Data Files Upload (server only) */}
+      {/* Server uploads shown first when online */}
       {caps.server && (
       <Card>
         <CardHeader>
@@ -916,9 +831,9 @@ export function DataSettingsPage() {
                       <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                       <span className="truncate">{f.filename}</span>
                       <span className={`text-xs px-1.5 py-0.5 rounded ${
-                        f.status === "ready" ? "bg-green-500/10 text-green-700 dark:text-green-400" :
+                        f.status === "ready" ? "bg-success/10 text-success" :
                         f.status === "failed" ? "bg-destructive/10 text-destructive" :
-                        f.status === "uploading" || f.status === "processing" ? "bg-blue-500/10 text-blue-700 dark:text-blue-400" :
+                        f.status === "uploading" || f.status === "processing" ? "bg-primary/10 text-primary" :
                         "bg-muted text-muted-foreground"
                       }`}>
                         {f.status}
@@ -1442,6 +1357,94 @@ export function DataSettingsPage() {
             <p className="text-sm text-muted-foreground">
               Select a file on the Scoring page to enable data management options.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ================================================================ */}
+      {/* Local / Browser Processing (bottom of page)                      */}
+      {/* ================================================================ */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FolderOpen className="h-5 w-5" />
+            {caps.server ? "Local / Browser Processing" : "Activity Data Files"}
+          </CardTitle>
+          <CardDescription>
+            {caps.server
+              ? "Process files locally in your browser using WASM. Data stays on your machine and is stored in IndexedDB — nothing is uploaded to the server."
+              : "Open CSV files from your computer. Files are processed locally using WASM and stored in your browser."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={openLocalFiles}
+              disabled={isProcessing}
+              className="gap-2"
+            >
+              {isProcessing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FolderOpen className="h-4 w-4" />
+              )}
+              Open Files
+            </Button>
+            <Button
+              variant="outline"
+              onClick={openLocalFolder}
+              disabled={isProcessing}
+              className="gap-2"
+            >
+              <FolderOpen className="h-4 w-4" />
+              Open Folder
+            </Button>
+          </div>
+
+          {localProgress && <LocalProcessingProgress progress={localProgress} isProcessing={isProcessing} />}
+
+          {localFiles.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                Local files ({localFiles.length})
+              </p>
+              <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
+                {localFiles.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                      <span className="truncate">{f.filename}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                        local
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <span className="text-xs text-muted-foreground">{f.availableDates.length} dates</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={async () => {
+                          const ok = await confirm({ title: "Delete File", description: `Delete ${f.filename}?`, variant: "destructive", confirmLabel: "Delete" });
+                          if (ok && f.id) {
+                            try {
+                              await deleteFileRecord(f.id);
+                              setLocalFiles((prev) => prev.filter((lf) => lf.id !== f.id));
+                            } catch (err) {
+                              console.error("Failed to delete file:", err);
+                              await alert({ title: "Delete Failed", description: `Could not delete ${f.filename}. Please try again.` });
+                            }
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

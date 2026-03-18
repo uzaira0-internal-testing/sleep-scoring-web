@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Pre-commit hook: detect API schema drift + other contract violations
+# Skip with: SKIP_DRIFT_CHECK=1 git commit ...
+
+if [ "${SKIP_DRIFT_CHECK:-0}" = "1" ]; then
+    exit 0
+fi
+
+# Fast schema drift check (file-based, no backend needed)
+if [ -x scripts/check-schema-drift.sh ]; then
+    if ! scripts/check-schema-drift.sh; then
+        exit 1
+    fi
+fi
