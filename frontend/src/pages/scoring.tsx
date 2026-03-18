@@ -1140,17 +1140,16 @@ export function ScoringPage() {
                     </div>
                   ) : (
                     <>
-                      <div className={`h-full ${activityLoading ? "opacity-30 pointer-events-none transition-opacity duration-200" : "transition-opacity duration-200"}`}>
+                      <div
+                        className="h-full transition-opacity duration-150"
+                        style={{ opacity: isPlotStale ? 0.4 : 1 }}
+                      >
                         <ActivityPlot
                           showComparisonMarkers={showComparisonMarkers}
                           highlightedCandidateId={highlightedCandidateId}
                         />
                       </div>
-                      {activityLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                        </div>
-                      )}
+                      {activityLoading && <div className="plot-loading-bar" />}
                     </>
                   )}
                 </CardContent>
