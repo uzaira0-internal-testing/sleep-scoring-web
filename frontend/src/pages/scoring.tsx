@@ -52,6 +52,10 @@ export function ScoringPage() {
   const [autoNonwearResult, setAutoNonwearResult] = useState<AutoNonwearResult | null>(null);
   const [editingOnset, setEditingOnset] = useState<string | null>(null);
   const [editingOffset, setEditingOffset] = useState<string | null>(null);
+  const [editingNwStart, setEditingNwStart] = useState<string | null>(null);
+  const [editingNwEnd, setEditingNwEnd] = useState<string | null>(null);
+  const [isPlotStale, setIsPlotStale] = useState(false);
+  const staleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [complexityBreakdown, setComplexityBreakdown] = useState<{
     complexity_pre: number | null;
     complexity_post: number | null;
@@ -102,6 +106,8 @@ export function ScoringPage() {
   const autoScoreOnNavigate = useSleepScoringStore((state) => state.autoScoreOnNavigate);
   const setAutoScoreOnNavigate = useSleepScoringStore((state) => state.setAutoScoreOnNavigate);
   const autoNonwearOnNavigate = useSleepScoringStore((state) => state.autoNonwearOnNavigate);
+  const periodGuider = useSleepScoringStore((state) => state.periodGuider);
+  const setPeriodGuider = useSleepScoringStore((state) => state.setPeriodGuider);
   const sleepDetectionRule = useSleepScoringStore((state) => state.sleepDetectionRule);
   // Sidebar panels (sleep markers, nonwear, metrics) are hidden by default
   const username = useSleepScoringStore((state) => state.username);
@@ -202,14 +208,13 @@ export function ScoringPage() {
       return dataSource.autoScore(currentFileId, currentDate, {
         algorithm: currentAlgorithm,
         detectionRule: sleepDetectionRule,
+        periodGuider,
       });
     },
+    onSuccess: (data) => {
+      setAutoScoreResult(data);
+    },
   });
-  useEffect(() => {
-    if (!autoScoreMutation.data || !autoScoreMutation.isSuccess) return;
-    const data = autoScoreMutation.data;
-    setAutoScoreResult(data);
-  }, [autoScoreMutation.data, autoScoreMutation.isSuccess]);
   useEffect(() => {
     if (autoScoreMutation.error) {
       alert({ title: "Auto-Score Failed", description: (autoScoreMutation.error as Error).message });
@@ -229,14 +234,12 @@ export function ScoringPage() {
         existingSleepMarkers,
       });
     },
+    onSuccess: (data) => {
+      if (data.nonwear_markers.length > 0) {
+        setAutoNonwearResult(data);
+      }
+    },
   });
-  useEffect(() => {
-    if (!autoNonwearMutation.data || !autoNonwearMutation.isSuccess) return;
-    const data = autoNonwearMutation.data;
-    if (data.nonwear_markers.length > 0) {
-      setAutoNonwearResult(data);
-    }
-  }, [autoNonwearMutation.data, autoNonwearMutation.isSuccess]);
   useEffect(() => {
     if (autoNonwearMutation.error) {
       alert({ title: "Auto-Nonwear Failed", description: (autoNonwearMutation.error as Error).message });
@@ -423,6 +426,8 @@ export function ScoringPage() {
   // Block auto-score in ALL these cases.
   const currentDateStatus = currentDate ? dateStatusMap.get(currentDate) : undefined;
   const hasNoDiary = !currentDateStatus || currentDateStatus.complexity_pre === -1;
+  // Non-diary guiders don't need diary data
+  const diaryBlocksAutoScore = periodGuider === "diary" && hasNoDiary;
 
   // Auto-score on date navigate (when toggle is on and no existing markers)
   // Skip dates with infinite complexity (no/incomplete diary)
@@ -430,7 +435,7 @@ export function ScoringPage() {
   const autoScoreMutationRef = useRef(autoScoreMutation);
   autoScoreMutationRef.current = autoScoreMutation; // eslint-disable-line react-hooks/refs -- Direct assignment, not Zustand state
   useEffect(() => {
-    if (!autoScoreOnNavigate || !currentFileId || !currentDate || isNoSleep || hasNoDiary) return;
+    if (!autoScoreOnNavigate || !currentFileId || !currentDate || isNoSleep || diaryBlocksAutoScore) return;
     // Skip if markers already exist or mutation is already running
     if (sleepMarkers.length > 0 || autoScoreMutation.isPending) return;
     // Skip if already attempted for this file+date (e.g. user cancelled the dialog)
@@ -446,7 +451,7 @@ export function ScoringPage() {
       autoScoreMutationRef.current.mutate();
     }, 500);
     return () => clearTimeout(timer);
-  }, [currentFileId, currentDate, autoScoreOnNavigate, isNoSleep, hasNoDiary, sleepMarkers.length, autoScoreMutation.isPending]);
+  }, [currentFileId, currentDate, autoScoreOnNavigate, isNoSleep, diaryBlocksAutoScore, sleepMarkers.length, autoScoreMutation.isPending]);
 
   // Auto-nonwear on date navigate (when toggle is on and no existing nonwear markers)
   const autoNonwearMutationRef = useRef(autoNonwearMutation);
@@ -485,6 +490,17 @@ export function ScoringPage() {
       }),
     enabled: !!currentFileId && !!currentDate,
   });
+
+  // Ghost cross-fade: keep plot visible while loading, dim after 300ms if still loading
+  useEffect(() => {
+    if (activityLoading) {
+      staleTimeoutRef.current = setTimeout(() => setIsPlotStale(true), 300);
+    } else {
+      if (staleTimeoutRef.current) { clearTimeout(staleTimeoutRef.current); staleTimeoutRef.current = null; }
+      setIsPlotStale(false);
+    }
+    return () => { if (staleTimeoutRef.current) { clearTimeout(staleTimeoutRef.current); staleTimeoutRef.current = null; } };
+  }, [activityLoading]);
 
   // Update store when activity data is fetched
   useEffect(() => {
@@ -532,6 +548,27 @@ export function ScoringPage() {
       updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: newTs });
     }
   }, [markerMode, selectedPeriodIndex, sleepMarkers, currentDate, updateMarker]);
+
+  const commitNwTimeEdit = useCallback((field: "start" | "end", value: string) => {
+    if (markerMode !== "nonwear" || selectedPeriodIndex === null || !nonwearMarkers[selectedPeriodIndex]) return;
+    const marker = nonwearMarkers[selectedPeriodIndex];
+    const refTs = field === "start" ? marker.startTimestamp : marker.endTimestamp;
+    if (refTs === null) return;
+    const counterpartTs = field === "start" ? marker.endTimestamp : marker.startTimestamp;
+    const newTs = resolveEditedTimeToTimestamp({
+      timeStr: value,
+      currentDate,
+      referenceTimestamp: refTs,
+      otherBoundaryTimestamp: counterpartTs,
+      field: field === "start" ? "onset" : "offset",
+    });
+    if (newTs === null) return;
+    if (field === "start") {
+      updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: newTs });
+    } else {
+      updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: newTs });
+    }
+  }, [markerMode, selectedPeriodIndex, nonwearMarkers, currentDate, updateMarker]);
 
   const canGoPrev = currentDateIndex > 0;
   const canGoNext = currentDateIndex < availableDates.length - 1;
@@ -827,15 +864,27 @@ export function ScoringPage() {
 
           <div className="h-5 w-px bg-border/40 shrink-0" />
 
-          {/* Group C: Auto Sleep (button + checkbox together) */}
+          {/* Group C: Auto Sleep (guider + button + checkbox together) */}
           <div className="flex items-center gap-1.5 shrink-0">
+            <Select
+              value={periodGuider}
+              onChange={(e) => setPeriodGuider(e.target.value)}
+              className="h-7 text-xs w-[100px]"
+              title="Sleep period search method"
+              options={[
+                { value: "diary", label: "Diary" },
+                { value: "l5", label: "L5 (5h)" },
+                { value: "longest_bout", label: "Longest Bout" },
+                { value: "smart", label: "Smart" },
+              ]}
+            />
             <Button
               variant="outline"
               size="sm"
               className="h-7 text-xs px-2.5"
               onClick={() => { autoScoreRef.current = false; autoScoreMutation.mutate(); }}
-              disabled={!currentFileId || !currentDate || autoScoreMutation.isPending || isNoSleep || hasNoDiary}
-              title={hasNoDiary ? "Cannot auto-score: no diary data for this date" : "Automatically detect and suggest sleep marker placements"}
+              disabled={!currentFileId || !currentDate || autoScoreMutation.isPending || isNoSleep || diaryBlocksAutoScore}
+              title={diaryBlocksAutoScore ? "Cannot auto-score: no diary data for this date" : "Automatically detect and suggest sleep marker placements"}
             >
               {autoScoreMutation.isPending ? (
                 <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
@@ -890,7 +939,7 @@ export function ScoringPage() {
             <div className="flex items-center gap-1">
               <Checkbox
                 checked={showAdjacentMarkers}
-                onCheckedChange={(checked) => setShowAdjacentMarkers(checked)}
+                onCheckedChange={(checked) => setShowAdjacentMarkers(!!checked)}
               />
               <Label className="text-[11px] cursor-pointer" onClick={() => setShowAdjacentMarkers(!showAdjacentMarkers)}>
                 Adjacent
@@ -908,7 +957,7 @@ export function ScoringPage() {
             <div className="flex items-center gap-1">
               <Checkbox
                 checked={showNonwearOverlays}
-                onCheckedChange={(checked) => setShowNonwearOverlays(checked)}
+                onCheckedChange={(checked) => setShowNonwearOverlays(!!checked)}
               />
               <Label className="text-[11px] cursor-pointer" onClick={() => setShowNonwearOverlays(!showNonwearOverlays)}>
                 NW Overlays
@@ -970,9 +1019,50 @@ export function ScoringPage() {
           )}
           {markerMode === "nonwear" && selectedPeriodIndex !== null && nonwearMarkers[selectedPeriodIndex] && (
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs tabular-nums">
-                {formatTime(nonwearMarkers[selectedPeriodIndex].startTimestamp)}–{formatTime(nonwearMarkers[selectedPeriodIndex].endTimestamp)}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs font-semibold">Start:</Label>
+                <Input
+                  type="text"
+                  className="w-24 h-7 text-xs text-center"
+                  value={editingNwStart ?? formatTime(nonwearMarkers[selectedPeriodIndex].startTimestamp)}
+                  onChange={(e) => setEditingNwStart(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      commitNwTimeEdit("start", (e.target as HTMLInputElement).value);
+                      setEditingNwStart(null);
+                    } else if (e.key === "Escape") {
+                      setEditingNwStart(null);
+                    }
+                  }}
+                  onFocus={(e) => setEditingNwStart(e.target.value)}
+                  onBlur={(e) => {
+                    commitNwTimeEdit("start", e.target.value);
+                    setEditingNwStart(null);
+                  }}
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs font-semibold">End:</Label>
+                <Input
+                  type="text"
+                  className="w-24 h-7 text-xs text-center"
+                  value={editingNwEnd ?? formatTime(nonwearMarkers[selectedPeriodIndex].endTimestamp)}
+                  onChange={(e) => setEditingNwEnd(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      commitNwTimeEdit("end", (e.target as HTMLInputElement).value);
+                      setEditingNwEnd(null);
+                    } else if (e.key === "Escape") {
+                      setEditingNwEnd(null);
+                    }
+                  }}
+                  onFocus={(e) => setEditingNwEnd(e.target.value)}
+                  onBlur={(e) => {
+                    commitNwTimeEdit("end", e.target.value);
+                    setEditingNwEnd(null);
+                  }}
+                />
+              </div>
               <span className="text-xs font-medium tabular-nums">
                 {formatDuration(nonwearMarkers[selectedPeriodIndex].startTimestamp, nonwearMarkers[selectedPeriodIndex].endTimestamp)}
               </span>

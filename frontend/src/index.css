@@ -197,15 +197,6 @@
     @apply bg-muted-foreground/40;
   }
 
-  /* ─── Hidden scrollbar (for toolbar overflow) ─── */
-  .scrollbar-none {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
-  }
-
   /* ─── Selection ─── */
   ::selection {
     background: oklch(0.55 0.2 290 / 0.25);
@@ -264,5 +255,38 @@
 
   .dark .glow-nonwear {
     box-shadow: 0 0 20px oklch(0.75 0.15 65 / 0.20);
+  }
+
+  /* Marker spring placement animation */
+  @keyframes marker-spring-in {
+    0%   { transform: scaleY(0);    transform-origin: top center; }
+    70%  { transform: scaleY(1.08); transform-origin: top center; }
+    100% { transform: scaleY(1.0);  transform-origin: top center; }
+  }
+  .marker-spring-in {
+    animation: marker-spring-in 200ms ease-out forwards;
+  }
+
+  /* Activity plot loading shimmer bar */
+  @keyframes shimmer-slide {
+    0%   { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+  .plot-loading-bar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    z-index: 10;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--color-primary) 40%,
+      oklch(0.65 0.18 275) 50%,
+      var(--color-primary) 60%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer-slide 1.4s ease-in-out infinite;
+    opacity: 0.7;
   }
 }
