@@ -308,6 +308,7 @@ def place_main_sleep(
     diary: DiaryDay,
     config: PlacementConfig,
     diary_tolerance_epochs: int | None = None,
+    onset_before_tolerance_epochs: int | None = None,
 ) -> tuple[int, int] | None:
     """
     Place main sleep period using diary onset/offset as reference.
@@ -330,7 +331,7 @@ def place_main_sleep(
         epochs,
         diary.sleep_onset,
         config.onset_min_consecutive_sleep,
-        before_tolerance_epochs=config.diary_tolerance_minutes,
+        before_tolerance_epochs=onset_before_tolerance_epochs if onset_before_tolerance_epochs is not None else config.diary_tolerance_minutes,
     )
 
     # Bounded offset search: look within a window around diary wake.

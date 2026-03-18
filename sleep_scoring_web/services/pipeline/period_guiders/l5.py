@@ -85,20 +85,26 @@ class L5PeriodGuider:
         # Determine window size from params
         from sleep_scoring_web.services.pipeline.params import PeriodGuiderParams as DefaultParams
 
-        window_hours = (params or DefaultParams()).l5_window_hours
+        resolved_params = params or DefaultParams()
+        window_hours = resolved_params.l5_window_hours
         half_window = timedelta(hours=window_hours / 2)
+        lookback = resolved_params.l5_onset_lookback_epochs
 
-        # onset_target = start of the L5 window (where the least-active period begins),
-        # NOT midpoint - half_window.  Using the far left edge of the search window as
-        # the onset target biases _find_valid_onset_near toward any sleep run that happens
-        # to fall partway through the search window (e.g. a brief zero burst 2 h before
-        # actual sleep) rather than the actual sleep onset at the L5 window start.
+        # onset_target = slightly before the L5 window start.
+        # Shifting back by l5_onset_lookback_epochs moves the center of
+        # _find_valid_onset_near just before the window edge so that a sleep run
+        # at best_start falls in the "after" pool — meaning a run at best_start-1
+        # (still valid) wins only if it's within before_tolerance of best_start.
+        # This prevents _find_valid_onset_near from always returning the run
+        # right at best_start even when there's a brief activity spike just
+        # before that pushes the true sleep onset a few epochs later.
         #
         # offset_target = midpoint + half_window so the offset search covers the full
         # second half of the night.  For L5 the offset is placed at max(valid_offsets)
         # regardless, so offset_target just needs to be comfortably past wake-up.
+        onset_epoch = max(0, best_start - lookback)
         midpoint_dt = epochs.epoch_times[l5_midpoint]
-        onset_target = epochs.epoch_times[best_start]
+        onset_target = epochs.epoch_times[onset_epoch]
         offset_target = midpoint_dt + half_window
 
         guide = GuideWindow(onset_target=onset_target, offset_target=offset_target, guider=PeriodGuiderType.L5)

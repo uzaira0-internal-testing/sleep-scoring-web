@@ -93,7 +93,8 @@ class OnsetOffsetPeriodConstructor:
                 wake_time=main_guide.offset_target,
             )
             diary_tol = config.diary_tolerance_minutes if main_guide.guider == PeriodGuiderType.DIARY else None
-            main_result = place_main_sleep(epoch_data_list, diary, config, diary_tolerance_epochs=diary_tol)
+            onset_before_tol = None if main_guide.guider == PeriodGuiderType.DIARY else 5
+            main_result = place_main_sleep(epoch_data_list, diary, config, diary_tolerance_epochs=diary_tol, onset_before_tolerance_epochs=onset_before_tol)
             if main_result:
                 main_onset_idx, main_offset_idx = main_result
                 results.append(

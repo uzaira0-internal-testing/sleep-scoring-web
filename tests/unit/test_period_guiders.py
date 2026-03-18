@@ -59,8 +59,9 @@ class TestL5PeriodGuider:
         assert any("L5 guider" in n for n in notes)
 
         # L5 window starts at epoch 720 (midnight); midpoint = 870, offset = midpoint + 6h
+        # onset_target is shifted back by l5_onset_lookback_epochs (default 2) from window start
         midpoint_dt = epochs.epoch_times[870]
-        assert guide.onset_target == epochs.epoch_times[720]  # start of L5 window
+        assert guide.onset_target == epochs.epoch_times[718]  # best_start - lookback
         assert guide.offset_target == midpoint_dt + timedelta(hours=6)
 
     def test_tiebreak_prefers_midnight(self) -> None:

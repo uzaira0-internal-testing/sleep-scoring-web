@@ -45,6 +45,7 @@ class PeriodGuiderParams:
 
     diary_tolerance_minutes: int = 15
     l5_window_hours: int = 12  # Total search window centered on L5 midpoint
+    l5_onset_lookback_epochs: int = 2  # Shift onset_target this many epochs before L5 window start
     bout_merge_gap_minutes: int = 60  # Max wake gap to merge adjacent sleep bouts
     bout_padding_minutes: int = 30  # Padding around longest bout each side
 
