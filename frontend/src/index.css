@@ -270,12 +270,11 @@
 
   /* Sleep period region center-expand: grows symmetrically from midpoint */
   @keyframes sleep-region-expand {
-    0%   { transform: scaleX(0); opacity: 0;   }
-    70%  { transform: scaleX(1.04); opacity: 1; }
-    100% { transform: scaleX(1);   opacity: 1;  }
+    0%   { transform: scaleX(0); opacity: 0; }
+    100% { transform: scaleX(1); opacity: 1; }
   }
   .sleep-region-expand {
     transform-origin: center;
-    animation: sleep-region-expand 280ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    animation: sleep-region-expand 220ms ease-out forwards;
   }
 }

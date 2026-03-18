@@ -275,6 +275,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const { selected: offsetSel, unselected: offsetUnsel } = markerColorPair(colorTheme.offset);
       const onsetColor = isSelected ? onsetSel : onsetUnsel;
       const offsetColor = isSelected ? offsetSel : offsetUnsel;
+      // TODO: animate sleep period region (center-expand) and marker lines (scaleX pulse)
+      // on first placement. Needs careful key management — index-based to survive drags.
       // Shaded region between onset and offset
       const visibleStartPx = Math.max(0, startPx);
       const visibleEndPx = Math.min(plotWidth, endPx);
@@ -291,26 +293,14 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         sleepRegion.style.background = hexToRgba(colorTheme.onset, isSelected ? 0.14 : 0.07);
         sleepRegion.style.pointerEvents = 'none';
         sleepRegion.style.zIndex = '2';
-        const regionKey = `region-sleep-${startTs}-${endTs}`;
-        if (!animatedMarkerKeysRef.current.has(regionKey)) {
-          animatedMarkerKeysRef.current.add(regionKey);
-          sleepRegion.classList.add('sleep-region-expand');
-          sleepRegion.addEventListener('animationend', () => sleepRegion.classList.remove('sleep-region-expand'), { once: true });
-        }
         wrapper.appendChild(sleepRegion);
       }
 
       if (startPx >= -10 && startPx <= plotWidth + 10) {
-        const onsetKey = `sleep-onset-${startTs}`;
-        const animateOnset = !animatedMarkerKeysRef.current.has(onsetKey);
-        if (animateOnset) animatedMarkerKeysRef.current.add(onsetKey);
-        createMarkerLine(u, wrapper, 'sleep', index, 'start', startPx, plotLeft, plotTop, plotWidth, plotHeight, onsetColor, isSelected, startTs, animateOnset);
+        createMarkerLine(u, wrapper, 'sleep', index, 'start', startPx, plotLeft, plotTop, plotWidth, plotHeight, onsetColor, isSelected, startTs);
       }
       if (endPx >= -10 && endPx <= plotWidth + 10) {
-        const offsetKey = `sleep-offset-${endTs}`;
-        const animateOffset = !animatedMarkerKeysRef.current.has(offsetKey);
-        if (animateOffset) animatedMarkerKeysRef.current.add(offsetKey);
-        createMarkerLine(u, wrapper, 'sleep', index, 'end', endPx, plotLeft, plotTop, plotWidth, plotHeight, offsetColor, isSelected, endTs, animateOffset);
+        createMarkerLine(u, wrapper, 'sleep', index, 'end', endPx, plotLeft, plotTop, plotWidth, plotHeight, offsetColor, isSelected, endTs);
       }
     });
 
@@ -740,8 +730,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     plotHeight: number,
     color: string,
     isSelected: boolean,
-    timestampSec?: number,
-    animate?: boolean
+    timestampSec?: number
   ) {
     const line = document.createElement('div');
     line.className = `marker-line ${type}-${edge}`;
@@ -785,10 +774,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     inner.style.width = isSelected ? '4px' : '2px';
     inner.style.transform = 'translateX(-50%)';
     inner.style.background = color;
-    if (animate) {
-      inner.classList.add('marker-spring-in');
-      inner.addEventListener('animationend', () => inner.classList.remove('marker-spring-in'), { once: true });
-    }
     line.appendChild(inner);
 
     // Drag state
