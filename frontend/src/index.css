@@ -257,36 +257,25 @@
     box-shadow: 0 0 20px oklch(0.75 0.15 65 / 0.20);
   }
 
-  /* Marker spring placement animation */
-  @keyframes marker-spring-in {
-    0%   { transform: scaleY(0);    transform-origin: top center; }
-    70%  { transform: scaleY(1.08); transform-origin: top center; }
-    100% { transform: scaleY(1.0);  transform-origin: top center; }
+  /* Marker line click-in: width pulse, contained, no overflow */
+  @keyframes marker-line-click-in {
+    0%   { transform: translateX(-50%) scaleX(0.5); opacity: 0; }
+    30%  { transform: translateX(-50%) scaleX(4);   opacity: 1; }
+    65%  { transform: translateX(-50%) scaleX(0.6); opacity: 1; }
+    100% { transform: translateX(-50%) scaleX(1);   opacity: 1; }
   }
   .marker-spring-in {
-    animation: marker-spring-in 200ms ease-out forwards;
+    animation: marker-line-click-in 240ms ease-out forwards;
   }
 
-  /* Activity plot loading shimmer bar */
-  @keyframes shimmer-slide {
-    0%   { background-position: -200% center; }
-    100% { background-position: 200% center; }
+  /* Sleep period region center-expand: grows symmetrically from midpoint */
+  @keyframes sleep-region-expand {
+    0%   { transform: scaleX(0); opacity: 0;   }
+    70%  { transform: scaleX(1.04); opacity: 1; }
+    100% { transform: scaleX(1);   opacity: 1;  }
   }
-  .plot-loading-bar {
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    z-index: 10;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      var(--color-primary) 40%,
-      oklch(0.65 0.18 275) 50%,
-      var(--color-primary) 60%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    animation: shimmer-slide 1.4s ease-in-out infinite;
-    opacity: 0.7;
+  .sleep-region-expand {
+    transform-origin: center;
+    animation: sleep-region-expand 280ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   }
 }

@@ -275,6 +275,31 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const { selected: offsetSel, unselected: offsetUnsel } = markerColorPair(colorTheme.offset);
       const onsetColor = isSelected ? onsetSel : onsetUnsel;
       const offsetColor = isSelected ? offsetSel : offsetUnsel;
+      // Shaded region between onset and offset
+      const visibleStartPx = Math.max(0, startPx);
+      const visibleEndPx = Math.min(plotWidth, endPx);
+      if (visibleEndPx > visibleStartPx) {
+        const sleepRegion = document.createElement('div');
+        sleepRegion.className = `marker-region sleep`;
+        sleepRegion.dataset.markerId = String(index);
+        sleepRegion.dataset.testid = `marker-region-sleep-${index}`;
+        sleepRegion.style.position = 'absolute';
+        sleepRegion.style.left = (plotLeft + visibleStartPx) + 'px';
+        sleepRegion.style.top = plotTop + 'px';
+        sleepRegion.style.width = (visibleEndPx - visibleStartPx) + 'px';
+        sleepRegion.style.height = plotHeight + 'px';
+        sleepRegion.style.background = hexToRgba(colorTheme.onset, isSelected ? 0.14 : 0.07);
+        sleepRegion.style.pointerEvents = 'none';
+        sleepRegion.style.zIndex = '2';
+        const regionKey = `region-sleep-${startTs}-${endTs}`;
+        if (!animatedMarkerKeysRef.current.has(regionKey)) {
+          animatedMarkerKeysRef.current.add(regionKey);
+          sleepRegion.classList.add('sleep-region-expand');
+          sleepRegion.addEventListener('animationend', () => sleepRegion.classList.remove('sleep-region-expand'), { once: true });
+        }
+        wrapper.appendChild(sleepRegion);
+      }
+
       if (startPx >= -10 && startPx <= plotWidth + 10) {
         const onsetKey = `sleep-onset-${startTs}`;
         const animateOnset = !animatedMarkerKeysRef.current.has(onsetKey);
@@ -784,7 +809,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
       // Cache DOM references at drag start to avoid querySelector per frame
       const cachedTimeLabel = wrapper.querySelector(`.marker-line.time-label[data-line-type="${type}-${edge}"][data-line-index="${index}"]`) as HTMLElement | null;
-      const cachedRegion = wrapper.querySelector(`.marker-region.${type}[data-marker-id="${index}"]`) as HTMLElement | null;
+      const cachedRegion = wrapper.querySelector(`.marker-region.${type}[data-marker-id="${index}"]`) as HTMLElement | null; // sleep: shaded region; nonwear: unused
       const cachedOnsetArrow = wrapper.querySelector('.sleep-rule-arrow.onset') as HTMLElement | null;
       const cachedOnsetLabel = wrapper.querySelector('.sleep-rule-label.onset') as HTMLElement | null;
       const cachedOffsetArrow = wrapper.querySelector('.sleep-rule-arrow.offset') as HTMLElement | null;

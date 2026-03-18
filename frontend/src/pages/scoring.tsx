@@ -1149,7 +1149,6 @@ export function ScoringPage() {
                           highlightedCandidateId={highlightedCandidateId}
                         />
                       </div>
-                      {activityLoading && <div className="plot-loading-bar" />}
                     </>
                   )}
                 </CardContent>
