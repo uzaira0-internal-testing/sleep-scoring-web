@@ -43,8 +43,8 @@ class TestL5PeriodGuider:
         """L5 should center its search window on the least-active 5h block."""
         from sleep_scoring_web.services.pipeline.period_guiders.l5 import L5PeriodGuider
 
-        # 1440 epochs (24h). Activity = 100 everywhere, except epochs 720-1019 = 0 (5h block at midnight)
-        activity = [100.0] * 1440
+        # 1440 epochs (24h). Activity = 2000 everywhere, except epochs 720-1019 = 0 (5h block at midnight)
+        activity = [2000.0] * 1440
         for i in range(720, 1020):
             activity[i] = 0.0
 
@@ -58,18 +58,17 @@ class TestL5PeriodGuider:
         assert naps == []
         assert any("L5 guider" in n for n in notes)
 
-        # L5 window starts at epoch 720 (midnight); midpoint = 870, offset = midpoint + 6h
-        # onset_target is shifted back by l5_onset_lookback_epochs (default 2) from window start
-        midpoint_dt = epochs.epoch_times[870]
-        assert guide.onset_target == epochs.epoch_times[718]  # best_start - lookback
-        assert guide.offset_target == midpoint_dt + timedelta(hours=6)
+        # onset_target = lights-out (backward search finds daytime activity ending at 720)
+        # offset_target = L5 window end (epoch 1019)
+        assert guide.onset_target == epochs.epoch_times[720]
+        assert guide.offset_target == epochs.epoch_times[1019]
 
     def test_tiebreak_prefers_midnight(self) -> None:
         """When two windows have equal sums, prefer the one closest to midnight (epoch 720)."""
         from sleep_scoring_web.services.pipeline.period_guiders.l5 import L5PeriodGuider
 
         # Two equally-zero 5h blocks: one near start (0-299), one at midnight (720-1019)
-        activity = [100.0] * 1440
+        activity = [2000.0] * 1440
         for i in range(0, 300):
             activity[i] = 0.0
         for i in range(720, 1020):

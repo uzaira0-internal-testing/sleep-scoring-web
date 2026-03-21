@@ -2227,6 +2227,11 @@ export interface components {
             is_no_sleep: boolean;
             /** Needs Consensus */
             needs_consensus: boolean;
+            /**
+             * Auto Flagged
+             * @default false
+             */
+            auto_flagged: boolean;
             /** Has Auto Score */
             has_auto_score: boolean;
             /** Complexity Pre */
@@ -2601,6 +2606,16 @@ export interface components {
              * @default false
              */
             has_diary: boolean;
+            /**
+             * Consensus Remaining
+             * @default 0
+             */
+            consensus_remaining: number;
+            /**
+             * Auto Flagged Count
+             * @default 0
+             */
+            auto_flagged_count: number;
         };
         /**
          * FileUploadResponse

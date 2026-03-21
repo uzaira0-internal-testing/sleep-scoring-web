@@ -1,13 +1,12 @@
 """
 L5 (Least Active 5 Hours) period guider.
 
-Finds the 5-hour window with minimum total activity and centers a wide
-search window around it. Always succeeds — there's always a least-active period.
+Finds the 5-hour window with minimum total activity, then traces backward
+through classified wake bouts to find where the person actually fell asleep.
 """
 
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from sleep_scoring_web.schemas.enums import PeriodGuiderType
@@ -19,6 +18,34 @@ if TYPE_CHECKING:
 
 L5_EPOCHS = 300  # 5 hours x 60 epochs/hour
 MIDNIGHT_EPOCH = 720  # Epoch index for midnight in a noon-to-noon day (12h x 60)
+
+
+def _find_lights_out(
+    bouts: list[Bout],
+    search_from: int,
+    min_wake_epochs: int,
+) -> int:
+    """Walk backward through pre-computed wake bouts to find where
+    sustained daytime activity ended.
+
+    Uses the *bouts* list (already computed by the bout detector) instead of
+    re-scanning raw scores.  If *search_from* lands inside a wake bout, that
+    bout is skipped (contraction, same as nonwear handling).  Then earlier
+    bouts are checked in reverse; the first wake bout >= *min_wake_epochs*
+    marks the transition.
+
+    Returns the first epoch after that sustained wake bout.
+    Falls back to *search_from* if no qualifying wake bout is found.
+    """
+    for bout in reversed(bouts):
+        if bout.state != 0:  # only wake bouts
+            continue
+        if bout.start_index >= search_from:  # entirely past search point
+            continue
+        # Bout contains or precedes search_from — check full length
+        if bout.length >= min_wake_epochs:
+            return bout.end_index + 1
+    return search_from
 
 
 @register("period_guider", "l5")
@@ -50,9 +77,7 @@ class L5PeriodGuider:
                 notes,
             )
 
-        # Build activity array — penalize nonwear epochs so the L5 window avoids them.
-        # Any window containing a nonwear epoch gets a very high sum, making it
-        # uncompetitive with windows of actual low-activity (e.g., real sleep).
+        # Penalize nonwear epochs so the L5 window avoids them.
         raw_activity = epochs.activity_counts
         if excluded_nonwear:
             nonwear_set: set[int] = set()
@@ -62,6 +87,8 @@ class L5PeriodGuider:
             activity = [penalty if i in nonwear_set else raw_activity[i] for i in range(n)]
         else:
             activity = raw_activity
+
+        # ── Step 1: find the least-active 5-hour window ──
         window_sum = sum(activity[:L5_EPOCHS])
         best_sum = window_sum
         best_starts: list[int] = [0]
@@ -80,36 +107,27 @@ class L5PeriodGuider:
         else:
             best_start = best_starts[0]
 
-        l5_midpoint = best_start + L5_EPOCHS // 2
-
-        # Determine window size from params
+        # ── Step 2: trace backward to find lights-out ──
+        # Walk backward from L5 start through classified wake bouts, skipping
+        # any shorter than bout_merge_gap_minutes.  The first sustained wake
+        # bout marks the end of daytime activity; onset_target is placed right
+        # after it.
         from sleep_scoring_web.services.pipeline.params import PeriodGuiderParams as DefaultParams
 
         resolved_params = params or DefaultParams()
-        window_hours = resolved_params.l5_window_hours
-        half_window = timedelta(hours=window_hours / 2)
-        lookback = resolved_params.l5_onset_lookback_epochs
+        min_wake = resolved_params.bout_merge_gap_minutes // 2
 
-        # onset_target = slightly before the L5 window start.
-        # Shifting back by l5_onset_lookback_epochs moves the center of
-        # _find_valid_onset_near just before the window edge so that a sleep run
-        # at best_start falls in the "after" pool — meaning a run at best_start-1
-        # (still valid) wins only if it's within before_tolerance of best_start.
-        # This prevents _find_valid_onset_near from always returning the run
-        # right at best_start even when there's a brief activity spike just
-        # before that pushes the true sleep onset a few epochs later.
-        #
-        # offset_target = midpoint + half_window so the offset search covers the full
-        # second half of the night.  For L5 the offset is placed at max(valid_offsets)
-        # regardless, so offset_target just needs to be comfortably past wake-up.
-        onset_epoch = max(0, best_start - lookback)
-        midpoint_dt = epochs.epoch_times[l5_midpoint]
-        onset_target = epochs.epoch_times[onset_epoch]
-        offset_target = midpoint_dt + half_window
+        lights_out = _find_lights_out(bouts, best_start, min_wake)
+        l5_end = best_start + L5_EPOCHS - 1
+
+        onset_target = epochs.epoch_times[lights_out]
+        offset_target = epochs.epoch_times[l5_end]
 
         guide = GuideWindow(onset_target=onset_target, offset_target=offset_target, guider=PeriodGuiderType.L5)
 
         notes.append(
-            f"L5 guider: least-active 5h at epoch {best_start}-{best_start + L5_EPOCHS - 1}, midpoint {midpoint_dt.strftime('%H:%M')}, window +/-{window_hours / 2:.0f}h"
+            f"L5 guider: least-active 5h at epoch {best_start}-{l5_end}, "
+            f"lights-out {onset_target.strftime('%H:%M')} (epoch {lights_out}), "
+            f"offset {offset_target.strftime('%H:%M')} (epoch {l5_end})"
         )
         return guide, [], notes

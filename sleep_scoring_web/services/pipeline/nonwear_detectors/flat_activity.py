@@ -6,10 +6,12 @@ removed and placed on a surface (sudden drop to exactly 0, stays flat,
 then sudden resumption). Catches shorter periods that Choi 2011 misses
 (Choi requires ≥90 min; this defaults to ≥60 min).
 
-Crucially, a run is only flagged as nonwear if activity RESUMES strongly
-after the run ends. This distinguishes device-removal (activity comes back)
-from actual sleep (activity stays low indefinitely). A run at the end of the
-data, or followed only by more near-zero values, is treated as sleep.
+A mid-recording run is only flagged as nonwear if activity RESUMES strongly
+after the run ends — this distinguishes device-removal (activity comes back)
+from actual sleep (activity stays low indefinitely).  A run that reaches the
+END of the data is always flagged as nonwear (device removed and never put
+back on).  A run followed only by near-zero values with no resumption and
+not at the end of data is treated as sleep.
 """
 
 from __future__ import annotations
@@ -80,10 +82,14 @@ class FlatActivityNonwearDetector:
                 # Require strong resumption after the run — confirms device was picked
                 # up, not that the person fell asleep. Check the next
                 # resumption_window epochs for activity above resumption_threshold.
-                window_end = min(i + resumption_window, len(activity))
-                resumes = any(activity[j] >= resumption_threshold for j in range(i, window_end))
-                if not resumes:
-                    continue
+                # Exception: a run that reaches the END of the data is always
+                # nonwear — the device was removed and never put back on.
+                at_end_of_data = (i >= len(activity))
+                if not at_end_of_data:
+                    window_end = min(i + resumption_window, len(activity))
+                    resumes = any(activity[j] >= resumption_threshold for j in range(i, window_end))
+                    if not resumes:
+                        continue
 
                 results.append(
                     NonwearPeriodResult(

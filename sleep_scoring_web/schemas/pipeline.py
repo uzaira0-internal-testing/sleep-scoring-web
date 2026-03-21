@@ -39,7 +39,6 @@ class PeriodGuiderParamsSchema(BaseModel):
     """Parameters for sleep period search anchoring (GGIR: guider)."""
 
     diary_tolerance_minutes: int = Field(default=15, ge=1, le=120, description="Tolerance window around diary times for candidate selection")
-    l5_window_hours: int = Field(default=12, ge=6, le=24, description="Total search window (hours) centered on L5 midpoint")
     bout_merge_gap_minutes: int = Field(default=60, ge=5, le=180, description="Max wake gap (minutes) to merge adjacent sleep bouts")
     bout_padding_minutes: int = Field(default=30, ge=0, le=120, description="Padding (minutes) around longest bout each side")
 

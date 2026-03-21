@@ -1052,9 +1052,14 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             const leftPct = left / (u.bbox.width / devicePixelRatio);
             const xVal = zoomVisualMin + leftPct * (zoomVisualMax - zoomVisualMin);
 
-            // New range is relative to target so rapid events accumulate correctly
+            // Scale zoom by actual deltaY magnitude so mouse wheels (discrete
+            // notches, deltaY=±120) produce proportional steps rather than a
+            // fixed 10% jump per notch.  Trackpads emit smaller deltas and get
+            // correspondingly finer zoom.
             const oxRange = zoomTargetMax - zoomTargetMin;
-            const nxRange = e.deltaY > 0 ? oxRange / factor : oxRange * factor;
+            const zoomPower = Math.min(Math.abs(e.deltaY) / 300, 1);
+            const scaledFactor = 1 - (1 - factor) * zoomPower;
+            const nxRange = e.deltaY > 0 ? oxRange / scaledFactor : oxRange * scaledFactor;
             const minRange = 60;
             const maxRange = originalXScaleRef.current
               ? (originalXScaleRef.current.max - originalXScaleRef.current.min)

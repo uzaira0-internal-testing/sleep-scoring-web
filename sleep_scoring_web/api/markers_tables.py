@@ -218,16 +218,35 @@ async def get_onset_offset_data(
     choi_column = await get_choi_column(db, username)
     scorer = create_algorithm(algorithm)
 
-    # Sleep scoring is local (per-epoch), so run on the windowed rows only.
-    onset_sleep = scorer.score([row.axis_y or 0 for row in onset_rows]) if onset_rows else []
-    offset_sleep = scorer.score([row.axis_y or 0 for row in offset_rows]) if offset_rows else []
+    # Score Sadeh on 48h (noon prev day to noon next day) so epochs near
+    # any boundary see real surrounding data instead of zero-padding.
+    day_start = datetime.combine(analysis_date, datetime.min.time()) - timedelta(hours=12)
+    day_end = day_start + timedelta(hours=48)
+    sadeh_context_result = await db.execute(
+        select(RawActivityData)
+        .where(
+            and_(
+                RawActivityData.file_id == file_id,
+                RawActivityData.timestamp >= day_start,
+                RawActivityData.timestamp < day_end,
+            )
+        )
+        .order_by(RawActivityData.timestamp)
+    )
+    sadeh_context_rows = sadeh_context_result.scalars().all()
+    sadeh_results = scorer.score([row.axis_y or 0 for row in sadeh_context_rows])
+    sadeh_by_timestamp: dict[datetime, int] = {
+        row.timestamp: sadeh_results[i]
+        for i, row in enumerate(sadeh_context_rows)
+        if i < len(sadeh_results)
+    }
+    onset_sleep = [sadeh_by_timestamp.get(row.timestamp) for row in onset_rows]
+    offset_sleep = [sadeh_by_timestamp.get(row.timestamp) for row in offset_rows]
 
     # Choi is context-sensitive (requires 90+ consecutive minutes of zeros).
     # Running it on the ±window rows produces wrong results when the nonwear period
     # extends outside the visible window. Fix: run Choi on the full noon-to-noon day
     # (extended to cover the actual onset/offset windows), then look up results by timestamp.
-    day_start = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
-    day_end = day_start + timedelta(hours=24)
     choi_context_start = min(day_start, onset_start, offset_start)
     choi_context_end = max(day_end, onset_end, offset_end)
 
@@ -397,7 +416,7 @@ async def get_full_table_data(
 
     is_in_nonwear = _build_nonwear_checker(sensor_nw_markers)
 
-    # Run algorithms on full data
+    # Run algorithms on 48h context so boundary epochs get real neighbours
     from sleep_scoring_web.services.algorithms.choi import ChoiAlgorithm
     from sleep_scoring_web.services.choi_helpers import extract_choi_input, get_choi_column
 
@@ -407,24 +426,43 @@ async def get_full_table_data(
             detail=f"Unknown algorithm: {algorithm}. Available: {ALGORITHM_TYPES}",
         )
 
-    axis_y_data = [row.axis_y or 0 for row in rows]
+    context_start = start_time - timedelta(hours=12)
+    context_end = end_time + timedelta(hours=12)
+    context_result = await db.execute(
+        select(RawActivityData)
+        .where(
+            and_(
+                RawActivityData.file_id == file_id,
+                RawActivityData.timestamp >= context_start,
+                RawActivityData.timestamp < context_end,
+            )
+        )
+        .order_by(RawActivityData.timestamp)
+    )
+    context_rows = context_result.scalars().all()
 
     scorer = create_algorithm(algorithm)
-    sleep_results = scorer.score(axis_y_data)
+    sadeh_context = scorer.score([r.axis_y or 0 for r in context_rows])
+    sadeh_by_ts: dict[datetime, int] = {
+        r.timestamp: sadeh_context[i] for i, r in enumerate(context_rows) if i < len(sadeh_context)
+    }
 
     choi_column = await get_choi_column(db, username)
     choi = ChoiAlgorithm()
-    choi_results = choi.detect_mask(extract_choi_input(rows, choi_column))
+    choi_context = choi.detect_mask(extract_choi_input(context_rows, choi_column))
+    choi_by_ts: dict[datetime, int] = {
+        r.timestamp: choi_context[i] for i, r in enumerate(context_rows) if i < len(choi_context)
+    }
 
-    # Convert to response format
+    # Convert to response format (display rows stay 24h)
     data = [
         FullTableDataPoint(
             timestamp=naive_to_unix(row.timestamp),
             datetime_str=row.timestamp.strftime("%H:%M"),
             axis_y=row.axis_y or 0,
             vector_magnitude=row.vector_magnitude or 0,
-            algorithm_result=sleep_results[i] if i < len(sleep_results) else None,
-            choi_result=choi_results[i] if i < len(choi_results) else None,
+            algorithm_result=sadeh_by_ts.get(row.timestamp),
+            choi_result=choi_by_ts.get(row.timestamp),
             is_nonwear=is_in_nonwear(naive_to_unix(row.timestamp)),
         )
         for i, row in enumerate(rows)

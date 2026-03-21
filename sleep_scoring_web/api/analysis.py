@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 
 from sleep_scoring_web.api.access import get_assigned_file_ids, is_admin_user
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword  # noqa: TC001 — FastAPI needs these at runtime
-from sleep_scoring_web.db.models import DiaryEntry, File, Marker, RawActivityData, SleepMetric, UserAnnotation
+from sleep_scoring_web.db.models import ConsensusCandidate, ConsensusResult, DiaryEntry, File, Marker, RawActivityData, SleepMetric, UserAnnotation
 from sleep_scoring_web.schemas.enums import FileStatus, MarkerCategory, MarkerType
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
@@ -23,6 +23,8 @@ class FileSummary(BaseModel):
     total_dates: int = 0
     scored_dates: int = 0
     has_diary: bool = False
+    consensus_remaining: int = 0  # manually flagged dates needing consensus
+    auto_flagged_count: int = 0  # system-detected: 2+ human scorers disagree
 
 
 class AggregateMetrics(BaseModel):
@@ -131,6 +133,69 @@ async def get_analysis_summary(
         valid = valid_dates_by_file.get(fid, set())
         scored_by_file[fid] = len(scored_set & valid) if valid else 0
 
+    # Consensus remaining: dates that need review but haven't reached consensus.
+    # A date needs consensus if EITHER:
+    #   a) any annotation has status='submitted' (explicitly flagged), OR
+    #   b) 2+ human scorers (excluding auto_score) have different marker sets
+    #      (detected via distinct candidate_hash in consensus_candidates)
+    # Minus dates where ConsensusResult.has_consensus is already True.
+
+    # (a) Explicitly flagged for consensus
+    submitted_result = await db.execute(
+        select(UserAnnotation.file_id, UserAnnotation.analysis_date)
+        .where(
+            UserAnnotation.file_id.in_(file_ids),
+            UserAnnotation.needs_consensus.is_(True),
+        )
+        .group_by(UserAnnotation.file_id, UserAnnotation.analysis_date)
+    )
+    needs_consensus: dict[int, set] = {}
+    for row in submitted_result.all():
+        needs_consensus.setdefault(row.file_id, set()).add(row.analysis_date)
+
+    # (b) Dates with 2+ distinct human candidate hashes (auto-detected discrepancy)
+    auto_flagged: dict[int, set] = {}
+    discrepancy_result = await db.execute(
+        select(
+            ConsensusCandidate.file_id,
+            ConsensusCandidate.analysis_date,
+        )
+        .where(
+            ConsensusCandidate.file_id.in_(file_ids),
+            ConsensusCandidate.source_username != "auto_score",
+        )
+        .group_by(ConsensusCandidate.file_id, ConsensusCandidate.analysis_date)
+        .having(
+            func.count(func.distinct(ConsensusCandidate.source_username)) >= 2,
+            func.count(func.distinct(ConsensusCandidate.candidate_hash)) >= 2,
+        )
+    )
+    for row in discrepancy_result.all():
+        auto_flagged.setdefault(row.file_id, set()).add(row.analysis_date)
+
+    # Subtract dates where consensus has been reached
+    consensus_reached_result = await db.execute(
+        select(ConsensusResult.file_id, ConsensusResult.analysis_date)
+        .where(
+            ConsensusResult.file_id.in_(file_ids),
+            ConsensusResult.has_consensus.is_(True),
+        )
+    )
+    consensus_reached: dict[int, set] = {}
+    for row in consensus_reached_result.all():
+        consensus_reached.setdefault(row.file_id, set()).add(row.analysis_date)
+
+    # Compute counts separately — manual vs auto-flagged
+    consensus_remaining_by_file: dict[int, int] = {}
+    for fid, dates in needs_consensus.items():
+        reached = consensus_reached.get(fid, set())
+        consensus_remaining_by_file[fid] = len(dates - reached)
+
+    auto_flagged_by_file: dict[int, int] = {}
+    for fid, dates in auto_flagged.items():
+        reached = consensus_reached.get(fid, set())
+        auto_flagged_by_file[fid] = len(dates - reached)
+
     files_summary: list[FileSummary] = []
     total_dates = 0
     scored_dates_total = 0
@@ -148,6 +213,8 @@ async def get_analysis_summary(
                 total_dates=file_total_dates,
                 scored_dates=file_scored,
                 has_diary=has_diary,
+                consensus_remaining=consensus_remaining_by_file.get(f.id, 0),
+                auto_flagged_count=auto_flagged_by_file.get(f.id, 0),
             )
         )
         total_dates += file_total_dates

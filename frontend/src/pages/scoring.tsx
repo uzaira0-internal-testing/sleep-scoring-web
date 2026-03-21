@@ -768,19 +768,23 @@ export function ScoringPage() {
             >
               {availableDates.map((date, idx) => {
                 const st = dateStatusMap.get(date);
-                if (consensusOnly && !st?.needs_consensus) return null;
-                const consensusFlag = st?.needs_consensus ? "\ud83d\udc65 " : "";
+                if (consensusOnly && !st?.needs_consensus && !(st as any)?.auto_flagged) return null;
+                const autoFlagged = (st as any)?.auto_flagged;
+                const manualFlagged = st?.needs_consensus;
+                const flagPrefix = autoFlagged ? "\u26a0\ufe0f " : manualFlagged ? "\ud83d\udc65 " : "";
                 const prefix = st?.is_no_sleep ? "\u26d4 " : st?.has_markers ? "\u2713 " : "\u25cb ";
                 const weekday = new Date(date + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
                 return (
                   <option key={date} value={idx}>
-                    {consensusFlag}{prefix}{date} {weekday} ({idx + 1}/{availableDates.length})
+                    {flagPrefix}{prefix}{date} {weekday} ({idx + 1}/{availableDates.length})
                   </option>
                 );
               })}
             </select>
             {currentDate && (() => {
               const st = dateStatusMap.get(currentDate);
+              if ((st as any)?.auto_flagged) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-red-500" title="Scorers disagree" />;
+              if (st?.needs_consensus) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-orange-500" title="Flagged for consensus" />;
               if (st?.is_no_sleep) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-amber-500" title="No sleep" />;
               if (st?.has_markers) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green-500" title="Has markers" />;
               return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-muted-foreground/30" title="No markers" />;
@@ -1270,6 +1274,7 @@ export function ScoringPage() {
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Button>
                   <ConsensusVoteSidebar
+                    autoFlagged={!!(currentDate && (dateStatusMap.get(currentDate) as any)?.auto_flagged)}
                     highlightedCandidateId={highlightedCandidateId}
                     onHighlightCandidate={(candidateId) => {
                       setHighlightedCandidateId(candidateId);
