@@ -24,6 +24,7 @@ from .models import (
     AutoScoreResultResponse,
     BackfillResponse,
     ComputeComplexityResponse,
+    CreateAssignmentsRequest,
     CreateAssignmentsResponse,
     DateStatus,
     DeleteAllFilesResponse,
@@ -72,6 +73,7 @@ __all__ = [
     "AutoScoreResultResponse",
     "BackfillResponse",
     "ComputeComplexityResponse",
+    "CreateAssignmentsRequest",
     "CreateAssignmentsResponse",
     # Date status
     "DateStatus",

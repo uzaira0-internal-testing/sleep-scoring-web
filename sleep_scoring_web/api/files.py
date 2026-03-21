@@ -35,6 +35,7 @@ from sleep_scoring_web.schemas import (
     AuthMeResponse,
     BackfillResponse,
     ComputeComplexityResponse,
+    CreateAssignmentsRequest,
     CreateAssignmentsResponse,
     DateStatus,
     DeleteAllFilesResponse,
@@ -400,7 +401,7 @@ async def upload_file(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save file: {e}",
+            detail="Failed to save file",
         ) from e
     finally:
         await file.close()
@@ -455,7 +456,7 @@ async def upload_file(
 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to process file: {e}",
+            detail="Failed to process file",
         ) from e
 
 
@@ -526,7 +527,7 @@ async def upload_file_api(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save file: {e}",
+            detail="Failed to save file",
         ) from e
     finally:
         await file.close()
@@ -581,7 +582,7 @@ async def upload_file_api(
 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to process file: {e}",
+            detail="Failed to process file",
         ) from e
 
 
@@ -694,17 +695,15 @@ async def list_assignments(
 
 @router.post("/assignments", response_model=CreateAssignmentsResponse)
 async def create_assignments(
-    request: dict,
+    request: CreateAssignmentsRequest,
     db: DbSession,
     _: VerifiedPassword,
     username: Username,
 ) -> CreateAssignmentsResponse:
-    """Assign files to a user (admin only). Body: {"file_ids": [...], "username": "..."}."""
+    """Assign files to a user (admin only)."""
     _require_admin(username)
-    file_ids = request.get("file_ids", [])
-    target_username = request.get("username", "")
-    if not file_ids or not target_username:
-        raise HTTPException(status_code=400, detail="file_ids and username are required")
+    file_ids = request.file_ids
+    target_username = request.username
 
     # Validate that all file_ids exist
     existing_result = await db.execute(
@@ -1125,6 +1124,7 @@ async def compute_complexity(
     background_tasks: BackgroundTasks,
     db: DbSession,
     _: VerifiedPassword,
+    username: Username,
 ) -> ComputeComplexityResponse:
     """
     Trigger batch complexity computation for all dates in a file.
@@ -1132,6 +1132,7 @@ async def compute_complexity(
     Runs in background: loads activity data, runs Sadeh + Choi, loads diary,
     computes complexity_pre for each date, and upserts into NightComplexity table.
     """
+    await require_file_access(db, username, file_id)
     # Verify file exists
     result = await db.execute(select(FileModel).where(FileModel.id == file_id))
     file = result.scalar_one_or_none()
@@ -1154,8 +1155,10 @@ async def get_complexity_detail(
     analysis_date: str,
     db: DbSession,
     _: VerifiedPassword,
+    username: Username,
 ) -> NightComplexityResponse:
     """Get full complexity feature breakdown for a file/date."""
+    await require_file_access(db, username, file_id)
     from sleep_scoring_web.db.models import NightComplexity
 
     file_result = await db.execute(select(FileModel).where(FileModel.id == file_id))
@@ -1352,8 +1355,10 @@ async def delete_file(
     file_id: int,
     db: DbSession,
     _: VerifiedPassword,
+    username: Username,
 ):
-    """Delete a file and its associated data."""
+    """Delete a file and its associated data. Requires admin privileges."""
+    _require_admin(username)
     result = await db.execute(select(FileModel).where(FileModel.id == file_id))
     file = result.scalar_one_or_none()
 
@@ -1378,13 +1383,15 @@ async def delete_file(
 async def delete_all_files(
     db: DbSession,
     _: VerifiedPassword,
+    username: Username,
     status_filter: str | None = None,
 ) -> DeleteAllFilesResponse:
     """
-    Delete all files from the database.
+    Delete all files from the database. Requires admin privileges.
 
     Optionally filter by status (e.g., 'failed' to delete only failed files).
     """
+    _require_admin(username)
     # Build query
     query = select(FileModel)
     if status_filter:

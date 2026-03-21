@@ -432,6 +432,7 @@ async def get_markers(
                         )
                     )
                 except ValueError:
+                    logger.warning("Skipped on-the-fly metrics for period %d: %s", marker.marker_index, marker.marker_type)
                     continue
 
     # Get algorithm results if requested
@@ -978,13 +979,14 @@ async def _calculate_and_store_metrics(
             logger.warning("No activity data found for file %d on %s", file_id, analysis_date)
             return
 
-        # Run Sadeh algorithm to get sleep scores
-        from sleep_scoring_web.services.algorithms.sadeh import SadehAlgorithm
+        # Run the user's chosen algorithm to get sleep scores
+        from sleep_scoring_web.schemas.enums import AlgorithmType
+        from sleep_scoring_web.services.algorithms.factory import create_algorithm
 
         axis_y_data = [row.axis_y or 0 for row in activity_rows]
         timestamps_float = [naive_to_unix(row.timestamp) for row in activity_rows]
         timestamps_dt = [row.timestamp for row in activity_rows]
-        algorithm = SadehAlgorithm()
+        algorithm = create_algorithm(algorithm_type or AlgorithmType.SADEH_1994_ACTILIFE)
         sleep_scores = algorithm.score(axis_y_data)
 
         # Delete existing metrics for this file/date/user only

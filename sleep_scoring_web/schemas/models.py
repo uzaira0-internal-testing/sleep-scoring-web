@@ -492,6 +492,13 @@ class FileAssignmentResponse(BaseModel):
     assigned_at: str | None = None
 
 
+class CreateAssignmentsRequest(BaseModel):
+    """Request body for POST /files/assignments."""
+
+    file_ids: list[int]
+    username: str
+
+
 class CreateAssignmentsResponse(BaseModel):
     """Response for POST /files/assignments."""
 
