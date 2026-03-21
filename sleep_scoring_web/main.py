@@ -39,6 +39,10 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
+    # Set BLAS/OpenMP threading before any numpy/scipy import
+    os.environ.setdefault("OMP_NUM_THREADS", "8")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "8")
+
     from datetime import datetime, timedelta, timezone
 
     from sqlalchemy import select as sa_select
@@ -47,6 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from sleep_scoring_web.db.session import async_session_maker, init_db
     from sleep_scoring_web.schemas.enums import FileStatus
     from sleep_scoring_web.services.file_watcher import start_file_watcher, stop_file_watcher
+    from sleep_scoring_web import queue
 
     # Startup
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
@@ -56,6 +61,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize database tables
     await init_db()
     logger.info("Database initialized")
+
+    # Connect to Redis for arq job enqueueing
+    try:
+        await queue.connect(settings.redis_url)
+        logger.info("Redis connected")
+    except Exception:
+        logger.warning("Redis unavailable at startup — file uploads will fail until Redis is reachable", exc_info=True)
 
     # Cleanup stale uploads (UPLOADING status older than 24h → FAILED)
     try:
@@ -94,6 +106,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Shutting down...")
     await stop_file_watcher()
     logger.info("File watcher stopped")
+    await queue.close()
+    logger.info("Redis pool closed")
 
 
 # Derive root_path from APP_NAME for deployment behind reverse proxy
@@ -110,6 +124,44 @@ app = FastAPI(
     redoc_url="/api/v1/redoc",
     openapi_url="/api/v1/openapi.json",
 )
+
+# Fix TUS Location header behind reverse proxy.
+# Traefik strips /sleep-scoring from incoming requests but doesn't add it back to
+# response headers. tuspyserver builds Location from request.url.path (which has
+# already been stripped), so the Location header is missing the base path prefix.
+# This middleware rewrites it so the browser's PATCH/HEAD requests route correctly.
+if root_path:
+    from starlette.types import ASGIApp, Receive, Scope, Send
+
+    class TusLocationFixMiddleware:
+        """Prepend root_path to TUS Location headers missing it."""
+
+        def __init__(self, app: ASGIApp, prefix: str) -> None:
+            self.app = app
+            self.prefix = prefix
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            if scope["type"] != "http" or "/tus/" not in scope.get("path", ""):
+                await self.app(scope, receive, send)
+                return
+
+            async def rewrite_send(message: dict) -> None:
+                if message["type"] == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    new_headers = []
+                    for key, value in headers:
+                        if key == b"location":
+                            loc = value.decode("utf-8")
+                            if "/api/v1/tus/" in loc and self.prefix + "/api/v1/tus/" not in loc:
+                                loc = loc.replace("/api/v1/tus/", self.prefix + "/api/v1/tus/")
+                                value = loc.encode("utf-8")
+                        new_headers.append((key, value))
+                    message["headers"] = new_headers
+                await send(message)
+
+            await self.app(scope, receive, rewrite_send)
+
+    app.add_middleware(TusLocationFixMiddleware, prefix=root_path)
 
 # GZip compression — 70-80% reduction on JSON responses (skip small responses <1KB)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -217,6 +269,7 @@ from sleep_scoring_web.api import (
     markers_tables,
 )
 from sleep_scoring_web.api import settings as settings_router
+from sleep_scoring_web.api.markers_autoscore import pipeline_router
 from sleep_scoring_web.api.tus import router as tus_status_router
 from sleep_scoring_web.api.tus import tus_router
 
@@ -264,6 +317,9 @@ async def verify_password(data: PasswordVerifyRequest) -> PasswordVerifyResponse
 # API routers
 app.include_router(files.router, prefix=f"{settings.api_prefix}/files", tags=["files"])
 app.include_router(activity.router, prefix=f"{settings.api_prefix}/activity", tags=["activity"])
+# pipeline_router must come BEFORE markers.router — otherwise FastAPI matches
+# GET /pipeline/discover as GET /{file_id}/{analysis_date} (file_id="pipeline"→422).
+app.include_router(pipeline_router, prefix=f"{settings.api_prefix}/markers", tags=["markers"])
 app.include_router(markers.router, prefix=f"{settings.api_prefix}/markers", tags=["markers"])
 app.include_router(markers_import.router, prefix=f"{settings.api_prefix}/markers", tags=["markers"])
 app.include_router(markers_tables.router, prefix=f"{settings.api_prefix}/markers", tags=["markers"])

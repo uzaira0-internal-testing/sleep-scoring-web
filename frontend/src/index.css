@@ -197,15 +197,6 @@
     @apply bg-muted-foreground/40;
   }
 
-  /* ─── Hidden scrollbar (for toolbar overflow) ─── */
-  .scrollbar-none {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
-  }
-
   /* ─── Selection ─── */
   ::selection {
     background: oklch(0.55 0.2 290 / 0.25);
@@ -264,5 +255,26 @@
 
   .dark .glow-nonwear {
     box-shadow: 0 0 20px oklch(0.75 0.15 65 / 0.20);
+  }
+
+  /* Marker line click-in: width pulse, contained, no overflow */
+  @keyframes marker-line-click-in {
+    0%   { transform: translateX(-50%) scaleX(0.5); opacity: 0; }
+    30%  { transform: translateX(-50%) scaleX(4);   opacity: 1; }
+    65%  { transform: translateX(-50%) scaleX(0.6); opacity: 1; }
+    100% { transform: translateX(-50%) scaleX(1);   opacity: 1; }
+  }
+  .marker-spring-in {
+    animation: marker-line-click-in 240ms ease-out forwards;
+  }
+
+  /* Sleep period region center-expand: grows symmetrically from midpoint */
+  @keyframes sleep-region-expand {
+    0%   { transform: scaleX(0); opacity: 0; }
+    100% { transform: scaleX(1); opacity: 1; }
+  }
+  .sleep-region-expand {
+    transform-origin: center;
+    animation: sleep-region-expand 220ms ease-out forwards;
   }
 }

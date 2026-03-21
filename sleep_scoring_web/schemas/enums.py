@@ -34,6 +34,7 @@ class FileStatus(StrEnum):
     PROCESSING = "processing"
     READY = "ready"
     FAILED = "failed"
+    RAW = "raw"
 
 
 class AlgorithmType(StrEnum):
@@ -163,6 +164,16 @@ class AlgorithmParams:
     SLEEP_ONSET_CONSECUTIVE_MINUTES = 3
     SLEEP_OFFSET_CONSECUTIVE_MINUTES = 5
     SLEEP_RULE_EXTENSION_MINUTES = 5
+
+
+class PeriodGuiderType(StrEnum):
+    """Period guider identifiers for the scoring pipeline."""
+
+    DIARY = "diary"
+    L5 = "l5"
+    SMART = "smart"
+    LONGEST_BOUT = "longest_bout"
+    NONE = "none"
 
 
 class MarkerLimits:

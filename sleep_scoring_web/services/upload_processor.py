@@ -7,6 +7,8 @@ files, and standard loading for epoch/ActiGraph files.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import gzip
 import logging
 import shutil
@@ -51,6 +53,8 @@ async def process_uploaded_file(
     csv_path = Path(tus_file_path)
     temp_decompressed: Path | None = None
 
+    loop = asyncio.get_running_loop()
+
     try:
         async with async_session_maker() as db:
             # Update status to PROCESSING
@@ -58,6 +62,7 @@ async def process_uploaded_file(
             file_model = result.scalar_one_or_none()
             if file_model is None:
                 logger.error("File %d not found in database", file_id)
+                update_progress(file_id, status=FileStatus.FAILED, error="File record not found")
                 return
             file_model.status = FileStatus.PROCESSING
             await db.commit()
@@ -68,59 +73,96 @@ async def process_uploaded_file(
                 tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)
                 tmp.close()
                 temp_decompressed = Path(tmp.name)
-                _streaming_decompress(csv_path, temp_decompressed)
+                await loop.run_in_executor(None, _streaming_decompress, csv_path, temp_decompressed)
                 csv_path = temp_decompressed
                 update_progress(file_id, phase="decompressing", percent=15.0)
 
             # Step 2: Validate CSV format (read first 5 lines)
-            _validate_csv_format(csv_path)
+            await loop.run_in_executor(None, _validate_csv_format, csv_path)
 
             # Step 3: Detect file type and process
             from sleep_scoring_web.api.files import bulk_insert_activity_data
 
             if is_raw_geneactiv(csv_path):
-                # Raw GENEActiv: chunked processing with agcounts
+                # Raw GENEActiv: chunked processing with agcounts.
+                # Creates a SEPARATE epoch file record — the raw file is kept as-is.
                 update_progress(file_id, phase="converting_counts", percent=20.0)
 
                 def on_progress(phase: str, pct: float, rows: int) -> None:
-                    # Scale to 20-90% range
                     scaled = 20.0 + (pct / 100.0) * 70.0
                     update_progress(file_id, phase=phase, percent=scaled, rows_processed=rows)
 
-                result_info = process_raw_geneactiv(
-                    file_path=csv_path,
-                    file_id=file_id,
-                    db_session=db,
-                    insert_fn=bulk_insert_activity_data,
-                    progress_callback=on_progress,
+                result_info = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        process_raw_geneactiv,
+                        file_path=csv_path,
+                        file_id=file_id,
+                        progress_callback=on_progress,
+                    ),
                 )
 
-                # Insert all epoch batches
+                # Build epoch filename: strip extension, add _60sec.csv
+                raw_name = original_filename
+                stem = raw_name.rsplit(".", 1)[0] if "." in raw_name else raw_name
+                epoch_filename = f"{stem}_60sec.csv"
+
+                # Check if epoch file already exists (re-upload)
+                existing_epoch = await db.execute(
+                    select(FileModel).where(FileModel.filename == epoch_filename)
+                )
+                epoch_model = existing_epoch.scalar_one_or_none()
+                if epoch_model:
+                    # Clear old activity data for re-processing
+                    await db.execute(delete(RawActivityData).where(RawActivityData.file_id == epoch_model.id))
+                else:
+                    # Create new epoch file record
+                    epoch_model = FileModel(
+                        filename=epoch_filename,
+                        original_path=str(csv_path),
+                        file_type="csv",
+                        participant_id=file_model.participant_id,
+                        status=FileStatus.PROCESSING,
+                        uploaded_by=username,
+                    )
+                    db.add(epoch_model)
+                    await db.flush()  # Get epoch_model.id
+
+                # Insert epoch data into the NEW file record
                 update_progress(file_id, phase="inserting_db", percent=90.0)
                 total_inserted = 0
                 for epoch_df in result_info["epoch_dfs"]:
-                    n = await bulk_insert_activity_data(db, file_id, epoch_df)
+                    n = await bulk_insert_activity_data(db, epoch_model.id, epoch_df)
                     total_inserted += n
 
-                # Update file model
-                file_model.status = FileStatus.READY
-                file_model.row_count = total_inserted
+                # Update epoch file record
+                epoch_model.status = FileStatus.READY
+                epoch_model.row_count = total_inserted
                 if result_info["start_time"] is not None:
-                    file_model.start_time = result_info["start_time"]
+                    epoch_model.start_time = result_info["start_time"]
                 if result_info["end_time"] is not None:
-                    file_model.end_time = result_info["end_time"]
-                file_model.metadata_json = {
+                    epoch_model.end_time = result_info["end_time"]
+                epoch_model.metadata_json = {
                     "loader": "geneactiv_raw_agcounts",
                     "sample_rate": result_info["sample_rate"],
-                    "raw_rows_processed": True,
+                    "source_file_id": file_id,
                     "epoch_length_seconds": 60,
+                }
+
+                # Mark the raw file as processed (not scorable)
+                file_model.status = FileStatus.RAW
+                file_model.metadata_json = {
+                    "type": "raw_geneactiv",
+                    "sample_rate": result_info["sample_rate"],
+                    "epoch_file_id": epoch_model.id,
+                    "epoch_filename": epoch_filename,
                 }
 
             else:
                 # Epoch-compressed GENEActiv or ActiGraph: use standard loader
                 update_progress(file_id, phase="reading_csv", percent=30.0)
                 loader = CSVLoaderService(skip_rows=skip_rows, device_preset=device_preset)
-                loaded = loader.load_file(csv_path)
+                loaded = await loop.run_in_executor(None, loader.load_file, csv_path)
 
                 update_progress(file_id, phase="inserting_db", percent=70.0)
                 activity_df = loaded["activity_data"]

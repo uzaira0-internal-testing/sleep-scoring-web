@@ -136,6 +136,9 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
   const [containerReady, setContainerReady] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
+  // Track which marker keys have already played their spring-in animation so
+  // it only fires on first placement, not on re-renders or drag repositioning
+  const animatedMarkerKeysRef = useRef<Set<string>>(new Set());
   const isDark = resolvedTheme === "dark";
 
   const comparisonCandidates = useMemo(() => {
@@ -272,6 +275,27 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const { selected: offsetSel, unselected: offsetUnsel } = markerColorPair(colorTheme.offset);
       const onsetColor = isSelected ? onsetSel : onsetUnsel;
       const offsetColor = isSelected ? offsetSel : offsetUnsel;
+      // TODO: animate sleep period region (center-expand) and marker lines (scaleX pulse)
+      // on first placement. Needs careful key management — index-based to survive drags.
+      // Shaded region between onset and offset
+      const visibleStartPx = Math.max(0, startPx);
+      const visibleEndPx = Math.min(plotWidth, endPx);
+      if (visibleEndPx > visibleStartPx) {
+        const sleepRegion = document.createElement('div');
+        sleepRegion.className = `marker-region sleep`;
+        sleepRegion.dataset.markerId = String(index);
+        sleepRegion.dataset.testid = `marker-region-sleep-${index}`;
+        sleepRegion.style.position = 'absolute';
+        sleepRegion.style.left = (plotLeft + visibleStartPx) + 'px';
+        sleepRegion.style.top = plotTop + 'px';
+        sleepRegion.style.width = (visibleEndPx - visibleStartPx) + 'px';
+        sleepRegion.style.height = plotHeight + 'px';
+        sleepRegion.style.background = hexToRgba(colorTheme.onset, isSelected ? 0.14 : 0.07);
+        sleepRegion.style.pointerEvents = 'none';
+        sleepRegion.style.zIndex = '2';
+        wrapper.appendChild(sleepRegion);
+      }
+
       if (startPx >= -10 && startPx <= plotWidth + 10) {
         createMarkerLine(u, wrapper, 'sleep', index, 'start', startPx, plotLeft, plotTop, plotWidth, plotHeight, onsetColor, isSelected, startTs);
       }
@@ -522,7 +546,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     // Render adjacent day markers (from previous and next days) as dashed lines
     // These show markers from neighboring days for continuity
     const adjacentMarkers = adjacentMarkersData;
-    const adjacentLineColor = isDark ? 'rgba(100, 100, 100, 0.6)' : 'rgba(50, 50, 50, 0.4)';
 
     // Previous day markers (gated by showAdjacentMarkers toggle)
     if (showAdjacentMarkers && adjacentMarkers?.previous_day_markers) {
@@ -530,13 +553,13 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         if (marker.onset_timestamp) {
           const px = u.valToPos(marker.onset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'prev', index, 'onset', px, plotLeft, plotTop, plotWidth, plotHeight, adjacentLineColor);
+            createAdjacentDayLine(wrapper, 'prev', index, 'onset', px, plotLeft, plotTop, plotHeight);
           }
         }
         if (marker.offset_timestamp) {
           const px = u.valToPos(marker.offset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'prev', index, 'offset', px, plotLeft, plotTop, plotWidth, plotHeight, adjacentLineColor);
+            createAdjacentDayLine(wrapper, 'prev', index, 'offset', px, plotLeft, plotTop, plotHeight);
           }
         }
       });
@@ -548,13 +571,13 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         if (marker.onset_timestamp) {
           const px = u.valToPos(marker.onset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'next', index, 'onset', px, plotLeft, plotTop, plotWidth, plotHeight, adjacentLineColor);
+            createAdjacentDayLine(wrapper, 'next', index, 'onset', px, plotLeft, plotTop, plotHeight);
           }
         }
         if (marker.offset_timestamp) {
           const px = u.valToPos(marker.offset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'next', index, 'offset', px, plotLeft, plotTop, plotWidth, plotHeight, adjacentLineColor);
+            createAdjacentDayLine(wrapper, 'next', index, 'offset', px, plotLeft, plotTop, plotHeight);
           }
         }
       });
@@ -636,29 +659,59 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     px: number,
     plotLeft: number,
     plotTop: number,
-    _plotWidth: number,
     plotHeight: number,
-    color: string
   ) {
+    // Use distinct muted colors per day: previous = amber, next = cyan
+    const dayColor = day === 'prev'
+      ? (isDark ? 'rgba(200, 160, 60, 0.5)' : 'rgba(180, 130, 30, 0.45)')
+      : (isDark ? 'rgba(60, 160, 200, 0.5)' : 'rgba(30, 130, 180, 0.45)');
+    const labelBg = day === 'prev'
+      ? (isDark ? 'rgba(200, 160, 60, 0.15)' : 'rgba(180, 130, 30, 0.12)')
+      : (isDark ? 'rgba(60, 160, 200, 0.15)' : 'rgba(30, 130, 180, 0.12)');
+    const labelText = day === 'prev'
+      ? (isDark ? 'rgba(200, 160, 60, 0.8)' : 'rgba(140, 100, 20, 0.8)')
+      : (isDark ? 'rgba(60, 160, 200, 0.8)' : 'rgba(20, 100, 140, 0.8)');
+
     const line = document.createElement('div');
     line.className = `marker-region adjacent-day-line ${day}-${edge}`;
     line.dataset.testid = `adjacent-line-${day}-${index}-${edge}`;
     line.style.position = 'absolute';
     line.style.left = (plotLeft + px - 1) + 'px';
     line.style.top = plotTop + 'px';
-    line.style.width = '2px';
+    line.style.width = '1px';
     line.style.height = plotHeight + 'px';
     line.style.background = `repeating-linear-gradient(
       to bottom,
-      ${color},
-      ${color} 4px,
-      transparent 4px,
-      transparent 8px
-    )`; // Dashed pattern
-    line.style.opacity = '0.4';
+      ${dayColor},
+      ${dayColor} 3px,
+      transparent 3px,
+      transparent 7px
+    )`;
     line.style.pointerEvents = 'none';
-    line.title = `${day === 'prev' ? 'Previous' : 'Next'} day ${edge}`;
+
+    const dayLabel = day === 'prev' ? 'Prev' : 'Next';
+    const edgeLabel = edge === 'onset' ? 'Onset' : 'Offset';
+    line.title = `${dayLabel} day ${edge}`;
+
+    // Add small label at top of line
+    const label = document.createElement('div');
+    label.style.position = 'absolute';
+    label.style.left = (plotLeft + px + 3) + 'px';
+    label.style.top = (plotTop + 2) + 'px';
+    label.style.fontSize = '9px';
+    label.style.fontFamily = 'var(--font-mono)';
+    label.style.lineHeight = '1';
+    label.style.padding = '1px 3px';
+    label.style.borderRadius = '2px';
+    label.style.background = labelBg;
+    label.style.color = labelText;
+    label.style.pointerEvents = 'none';
+    label.style.whiteSpace = 'nowrap';
+    label.textContent = `${dayLabel} ${edgeLabel}`;
+    label.className = `marker-region adjacent-day-label`;
+
     wrapper.appendChild(line);
+    wrapper.appendChild(label);
   }
 
   // ============================================================================
@@ -741,201 +794,161 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
       // Cache DOM references at drag start to avoid querySelector per frame
       const cachedTimeLabel = wrapper.querySelector(`.marker-line.time-label[data-line-type="${type}-${edge}"][data-line-index="${index}"]`) as HTMLElement | null;
-      const cachedRegion = wrapper.querySelector(`.marker-region.${type}[data-marker-id="${index}"]`) as HTMLElement | null;
+      const cachedRegion = wrapper.querySelector(`.marker-region.${type}[data-marker-id="${index}"]`) as HTMLElement | null; // sleep: shaded region; nonwear: unused
       const cachedOnsetArrow = wrapper.querySelector('.sleep-rule-arrow.onset') as HTMLElement | null;
       const cachedOnsetLabel = wrapper.querySelector('.sleep-rule-label.onset') as HTMLElement | null;
       const cachedOffsetArrow = wrapper.querySelector('.sleep-rule-arrow.offset') as HTMLElement | null;
       const cachedOffsetLabel = wrapper.querySelector('.sleep-rule-label.offset') as HTMLElement | null;
 
+      // Pending drag values — updated cheaply on every mousemove, applied
+      // once per rAF frame so DOM mutations are capped at display refresh rate
+      let pendingDragLeft = parseFloat(line.style.left);
+      let pendingDragLinePx = pendingDragLeft - plotLeft + 6;
+      // Use the marker's actual timestamp as the safe initial value so that
+      // applyDragFrame() on a pure click (or ghost mousemove) is a no-op
+      let pendingDragSnappedSec = timestampSec ?? 0;
+      let dragRafId: number | null = null;
+      let hasMoved = false;
+
+      // Apply pending drag state to DOM — called from rAF or synchronously on mouseup
+      const applyDragFrame = () => {
+        line.style.left = pendingDragLeft + 'px';
+
+        if (cachedTimeLabel) {
+          const d = new Date(pendingDragSnappedSec * 1000);
+          cachedTimeLabel.textContent = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+          cachedTimeLabel.style.left = (plotLeft + pendingDragLinePx) + 'px';
+        }
+
+        const region = cachedRegion;
+        if (region) {
+          const ms = getMarkerState();
+          const markers = type === 'sleep' ? ms.sleepMarkers : ms.nonwearMarkers;
+          const marker = markers[index];
+          if (marker) {
+            let startPx: number, endPx: number;
+            if (type === 'sleep') {
+              const m = marker as { onsetTimestamp: number | null; offsetTimestamp: number | null };
+              if (edge === 'start') {
+                startPx = pendingDragLinePx;
+                endPx = m.offsetTimestamp !== null ? u.valToPos(m.offsetTimestamp, 'x') : pendingDragLinePx;
+              } else {
+                startPx = m.onsetTimestamp !== null ? u.valToPos(m.onsetTimestamp, 'x') : pendingDragLinePx;
+                endPx = pendingDragLinePx;
+              }
+            } else {
+              const m = marker as { startTimestamp: number | null; endTimestamp: number | null };
+              if (edge === 'start') {
+                startPx = pendingDragLinePx;
+                endPx = m.endTimestamp !== null ? u.valToPos(m.endTimestamp, 'x') : pendingDragLinePx;
+              } else {
+                startPx = m.startTimestamp !== null ? u.valToPos(m.startTimestamp, 'x') : pendingDragLinePx;
+                endPx = pendingDragLinePx;
+              }
+            }
+            const left = Math.min(startPx, endPx);
+            const right = Math.max(startPx, endPx);
+            const visibleLeft = Math.max(0, left);
+            const visibleRight = Math.min(plotWidth, right);
+            region.style.left = (plotLeft + visibleLeft) + 'px';
+            region.style.width = Math.max(0, visibleRight - visibleLeft) + 'px';
+          }
+        }
+
+        // Reposition sleep rule arrows — detectSleepOnsetOffset is expensive so
+        // runs inside the rAF, not on every raw mousemove event
+        if (type === 'sleep' && algorithmResults && algorithmResults.length > 0 && timestamps.length > 0) {
+          const markers = getMarkerState().sleepMarkers;
+          const marker = markers[index];
+          if (marker) {
+            const currentOnset = edge === 'start' ? pendingDragSnappedSec : marker.onsetTimestamp;
+            const currentOffset = edge === 'end' ? pendingDragSnappedSec : marker.offsetTimestamp;
+            if (currentOnset !== null && currentOffset !== null) {
+              const dragRuleParams = getDetectionRuleParams(sleepDetectionRule);
+              const { onsetIndex, offsetIndex } = detectSleepOnsetOffset(
+                algorithmResults, timestamps, currentOnset, currentOffset,
+                dragRuleParams.onsetN, dragRuleParams.offsetN, dragRuleParams.offsetState,
+              );
+              const arrowY = plotTop + plotHeight * 0.12;
+              const ARROW_HW = 12;
+              if (onsetIndex !== null) {
+                const oTs = timestamps[onsetIndex]!;
+                const oPx = u.valToPos(oTs, 'x');
+                if (cachedOnsetArrow) { cachedOnsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px'; cachedOnsetArrow.style.top = arrowY + 'px'; cachedOnsetArrow.style.display = ''; }
+                if (cachedOnsetLabel) {
+                  cachedOnsetLabel.style.left = (plotLeft + oPx) + 'px'; cachedOnsetLabel.style.top = (arrowY - 32) + 'px'; cachedOnsetLabel.style.display = '';
+                  const titleEl = cachedOnsetLabel.firstElementChild as HTMLElement | null;
+                  if (titleEl) titleEl.textContent = `Sleep Onset at ${new Date(oTs * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' })}`;
+                }
+              } else {
+                if (cachedOnsetArrow) cachedOnsetArrow.style.display = 'none';
+                if (cachedOnsetLabel) cachedOnsetLabel.style.display = 'none';
+              }
+              if (offsetIndex !== null) {
+                const oTs = timestamps[offsetIndex]!;
+                const oPx = u.valToPos(oTs, 'x');
+                if (cachedOffsetArrow) { cachedOffsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px'; cachedOffsetArrow.style.top = arrowY + 'px'; cachedOffsetArrow.style.display = ''; }
+                if (cachedOffsetLabel) {
+                  cachedOffsetLabel.style.left = (plotLeft + oPx) + 'px'; cachedOffsetLabel.style.top = (arrowY - 32) + 'px'; cachedOffsetLabel.style.display = '';
+                  const titleEl = cachedOffsetLabel.firstElementChild as HTMLElement | null;
+                  if (titleEl) titleEl.textContent = `Sleep Offset at ${new Date(oTs * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' })}`;
+                }
+              } else {
+                if (cachedOffsetArrow) cachedOffsetArrow.style.display = 'none';
+                if (cachedOffsetLabel) cachedOffsetLabel.style.display = 'none';
+              }
+            }
+          }
+        }
+
+        if (type === 'sleep') {
+          getMarkerState().updateMarker(type, index, edge === 'start' ? { onsetTimestamp: pendingDragSnappedSec } : { offsetTimestamp: pendingDragSnappedSec });
+        } else {
+          getMarkerState().updateMarker(type, index, edge === 'start' ? { startTimestamp: pendingDragSnappedSec } : { endTimestamp: pendingDragSnappedSec });
+        }
+      };
+
       const onMouseMove = (e: MouseEvent) => {
         if (!isDragging) return;
         const dx = e.clientX - dragStartX;
         let newLeft = dragStartLeft + dx;
-        // Clamp to plot boundaries
         const minLeft = plotLeft - 6;
         const maxLeft = plotLeft + plotWidth - 6;
         newLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
-        line.style.left = newLeft + 'px';
 
-        // Calculate pixel position for region update
+        // Cheap: just compute + store pending values, no DOM touches
         const linePx = newLeft - plotLeft + 6;
-
-        // Use linePx directly instead of getBoundingClientRect per frame
         const currentTs = u.posToVal(linePx, 'x');
-        if (currentTs !== undefined && currentTs !== null) {
-          const snappedSec = snapToEpoch(currentTs);
+        if (currentTs === undefined || currentTs === null) return;
+        pendingDragLeft = newLeft;
+        pendingDragLinePx = linePx;
+        pendingDragSnappedSec = snapToEpoch(currentTs);
+        hasMoved = true;
 
-          // Update time label during drag (cached reference)
-          if (cachedTimeLabel) {
-            const d = new Date(snappedSec * 1000);
-            cachedTimeLabel.textContent = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-            cachedTimeLabel.style.left = (plotLeft + linePx) + 'px';
-          }
-
-          // Update the shaded region in real-time (cached reference)
-          const region = cachedRegion;
-          if (region) {
-            // Get the other edge's position from current marker state
-            const ms = getMarkerState();
-            const markers = type === 'sleep' ? ms.sleepMarkers : ms.nonwearMarkers;
-            const marker = markers[index];
-            if (marker) {
-              let startPx: number, endPx: number;
-              if (type === 'sleep') {
-                const m = marker as { onsetTimestamp: number | null; offsetTimestamp: number | null };
-                if (edge === 'start') {
-                  startPx = linePx;
-                  endPx = m.offsetTimestamp !== null ? u.valToPos(m.offsetTimestamp, 'x') : linePx;
-                } else {
-                  startPx = m.onsetTimestamp !== null ? u.valToPos(m.onsetTimestamp, 'x') : linePx;
-                  endPx = linePx;
-                }
-              } else {
-                const m = marker as { startTimestamp: number | null; endTimestamp: number | null };
-                if (edge === 'start') {
-                  startPx = linePx;
-                  endPx = m.endTimestamp !== null ? u.valToPos(m.endTimestamp, 'x') : linePx;
-                } else {
-                  startPx = m.startTimestamp !== null ? u.valToPos(m.startTimestamp, 'x') : linePx;
-                  endPx = linePx;
-                }
-              }
-              // Ensure proper order (start < end)
-              const left = Math.min(startPx, endPx);
-              const right = Math.max(startPx, endPx);
-              const visibleLeft = Math.max(0, left);
-              const visibleRight = Math.min(plotWidth, right);
-              region.style.left = (plotLeft + visibleLeft) + 'px';
-              region.style.width = Math.max(0, visibleRight - visibleLeft) + 'px';
-            }
-          }
-
-          // Reposition sleep rule arrows in real-time during drag
-          // (renderMarkers is skipped while isDraggingRef is true, so arrows would freeze)
-          if (type === 'sleep' && algorithmResults && algorithmResults.length > 0 && timestamps.length > 0) {
-            const markers = getMarkerState().sleepMarkers;
-            const marker = markers[index];
-            if (marker) {
-              const currentOnset = edge === 'start' ? snappedSec : marker.onsetTimestamp;
-              const currentOffset = edge === 'end' ? snappedSec : marker.offsetTimestamp;
-
-              if (currentOnset !== null && currentOffset !== null) {
-                const dragRuleParams = getDetectionRuleParams(sleepDetectionRule);
-                const { onsetIndex, offsetIndex } = detectSleepOnsetOffset(
-                  algorithmResults,
-                  timestamps,
-                  currentOnset,
-                  currentOffset,
-                  dragRuleParams.onsetN,
-                  dragRuleParams.offsetN,
-                  dragRuleParams.offsetState,
-                );
-
-                const arrowY = plotTop + plotHeight * 0.12;
-                const ARROW_HW = 12; // matches ARROW_HEAD_WIDTH in createSleepRuleArrow
-
-                // Reposition onset arrow + label (using cached refs)
-                if (onsetIndex !== null) {
-                  const oTs = timestamps[onsetIndex]!;
-                  const oPx = u.valToPos(oTs, 'x');
-                  if (cachedOnsetArrow) {
-                    cachedOnsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px';
-                    cachedOnsetArrow.style.top = arrowY + 'px';
-                    cachedOnsetArrow.style.display = '';
-                  }
-                  if (cachedOnsetLabel) {
-                    cachedOnsetLabel.style.left = (plotLeft + oPx) + 'px';
-                    cachedOnsetLabel.style.top = (arrowY - 32) + 'px';
-                    cachedOnsetLabel.style.display = '';
-                    const titleEl = cachedOnsetLabel.firstElementChild as HTMLElement | null;
-                    if (titleEl) {
-                      const t = new Date(oTs * 1000).toLocaleTimeString('en-US', {
-                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC',
-                      });
-                      titleEl.textContent = `Sleep Onset at ${t}`;
-                    }
-                  }
-                } else {
-                  if (cachedOnsetArrow) cachedOnsetArrow.style.display = 'none';
-                  if (cachedOnsetLabel) cachedOnsetLabel.style.display = 'none';
-                }
-
-                // Reposition offset arrow + label (using cached refs)
-                if (offsetIndex !== null) {
-                  const oTs = timestamps[offsetIndex]!;
-                  const oPx = u.valToPos(oTs, 'x');
-                  if (cachedOffsetArrow) {
-                    cachedOffsetArrow.style.left = (plotLeft + oPx - ARROW_HW / 2) + 'px';
-                    cachedOffsetArrow.style.top = arrowY + 'px';
-                    cachedOffsetArrow.style.display = '';
-                  }
-                  if (cachedOffsetLabel) {
-                    cachedOffsetLabel.style.left = (plotLeft + oPx) + 'px';
-                    cachedOffsetLabel.style.top = (arrowY - 32) + 'px';
-                    cachedOffsetLabel.style.display = '';
-                    const titleEl = cachedOffsetLabel.firstElementChild as HTMLElement | null;
-                    if (titleEl) {
-                      const t = new Date(oTs * 1000).toLocaleTimeString('en-US', {
-                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC',
-                      });
-                      titleEl.textContent = `Sleep Offset at ${t}`;
-                    }
-                  }
-                } else {
-                  if (cachedOffsetArrow) cachedOffsetArrow.style.display = 'none';
-                  if (cachedOffsetLabel) cachedOffsetLabel.style.display = 'none';
-                }
-              }
-            }
-          }
-
-          if (type === 'sleep') {
-            const updates = edge === 'start'
-              ? { onsetTimestamp: snappedSec }
-              : { offsetTimestamp: snappedSec };
-            getMarkerState().updateMarker(type, index, updates);
-          } else {
-            const updates = edge === 'start'
-              ? { startTimestamp: snappedSec }
-              : { endTimestamp: snappedSec };
-            getMarkerState().updateMarker(type, index, updates);
-          }
-        }
+        // Coalesce: cancel old rAF, schedule new — ensures latest position is
+        // always applied within one frame regardless of mouse polling rate
+        if (dragRafId !== null) cancelAnimationFrame(dragRafId);
+        dragRafId = requestAnimationFrame(() => { dragRafId = null; applyDragFrame(); });
       };
 
       const onMouseUp = () => {
         if (!isDragging) return;
         isDragging = false;
-        isDraggingRef.current = false; // Allow re-renders again
+        isDraggingRef.current = false;
         useSleepScoringStore.getState().commitDragTransaction();
         document.removeEventListener('mousemove', onMouseMove);
         document.removeEventListener('mouseup', onMouseUp);
         inner.style.width = isSelected ? '4px' : '2px';
 
-        // Final position update
-        const lineRect = line.getBoundingClientRect();
-        const rootRect = u.root.getBoundingClientRect();
-        const finalPx = (lineRect.left + 6) - rootRect.left - plotLeft;
-        const newTs = u.posToVal(finalPx, 'x');
-        if (newTs === undefined || newTs === null) return;
+        // Cancel any pending rAF and apply final position synchronously so
+        // the last frame is never dropped regardless of rAF timing
+        if (dragRafId !== null) { cancelAnimationFrame(dragRafId); dragRafId = null; }
+        // Only apply if the user actually moved the marker — pure clicks must not
+        // overwrite the timestamp (pendingDragSnappedSec could still be wrong if
+        // posToVal returned an unexpected value at mousedown)
+        if (hasMoved) applyDragFrame();
 
-        const snappedSec = snapToEpoch(newTs);
-
-        if (type === 'sleep') {
-          const updates = edge === 'start'
-            ? { onsetTimestamp: snappedSec }
-            : { offsetTimestamp: snappedSec };
-          getMarkerState().updateMarker(type, index, updates);
-        } else {
-          const updates = edge === 'start'
-            ? { startTimestamp: snappedSec }
-            : { endTimestamp: snappedSec };
-          getMarkerState().updateMarker(type, index, updates);
-        }
-
-        // Select this period and trigger final re-render
         getMarkerState().setSelectedPeriod(index);
-        // Force re-render markers after drag
         if (chartRef.current) {
           renderMarkersRef.current(chartRef.current);
         }
@@ -968,7 +981,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     // rAF-gate for marker rendering during pan/zoom — collapse multiple
     // setScale calls per frame into a single renderMarkers pass
     let renderRafId: number | null = null;
-    let zoomRafId: number | null = null;
+    let zoomAnimId: number | null = null;
     let panRafId: number | null = null;
 
     // Cache the over element rect; invalidated on resize via setSize hook
@@ -985,9 +998,37 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           const wrapper = u.root;
           cachedOverEl = u.over;
 
-          // Wheel zoom — rAF-gated to coalesce rapid wheel events
-          let zoomNxMin = 0;
-          let zoomNxMax = 0;
+          // Smooth zoom via lerp animation.
+          //
+          // Wheel events arrive in bursts (e.g. 5 events at t=0ms, nothing for
+          // 100ms, 5 more at t=100ms).  If we only call setScale when events
+          // arrive, zoom is a series of jumps separated by frozen frames.
+          //
+          // Instead we maintain a visual position that lerps toward a target
+          // each rAF, so animation continues between bursts and zoom feels
+          // as smooth as pan.
+          let zoomVisualMin = 0;
+          let zoomVisualMax = 0;
+          let zoomTargetMin = 0;
+          let zoomTargetMax = 0;
+          const ZOOM_LERP = 0.6; // 60% of gap closed per frame (~67ms to 97%)
+
+          const runZoomAnimation = () => {
+            zoomAnimId = null;
+            const distMin = zoomTargetMin - zoomVisualMin;
+            const distMax = zoomTargetMax - zoomVisualMax;
+
+            // Snap to target when close enough (< 1 second in timestamp units)
+            if (Math.abs(distMin) < 1 && Math.abs(distMax) < 1) {
+              u.batch(() => u.setScale('x', { min: zoomTargetMin, max: zoomTargetMax }));
+              return;
+            }
+
+            zoomVisualMin += distMin * ZOOM_LERP;
+            zoomVisualMax += distMax * ZOOM_LERP;
+            u.batch(() => u.setScale('x', { min: zoomVisualMin, max: zoomVisualMax }));
+            zoomAnimId = requestAnimationFrame(runZoomAnimation);
+          };
 
           wrapper.addEventListener('wheel', (e: WheelEvent) => {
             e.preventDefault();
@@ -999,11 +1040,26 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
             if (left < 0 || left > rect.width) return;
 
-            // Use current scale range (may have been updated by a pending rAF)
-            const xVal = u.posToVal(left, 'x');
-            const oxRange = (u.scales.x!.max ?? 0) - (u.scales.x!.min ?? 0);
+            // On first event of a new gesture, sync visual/target from committed scale
+            if (zoomAnimId === null) {
+              zoomVisualMin = u.scales.x!.min ?? 0;
+              zoomVisualMax = u.scales.x!.max ?? 0;
+              zoomTargetMin = zoomVisualMin;
+              zoomTargetMax = zoomVisualMax;
+            }
 
-            const nxRange = e.deltaY > 0 ? oxRange / factor : oxRange * factor;
+            // Focal point uses what the user currently sees (visual position)
+            const leftPct = left / (u.bbox.width / devicePixelRatio);
+            const xVal = zoomVisualMin + leftPct * (zoomVisualMax - zoomVisualMin);
+
+            // Scale zoom by actual deltaY magnitude so mouse wheels (discrete
+            // notches, deltaY=±120) produce proportional steps rather than a
+            // fixed 10% jump per notch.  Trackpads emit smaller deltas and get
+            // correspondingly finer zoom.
+            const oxRange = zoomTargetMax - zoomTargetMin;
+            const zoomPower = Math.min(Math.abs(e.deltaY) / 300, 1);
+            const scaledFactor = 1 - (1 - factor) * zoomPower;
+            const nxRange = e.deltaY > 0 ? oxRange / scaledFactor : oxRange * scaledFactor;
             const minRange = 60;
             const maxRange = originalXScaleRef.current
               ? (originalXScaleRef.current.max - originalXScaleRef.current.min)
@@ -1011,17 +1067,11 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
             if (nxRange < minRange || nxRange > maxRange) return;
 
-            const leftPct = left / (u.bbox.width / devicePixelRatio);
-            zoomNxMin = xVal - leftPct * nxRange;
-            zoomNxMax = zoomNxMin + nxRange;
+            zoomTargetMin = xVal - leftPct * nxRange;
+            zoomTargetMax = zoomTargetMin + nxRange;
 
-            if (zoomRafId === null) {
-              zoomRafId = requestAnimationFrame(() => {
-                zoomRafId = null;
-                u.batch(() => {
-                  u.setScale('x', { min: zoomNxMin, max: zoomNxMax });
-                });
-              });
+            if (zoomAnimId === null) {
+              zoomAnimId = requestAnimationFrame(runZoomAnimation);
             }
           }, { passive: false });
 
@@ -1169,7 +1219,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         destroy: [(u: uPlot) => {
           // Cancel pending rAFs to avoid stale callbacks after destroy
           if (renderRafId !== null) { cancelAnimationFrame(renderRafId); renderRafId = null; }
-          if (zoomRafId !== null) { cancelAnimationFrame(zoomRafId); zoomRafId = null; }
+          if (zoomAnimId !== null) { cancelAnimationFrame(zoomAnimId); zoomAnimId = null; }
           if (panRafId !== null) { cancelAnimationFrame(panRafId); panRafId = null; }
           // Clean up document-level listeners to prevent memory leaks on chart rebuild
           const cleanup = (u as unknown as Record<string, unknown>)._panCleanup as { onDocMouseMove: (e: MouseEvent) => void; onDocMouseUp: () => void } | undefined;
@@ -1265,7 +1315,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       axes: [
         {
           stroke: isDark ? '#888' : '#666',
-          grid: { stroke: isDark ? '#333' : '#ddd', width: 1 },
+          grid: { show: false },
           ticks: { stroke: isDark ? '#444' : '#999' },
           // Format x-axis times in UTC to match stored data (no timezone conversion)
           values: (_u: uPlot, vals: number[]) => vals.map(v => {
@@ -1278,7 +1328,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         },
         {
           stroke: isDark ? '#888' : '#666',
-          grid: { stroke: isDark ? '#333' : '#ddd', width: 1 },
+          grid: { show: false },
           ticks: { stroke: isDark ? '#444' : '#999' },
         },
       ],
@@ -1294,6 +1344,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         drag: { x: false, y: false },
         sync: { key: 'activity' },
         focus: { prox: 30 },
+        y: false,
         points: {
           show: true,
           size: 8,

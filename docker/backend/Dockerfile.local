@@ -65,7 +65,7 @@ COPY sleep_scoring_app/core ./sleep_scoring_app/core
 RUN echo '"""Sleep scoring algorithms (web-minimal)."""' > ./sleep_scoring_app/core/algorithms/__init__.py
 
 # Create directories for data and uploads
-RUN mkdir -p /app/data /app/uploads
+RUN mkdir -p /app/data /app/uploads /app/uploads/tus
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser && \

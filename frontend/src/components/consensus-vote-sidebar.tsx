@@ -15,6 +15,7 @@ interface ConsensusVoteSidebarProps {
   highlightedCandidateId: number | null;
   onHighlightCandidate: (candidateId: number | null) => void;
   onCopyCandidate: (candidate: ConsensusBallotCandidate) => void;
+  autoFlagged?: boolean;
 }
 
 export function buildConsensusWsUrl(params: {
@@ -62,6 +63,7 @@ export function ConsensusVoteSidebar({
   highlightedCandidateId,
   onHighlightCandidate,
   onCopyCandidate,
+  autoFlagged,
 }: ConsensusVoteSidebarProps) {
   const queryClient = useQueryClient();
   const { alert, alertDialog } = useAlertDialog();
@@ -174,11 +176,12 @@ export function ConsensusVoteSidebar({
   if (!currentFileId || !currentDate) return null;
 
   return (
-    <Card className="h-full flex flex-col overflow-hidden">
-      <CardHeader className="py-2 px-3 border-b">
+    <Card className={`h-full flex flex-col overflow-hidden ${autoFlagged ? "border-red-500/60 border-2" : ""}`}>
+      <CardHeader className={`py-2 px-3 border-b ${autoFlagged ? "bg-red-500/10" : ""}`}>
         <CardTitle className="text-sm flex items-center gap-1.5">
-          <Vote className="h-4 w-4" />
+          <Vote className={`h-4 w-4 ${autoFlagged ? "text-red-500" : ""}`} />
           Consensus Vote
+          {autoFlagged && <span className="text-[10px] font-normal text-red-500 ml-1">Scorers disagree</span>}
           <span
             className={`ml-1 inline-block h-2 w-2 rounded-full ${wsConnected ? "bg-emerald-500" : "bg-amber-500"}`}
             title={wsConnected ? "Live updates connected" : "Live updates reconnecting (polling fallback active)"}

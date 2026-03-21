@@ -29,10 +29,19 @@ from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory, Verif
 from sleep_scoring_web.schemas.pipeline import PipelineConfigRequest
 from sleep_scoring_web.services.consensus_realtime import broadcast_consensus_update
 from sleep_scoring_web.services.file_identity import is_excluded_activity_filename, is_excluded_file_obj
+from sleep_scoring_web.services.pipeline.params import GUIDER_NONE
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Separate router for pipeline endpoints — must be registered BEFORE the
+# parameterised /{file_id}/{analysis_date} routes in markers.router to avoid
+# FastAPI matching "pipeline" as a file_id path parameter.
+pipeline_router = APIRouter()
+
+# Period guiders that require complete diary data (lights_out + wake_time)
+_DIARY_REQUIRING_GUIDERS = frozenset({"diary"})
 
 
 # =============================================================================
@@ -227,6 +236,17 @@ async def _run_auto_score_single(
     choi = ChoiAlgorithm()
     nonwear_results = choi.detect_mask(extract_choi_input(rows, choi_column))
 
+    sensor_nw_result = await db.execute(
+        select(Marker).where(
+            and_(
+                Marker.file_id == file_id,
+                Marker.sensor_nonwear_filter(),
+            )
+        )
+    )
+    sensor_nw_markers = sensor_nw_result.scalars().all()
+    sensor_periods = [(m.start_timestamp, m.end_timestamp) for m in sensor_nw_markers if m.end_timestamp is not None]
+
     diary_bed = None
     diary_onset = None
     diary_wake = None
@@ -275,6 +295,7 @@ async def _run_auto_score_single(
         activity_counts=activity_counts,
         sleep_scores=sleep_scores,
         choi_nonwear=nonwear_results,
+        sensor_nonwear_periods=sensor_periods,
         diary_bed_time=diary_bed,
         diary_onset_time=diary_onset,
         diary_wake_time=diary_wake,
@@ -287,10 +308,14 @@ async def _run_auto_score_single(
     )
 
     all_markers = result["sleep_markers"] + result["nap_markers"]
+    is_no_sleep_result = bool(result.get("no_sleep", False))
+    notes_str = "; ".join(result["notes"]) if result["notes"] else None
 
-    if all_markers:
-        markers_json = all_markers
-        notes_str = "; ".join(result["notes"]) if result["notes"] else None
+    if all_markers or is_no_sleep_result:
+        # Either markers were found, or the algorithm ran with valid diary but
+        # determined no scoreable sleep exists (e.g. entire window is nonwear).
+        # Both cases are meaningful consensus signals worth persisting.
+        markers_json = all_markers if all_markers else None
         await upsert_user_annotation(
             db,
             file_id=file_id,
@@ -298,7 +323,7 @@ async def _run_auto_score_single(
             username="auto_score",
             sleep_markers_json=markers_json,
             nonwear_markers_json=None,
-            is_no_sleep=False,
+            is_no_sleep=is_no_sleep_result,
             algorithm_used=algorithm,
             detection_rule=detection_rule,
             notes=notes_str,
@@ -311,7 +336,7 @@ async def _run_auto_score_single(
             source_username="auto_score",
             sleep_markers_json=markers_json,
             nonwear_markers_json=None,
-            is_no_sleep=False,
+            is_no_sleep=is_no_sleep_result,
             algorithm_used=algorithm,
             notes=notes_str,
         )
@@ -323,7 +348,8 @@ async def _run_auto_score_single(
             username="auto_score",
         )
     else:
-        # No markers produced — clean up any existing auto_score annotation
+        # No markers and not a definitive no-sleep — algorithm couldn't run
+        # (no diary, no activity data, etc.). Clear any stale auto_score entry.
         existing = await db.execute(
             select(UserAnnotation).where(
                 and_(
@@ -360,14 +386,29 @@ async def _build_auto_score_batch_targets(
     *,
     db: DbSession,
     request: AutoScoreBatchRequest,
+    username: str = "",
 ) -> tuple[list[tuple[int, date]], int, int]:
     """Collect deterministic batch targets from complete diary rows."""
+    from sleep_scoring_web.api.access import get_assigned_file_ids, is_admin_user
+    from sleep_scoring_web.schemas.enums import MarkerCategory
+
+    # Resolve file IDs — restrict to user-assigned files unless admin
     if request.file_ids:
-        files_result = await db.execute(select(FileModel.id, FileModel.filename).where(FileModel.id.in_(request.file_ids)))
-        file_ids = sorted({int(fid) for fid, filename in files_result.all() if not is_excluded_activity_filename(filename)})
+        candidate_ids: set[int] = set(request.file_ids)
+        if not is_admin_user(username):
+            assigned = set(await get_assigned_file_ids(db, username))
+            candidate_ids &= assigned
+        files_result = await db.execute(select(FileModel.id, FileModel.filename).where(FileModel.id.in_(candidate_ids)))
     else:
-        files_result = await db.execute(select(FileModel.id, FileModel.filename))
-        file_ids = sorted({int(fid) for fid, filename in files_result.all() if not is_excluded_activity_filename(filename)})
+        if is_admin_user(username):
+            files_result = await db.execute(select(FileModel.id, FileModel.filename))
+        else:
+            assigned_ids = await get_assigned_file_ids(db, username)
+            if not assigned_ids:
+                return [], 0, 0
+            files_result = await db.execute(select(FileModel.id, FileModel.filename).where(FileModel.id.in_(assigned_ids)))
+
+    file_ids = sorted({int(fid) for fid, filename in files_result.all() if not is_excluded_activity_filename(filename)})
 
     if not file_ids:
         return [], 0, 0
@@ -386,6 +427,21 @@ async def _build_auto_score_batch_targets(
     targets = sorted(complete_targets, key=lambda item: (item[0], item[1]))
     skipped_existing = 0
 
+    # Always skip dates that have user-placed sleep markers — never overwrite manual work
+    if targets:
+        manual_result = await db.execute(
+            select(Marker.file_id, Marker.analysis_date).where(
+                and_(
+                    Marker.file_id.in_(file_ids),
+                    Marker.marker_category == MarkerCategory.SLEEP,
+                )
+            ).distinct()
+        )
+        manual_dates = {(int(row[0]), row[1]) for row in manual_result.all()}
+        before_manual = len(targets)
+        targets = [t for t in targets if t not in manual_dates]
+        skipped_existing += before_manual - len(targets)
+
     if request.only_missing and targets:
         existing_result = await db.execute(
             select(
@@ -401,7 +457,7 @@ async def _build_auto_score_batch_targets(
         )
         existing_dates = {(int(row[0]), row[1]) for row in existing_result.all() if row[2]}
         filtered_targets = [target for target in targets if target not in existing_dates]
-        skipped_existing = len(targets) - len(filtered_targets)
+        skipped_existing += len(targets) - len(filtered_targets)
         targets = filtered_targets
 
     return targets, skipped_existing, skipped_incomplete
@@ -485,6 +541,7 @@ async def start_auto_score_batch(
         targets, skipped_existing, skipped_incomplete = await _build_auto_score_batch_targets(
             db=db,
             request=request,
+            username=username,
         )
 
         _reset_auto_score_batch_state()
@@ -607,8 +664,12 @@ async def auto_nonwear_markers(
     if not file or is_excluded_file_obj(file):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    # Load activity data (noon-to-noon window)
+    # Load activity data (noon-to-noon window, with 2h pre-noon lookback)
+    # The 2h lookback lets us detect zero runs that started before noon —
+    # e.g. a device removed at 7 AM local (11 UTC) would otherwise produce a
+    # marker starting abruptly at the window boundary instead of at the real onset.
     start_dt = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
+    data_start_dt = start_dt - timedelta(hours=2)
     end_dt = start_dt + timedelta(hours=24)
 
     data_result = await db.execute(
@@ -616,7 +677,7 @@ async def auto_nonwear_markers(
         .where(
             and_(
                 RawActivityData.file_id == file_id,
-                RawActivityData.timestamp >= start_dt,
+                RawActivityData.timestamp >= data_start_dt,
                 RawActivityData.timestamp < end_dt,
             )
         )
@@ -706,9 +767,51 @@ async def auto_nonwear_markers(
         threshold=threshold,
     )
 
+    # Also run flat-activity detector — catches sub-90-min device removals that Choi misses
+    # (Choi requires ≥90 min; flat-activity defaults to ≥60 min with resumption check)
+    from datetime import UTC, datetime as _datetime
+
+    from sleep_scoring_web.services.pipeline.nonwear_detectors.flat_activity import FlatActivityNonwearDetector
+    from sleep_scoring_web.services.pipeline.params import NonwearDetectorParams
+    from sleep_scoring_web.services.pipeline.protocols import EpochSeries
+
+    _epoch_times = [_datetime.fromtimestamp(ts, tz=UTC) for ts in timestamps]
+    _epochs = EpochSeries(
+        timestamps=timestamps,
+        epoch_times=_epoch_times,
+        activity_counts=activity_counts,
+        epoch_length_seconds=60,
+    )
+    flat_periods = FlatActivityNonwearDetector().detect(_epochs, params=NonwearDetectorParams())
+
+    placed_ranges = [(m["start_timestamp"], m["end_timestamp"]) for m in result.nonwear_markers]
+    extra_markers: list[dict[str, Any]] = []
+    extra_notes: list[str] = []
+    for fp in flat_periods:
+        fp_start = timestamps[fp.start_index]
+        fp_end = timestamps[fp.end_index]
+        if any(fp_start < sm_end and fp_end > sm_start for sm_start, sm_end in existing_sleep):
+            continue
+        if any(fp_start < em_end and fp_end > em_start for em_start, em_end in placed_ranges):
+            continue
+        dur_min = (fp.end_index - fp.start_index + 1)
+        extra_notes.append(
+            f"Nonwear (flat-activity): "
+            f"{_epoch_times[fp.start_index].strftime('%H:%M')}-{_epoch_times[fp.end_index].strftime('%H:%M')} "
+            f"({dur_min}min, flat zero with activity resumption)"
+        )
+        extra_markers.append(
+            {
+                "start_timestamp": fp_start,
+                "end_timestamp": fp_end,
+                "marker_index": len(result.nonwear_markers) + len(extra_markers) + 1,
+            }
+        )
+        placed_ranges.append((fp_start, fp_end))
+
     return AutoNonwearResponse(
-        nonwear_markers=result.nonwear_markers,
-        notes=result.notes,
+        nonwear_markers=result.nonwear_markers + extra_markers,
+        notes=result.notes + extra_notes,
     )
 
 
@@ -717,7 +820,7 @@ async def auto_nonwear_markers(
 # =============================================================================
 
 
-@router.get("/pipeline/discover", response_model=PipelineDiscoveryResponse)
+@pipeline_router.get("/pipeline/discover", response_model=PipelineDiscoveryResponse)
 async def discover_pipeline(
     _: VerifiedPassword,
 ) -> PipelineDiscoveryResponse:
@@ -729,7 +832,7 @@ async def discover_pipeline(
     return PipelineDiscoveryResponse(roles=roles, param_schemas=PARAM_JSON_SCHEMAS)
 
 
-@router.post("/{file_id}/{analysis_date}/auto-score-v2", response_model=AutoScoreResponse)
+@pipeline_router.post("/{file_id}/{analysis_date}/auto-score-v2", response_model=AutoScoreResponse)
 async def auto_score_v2(
     file_id: int,
     analysis_date: date,
@@ -775,9 +878,11 @@ async def auto_score_v2(
 
     # Build raw diary
     raw_diary: RawDiaryInput | None = None
-    from sleep_scoring_web.services.pipeline.params import GUIDER_NONE
 
-    if request.period_guider != GUIDER_NONE:
+    needs_diary = request.period_guider != GUIDER_NONE
+    diary_required = request.period_guider in _DIARY_REQUIRING_GUIDERS
+
+    if needs_diary:
         from sleep_scoring_web.db.models import DiaryEntry as DiaryEntryModel
 
         diary_result = await db.execute(
@@ -791,7 +896,6 @@ async def auto_score_v2(
         diary = diary_result.scalar_one_or_none()
         if diary and _diary_time_present(diary.lights_out) and _diary_time_present(diary.wake_time):
             diary_naps, diary_nonwear = _extract_diary_periods(diary)
-
             raw_diary = RawDiaryInput(
                 bed_time=diary.bed_time,
                 onset_time=diary.lights_out,
@@ -800,8 +904,9 @@ async def auto_score_v2(
                 nonwear=diary_nonwear,
                 analysis_date=analysis_date.isoformat(),
             )
-        else:
+        elif diary_required:
             return AutoScoreResponse(notes=["Incomplete diary for this date - auto-score requires lights_out and wake_time"])
+        # else: raw_diary stays None — non-diary guider handles it
 
     # Run pipeline
     pipeline = ScoringPipeline(params)
@@ -812,6 +917,63 @@ async def auto_score_v2(
     )
 
     legacy = result.to_legacy_dict()
+    all_markers = legacy["sleep_markers"] + legacy["nap_markers"]
+    notes_str = "; ".join(legacy["notes"]) if legacy["notes"] else None
+
+    # Save result as auto_score consensus candidate (same as v1 endpoint)
+    if all_markers:
+        await upsert_user_annotation(
+            db,
+            file_id=file_id,
+            analysis_date=analysis_date,
+            username="auto_score",
+            sleep_markers_json=all_markers,
+            nonwear_markers_json=None,
+            is_no_sleep=False,
+            algorithm_used=request.epoch_classifier if request else None,
+            detection_rule=None,
+            notes=notes_str,
+        )
+        await _upsert_consensus_candidate_snapshot(
+            db,
+            file_id=file_id,
+            analysis_date=analysis_date,
+            source_username="auto_score",
+            sleep_markers_json=all_markers,
+            nonwear_markers_json=None,
+            is_no_sleep=False,
+            algorithm_used=request.epoch_classifier if request else None,
+            notes=notes_str,
+        )
+        await db.commit()
+        await broadcast_consensus_update(
+            file_id=file_id,
+            analysis_date=analysis_date,
+            event="auto_score_updated",
+            username="auto_score",
+        )
+    else:
+        # No markers found — clear stale auto_score entry
+        existing = await db.execute(
+            select(UserAnnotation).where(
+                and_(
+                    UserAnnotation.file_id == file_id,
+                    UserAnnotation.analysis_date == analysis_date,
+                    UserAnnotation.username == "auto_score",
+                )
+            )
+        )
+        annotation = existing.scalar_one_or_none()
+        if annotation:
+            await db.delete(annotation)
+            await db.commit()
+            await broadcast_consensus_update(
+                file_id=file_id,
+                analysis_date=analysis_date,
+                event="auto_score_cleared",
+                username="auto_score",
+            )
+
     return AutoScoreResponse(
         sleep_markers=legacy["sleep_markers"],
         nap_markers=legacy["nap_markers"],

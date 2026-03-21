@@ -82,13 +82,24 @@ class ScoringPipeline:
             params=self._params.bout_detector_params,
         )
 
-        # Step 4: Period guiding
+        # Step 4: Nonwear detection — runs before guiding so the L5 guider
+        # can exclude flat-zero/nonwear epochs from its activity sum and won't
+        # center the search window on a nonwear region.
+        nonwear_periods = self._nonwear_detector.detect(
+            epochs,
+            params=self._params.nonwear_detector_params,
+            diary_data=diary_data,
+            existing_sleep=None,
+        )
+
+        # Step 5: Period guiding (nonwear-aware — L5 avoids detected nonwear regions)
         main_guide, nap_guides, guide_notes = self._period_guider.guide(
             epochs,
             classified,
             bouts,
             params=self._params.period_guider_params,
             diary_data=diary_data,
+            excluded_nonwear=nonwear_periods,
         )
         notes.extend(guide_notes)
 
@@ -97,7 +108,7 @@ class ScoringPipeline:
         if p.onset_min_consecutive_sleep != 3 or p.offset_min_consecutive_minutes != 5:
             notes.append(f"Detection rule: {p.onset_min_consecutive_sleep}S/{p.offset_min_consecutive_minutes}S")
 
-        # Step 5: Period construction
+        # Step 6: Period construction (same nonwear results exclude nonwear from sleep placement)
         sleep_periods = self._period_constructor.construct(
             epochs,
             classified,
@@ -105,14 +116,7 @@ class ScoringPipeline:
             main_guide,
             nap_guides,
             params=self._params.period_constructor_params,
-        )
-
-        # Step 6: Nonwear detection
-        nonwear_periods = self._nonwear_detector.detect(
-            epochs,
-            params=self._params.nonwear_detector_params,
-            diary_data=diary_data,
-            existing_sleep=sleep_periods,
+            excluded_nonwear=nonwear_periods,
         )
 
         # Add placement notes

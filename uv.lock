@@ -3120,6 +3120,7 @@ gui = [
 web = [
     { name = "agcounts" },
     { name = "aiofiles" },
+    { name = "arq" },
     { name = "asyncpg" },
     { name = "db-toolkit" },
     { name = "deploy-toolkit" },
@@ -3154,6 +3155,7 @@ requires-dist = [
     { name = "agcounts", marker = "extra == 'web'", specifier = ">=0.2.0" },
     { name = "aiofiles", marker = "extra == 'web'", specifier = ">=23.0.0" },
     { name = "aiosqlite", marker = "extra == 'dev'", specifier = ">=0.19.0" },
+    { name = "arq", marker = "extra == 'web'", specifier = ">=0.25.0" },
     { name = "asyncpg", marker = "extra == 'web'", specifier = ">=0.29.0" },
     { name = "basedpyright", marker = "extra == 'dev'", specifier = ">=1.18.0" },
     { name = "db-toolkit", marker = "extra == 'web'", editable = "packages/db-toolkit" },

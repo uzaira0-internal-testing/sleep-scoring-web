@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sleep_scoring_web.services.pipeline.protocols import Bout, ClassifiedEpochs, DiaryInput, EpochSeries, GuideWindow, NapGuideWindow
+from sleep_scoring_web.schemas.enums import PeriodGuiderType
+from sleep_scoring_web.services.pipeline.protocols import Bout, ClassifiedEpochs, DiaryInput, EpochSeries, GuideWindow, NapGuideWindow, NonwearPeriodResult
 from sleep_scoring_web.services.pipeline.registry import register
 
 if TYPE_CHECKING:
@@ -31,6 +32,7 @@ class DiaryPeriodGuider:
         *,
         params: PeriodGuiderParams | None = None,
         diary_data: DiaryInput | None = None,
+        excluded_nonwear: list[NonwearPeriodResult] | None = None,
     ) -> tuple[GuideWindow | None, list[NapGuideWindow], list[str]]:
         notes: list[str] = []
 
@@ -45,6 +47,7 @@ class DiaryPeriodGuider:
                 onset_target=diary_data.sleep_onset,
                 offset_target=diary_data.wake_time,
                 in_bed_time=diary_data.in_bed_time,
+                guider=PeriodGuiderType.DIARY,
             )
         elif not diary_data.sleep_onset and not diary_data.wake_time:
             notes.append("Diary exists but no onset/wake times — auto-score requires diary times")

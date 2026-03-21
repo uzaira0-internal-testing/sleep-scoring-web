@@ -14,6 +14,8 @@ import type { Meta } from "@uppy/utils";
 interface GzipCompressorOpts extends PluginOpts {
   /** Minimum file size (bytes) to compress. Smaller files are passed through. */
   minSize?: number;
+  /** Maximum file size (bytes) to compress. Larger files skip compression — browser gzip is too slow. */
+  maxSize?: number;
 }
 
 // Use Record<string, never> for Body to match Uppy's default type parameter
@@ -25,10 +27,12 @@ export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts, Meta, D
   override type = "preprocessor";
 
   private readonly minSize: number;
+  private readonly maxSize: number;
 
   constructor(uppy: Uppy<Meta, DefaultBody>, opts?: GzipCompressorOpts) {
     super(uppy, opts ?? {});
     this.minSize = opts?.minSize ?? 1024; // 1KB minimum
+    this.maxSize = opts?.maxSize ?? 500 * 1024 * 1024; // 500MB — browser gzip is too slow above this
   }
 
   override install(): void {
@@ -45,8 +49,11 @@ export class GzipCompressorPlugin extends BasePlugin<GzipCompressorOpts, Meta, D
       if (!file?.data) continue;
 
       const originalSize = file.size ?? 0;
-      if (originalSize < this.minSize) {
-        // Small file — skip compression, mark as not gzipped
+      if (originalSize < this.minSize || originalSize > this.maxSize) {
+        // Too small or too large — skip compression
+        if (originalSize > this.maxSize) {
+          console.debug(`[GzipCompressor] ${file.name}: ${(originalSize / 1024 / 1024).toFixed(0)}MB exceeds ${(this.maxSize / 1024 / 1024).toFixed(0)}MB limit, skipping compression`);
+        }
         this.uppy.setFileMeta(fileID, {
           is_gzip: "false",
           filename: file.name,

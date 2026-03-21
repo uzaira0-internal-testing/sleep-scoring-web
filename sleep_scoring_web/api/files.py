@@ -1064,6 +1064,23 @@ async def get_file_dates_status(
     result = await db.execute(select(NightComplexity).where(NightComplexity.file_id == file_id))
     complexity_map = {str(n.analysis_date): n for n in result.scalars().all()}
 
+    # Detect auto-flagged dates: 2+ human scorers with different candidate hashes
+    from sleep_scoring_web.db.models import ConsensusCandidate
+
+    discrepancy_result = await db.execute(
+        select(ConsensusCandidate.analysis_date)
+        .where(
+            ConsensusCandidate.file_id == file_id,
+            ConsensusCandidate.source_username != "auto_score",
+        )
+        .group_by(ConsensusCandidate.analysis_date)
+        .having(
+            func.count(func.distinct(ConsensusCandidate.source_username)) >= 2,
+            func.count(func.distinct(ConsensusCandidate.candidate_hash)) >= 2,
+        )
+    )
+    auto_flagged_dates: set[str] = {str(d) for d in discrepancy_result.scalars().all()}
+
     # Auto-compute missing complexity rows on-demand so scoring view is prepopulated
     # without requiring a manual "compute complexity" action.
     missing_complexity_dates = [d for d in dates if d not in complexity_map]
@@ -1107,6 +1124,7 @@ async def get_file_dates_status(
                 has_markers=has_markers or is_no_sleep,
                 is_no_sleep=is_no_sleep,
                 needs_consensus=needs_consensus,
+                auto_flagged=date_str in auto_flagged_dates,
                 has_auto_score=has_auto_score,
                 complexity_pre=complexity.complexity_pre if complexity else None,
                 complexity_post=complexity.complexity_post if complexity else None,

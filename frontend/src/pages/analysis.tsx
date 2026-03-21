@@ -6,13 +6,15 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, BarChart3, Clock, Moon, Activity, TrendingUp, FileText, BookOpen } from "lucide-react";
+import { Loader2, BarChart3, Clock, Moon, Activity, TrendingUp, FileText, BookOpen, AlertTriangle, Users } from "lucide-react";
 import { useSleepScoringStore } from "@/store";
 import { fetchWithAuth, getApiBase } from "@/api/client";
 import { useAppCapabilities } from "@/hooks/useAppCapabilities";
 import { computeLocalAnalysis, type LocalAnalysisSummary } from "@/services/local-analysis";
 
-type AnalysisSummaryResponse = LocalAnalysisSummary;
+type AnalysisSummaryResponse = LocalAnalysisSummary & {
+  files_summary: (LocalAnalysisSummary["files_summary"][number] & { consensus_remaining?: number })[];
+};
 
 function MetricCard({ label, value, unit, icon: Icon }: { label: string; value: number | null; unit: string; icon: React.ElementType }) {
   return (
@@ -229,6 +231,8 @@ export function AnalysisPage() {
                     <th className="py-2 pr-4 font-medium">Participant</th>
                     <th className="py-2 pr-4 font-medium text-center">Dates Scored</th>
                     <th className="py-2 pr-4 font-medium">Progress</th>
+                    <th className="py-2 pr-4 font-medium text-center" title="Manually flagged for consensus">Flagged</th>
+                    <th className="py-2 pr-4 font-medium text-center" title="Auto-detected: 2+ human scorers disagree">Disagree</th>
                     <th className="py-2 pr-4 font-medium text-center">Diary</th>
                   </tr>
                 </thead>
@@ -244,11 +248,36 @@ export function AnalysisPage() {
                     >
                       <td className="py-2.5 pr-4 font-mono text-xs text-primary underline-offset-2 hover:underline">{file.filename}</td>
                       <td className="py-2.5 pr-4">{file.participant_id || "—"}</td>
-                      <td className="py-2.5 pr-4 text-center">
+                      <td className={`py-2.5 pr-4 text-center font-medium ${
+                        file.total_dates === 0 ? "text-muted-foreground"
+                        : file.scored_dates === 0 ? "text-red-500"
+                        : file.scored_dates >= file.total_dates ? "text-green-500"
+                        : "text-orange-500"
+                      }`}>
                         {file.scored_dates} / {file.total_dates}
                       </td>
                       <td className="py-2.5 pr-4 min-w-[120px]">
                         <ProgressBar scored={file.scored_dates} total={file.total_dates} />
+                      </td>
+                      <td className="py-2.5 pr-4 text-center">
+                        {file.consensus_remaining > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-orange-500 text-xs font-medium">
+                            <Users className="h-3.5 w-3.5" />
+                            {file.consensus_remaining}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 pr-4 text-center">
+                        {(file as any).auto_flagged_count > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-red-500 text-xs font-medium">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            {(file as any).auto_flagged_count}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </td>
                       <td className="py-2.5 pr-4 text-center">
                         {file.has_diary ? (

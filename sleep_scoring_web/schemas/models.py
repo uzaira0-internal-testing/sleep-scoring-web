@@ -455,7 +455,8 @@ class DateStatus(BaseModel):
     date: str
     has_markers: bool
     is_no_sleep: bool
-    needs_consensus: bool
+    needs_consensus: bool  # manually flagged by user
+    auto_flagged: bool = False  # system-detected: 2+ human scorers disagree
     has_auto_score: bool
     complexity_pre: float | None = None
     complexity_post: float | None = None

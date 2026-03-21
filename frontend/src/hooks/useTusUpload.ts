@@ -12,10 +12,9 @@ import { useSleepScoringStore } from "@/store";
 import { GzipCompressorPlugin } from "@/lib/uppy-gzip-plugin";
 import { queryClient } from "@/query-client";
 import { getWorkspaceApiBase } from "@/lib/workspace-api";
-import { filesApi } from "@/api/client";
 import { filesQueryOptions } from "@/api/query-options";
 
-export type TusPhase = "idle" | "compressing" | "uploading" | "processing" | "done" | "error";
+export type TusPhase = "idle" | "compressing" | "uploading" | "done" | "error";
 
 export interface TusProgress {
   phase: TusPhase;
@@ -25,12 +24,7 @@ export interface TusProgress {
   speed: number; // bytes/sec
   eta: number; // seconds
   fileName: string;
-  /** Server processing progress (after upload) */
-  processingPhase: string | null;
-  processingPercent: number;
   error: string | null;
-  /** File ID assigned by server (available after upload completes) */
-  fileId: number | null;
 }
 
 const INITIAL_PROGRESS: TusProgress = {
@@ -41,25 +35,20 @@ const INITIAL_PROGRESS: TusProgress = {
   speed: 0,
   eta: 0,
   fileName: "",
-  processingPhase: null,
-  processingPercent: 0,
   error: null,
-  fileId: null,
 };
 
 /** Minimum file size to trigger TUS upload (50MB). Below this, use simple upload. */
-export const TUS_SIZE_THRESHOLD = 50 * 1024 * 1024;
+export const TUS_SIZE_THRESHOLD = 50 * 1024 * 1024; // v2 — cache-bust 2026-03-16
 
 export function useTusUpload() {
   const [progress, setProgress] = useState<TusProgress>(INITIAL_PROGRESS);
   const uppyRef = useRef<Uppy | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const speedTracker = useRef({ lastBytes: 0, lastTime: 0 });
+  const speedTracker = useRef({ lastBytes: 0, lastTime: 0, lastSpeed: 0 });
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
       uppyRef.current?.cancelAll();
       uppyRef.current?.destroy();
     };
@@ -82,12 +71,12 @@ export function useTusUpload() {
 
     // Add TUS plugin
     uppy.use(Tus, {
-      endpoint: `${getWorkspaceApiBase()}/tus/`,
+      endpoint: `${getWorkspaceApiBase()}/tus/files/`,
       chunkSize: 5 * 1024 * 1024, // 5MB chunks
       retryDelays: [0, 1000, 3000, 5000, 10000],
       removeFingerprintOnSuccess: true,
+      storeFingerprintForResuming: false, // Disable localStorage URL caching — stale entries cause 404 loops
       onBeforeRequest: (req: { setHeader: (key: string, value: string) => void }) => {
-        // Attach auth and metadata to each TUS request
         const state = useSleepScoringStore.getState();
         if (state.sitePassword) {
           req.setHeader("X-Site-Password", state.sitePassword);
@@ -106,11 +95,20 @@ export function useTusUpload() {
       const now = Date.now();
       const elapsed = (now - speedTracker.current.lastTime) / 1000;
       const bytesDelta = (progress.bytesUploaded ?? 0) - speedTracker.current.lastBytes;
-      const speed = elapsed > 0 ? bytesDelta / elapsed : 0;
-      const remaining = (progress.bytesTotal ?? 0) - (progress.bytesUploaded ?? 0);
-      const eta = speed > 0 ? remaining / speed : 0;
 
-      speedTracker.current = { lastBytes: progress.bytesUploaded ?? 0, lastTime: now };
+      // Exponential moving average for smooth speed/ETA display
+      const instantSpeed = elapsed > 0.1 ? bytesDelta / elapsed : 0;
+      const prevSpeed = speedTracker.current.lastSpeed ?? 0;
+      const smoothed = prevSpeed > 0 && instantSpeed > 0
+        ? prevSpeed * 0.7 + instantSpeed * 0.3
+        : instantSpeed || prevSpeed;
+      const remaining = (progress.bytesTotal ?? 0) - (progress.bytesUploaded ?? 0);
+      const eta = smoothed > 0 ? remaining / smoothed : 0;
+
+      // Only update tracker if enough time has passed to avoid jitter
+      if (elapsed > 0.1) {
+        speedTracker.current = { lastBytes: progress.bytesUploaded ?? 0, lastTime: now, lastSpeed: smoothed };
+      }
 
       setProgress((prev) => ({
         ...prev,
@@ -118,22 +116,20 @@ export function useTusUpload() {
         percent: progress.bytesTotal ? ((progress.bytesUploaded ?? 0) / progress.bytesTotal) * 100 : 0,
         bytesUploaded: progress.bytesUploaded ?? 0,
         bytesTotal: progress.bytesTotal ?? 0,
-        speed,
+        speed: smoothed,
         eta,
         fileName: file.name ?? "",
       }));
     });
 
-    // Upload success — start polling server processing
+    // Upload success — done. Server processing happens in the background
+    // and the file won't appear for scoring until it's assigned anyway.
     uppy.on("upload-success", () => {
       setProgress((prev) => ({
         ...prev,
-        phase: "processing",
+        phase: "done",
         percent: 100,
-        processingPhase: "Starting...",
-        processingPercent: 0,
       }));
-      // Invalidate file list so it shows the new file
       queryClient.invalidateQueries({ queryKey: filesQueryOptions().queryKey });
     });
 
@@ -151,13 +147,13 @@ export function useTusUpload() {
   }, []);
 
   const upload = useCallback(
-    async (files: File[]) => {
+    async (files: File[], replace = false) => {
       const uppy = getUppy();
       uppy.cancelAll();
 
       // Reset progress
       setProgress({ ...INITIAL_PROGRESS, phase: "compressing", fileName: files[0]?.name ?? "" });
-      speedTracker.current = { lastBytes: 0, lastTime: Date.now() };
+      speedTracker.current = { lastBytes: 0, lastTime: Date.now(), lastSpeed: 0 };
 
       // Add files with metadata
       const { sitePassword, username, devicePreset, skipRows } = useSleepScoringStore.getState();
@@ -172,15 +168,20 @@ export function useTusUpload() {
             username: username || "anonymous",
             device_preset: devicePreset || "",
             skip_rows: String(skipRows ?? 10),
+            replace: replace ? "true" : "false",
           },
         });
       }
 
       try {
         const result = await uppy.upload();
-        if (result && result.successful && result.successful.length > 0) {
-          // Start polling for processing status
-          startProcessingPoll(files[0]?.name ?? "");
+        if (result && result.failed && result.failed.length > 0) {
+          const failedNames = result.failed.map((f) => f.name ?? "unknown").join(", ");
+          setProgress((prev) => ({
+            ...prev,
+            phase: "error",
+            error: `Upload failed for: ${failedNames}`,
+          }));
         }
       } catch (err) {
         setProgress((prev) => ({
@@ -193,73 +194,8 @@ export function useTusUpload() {
     [getUppy]
   );
 
-  const startProcessingPoll = useCallback(
-    (filename: string) => {
-      // Cache fileId after first successful lookup to avoid re-fetching file list every poll
-      let cachedFileId: number | null = null;
-
-      const poll = async () => {
-        try {
-          // Resolve fileId once, then reuse
-          if (cachedFileId === null) {
-            const listData = await filesApi.listFiles();
-            const fileEntry = listData.items?.find(
-              (f) => f.filename === filename
-            );
-            if (!fileEntry) return;
-            cachedFileId = fileEntry.id;
-            setProgress((prev) => ({ ...prev, fileId: cachedFileId }));
-          }
-
-          const statusData = await filesApi.getProcessingStatus(cachedFileId);
-
-          if (statusData.status === "ready") {
-            setProgress((prev) => ({
-              ...prev,
-              phase: "done",
-              processingPercent: 100,
-              processingPhase: null,
-              fileId: cachedFileId,
-            }));
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            queryClient.invalidateQueries({ queryKey: filesQueryOptions().queryKey });
-            queryClient.invalidateQueries({ queryKey: ["dates-status"] });
-            return;
-          }
-
-          if (statusData.status === "failed") {
-            setProgress((prev) => ({
-              ...prev,
-              phase: "error",
-              error: statusData.error || "Server processing failed",
-              fileId: cachedFileId,
-            }));
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            return;
-          }
-
-          setProgress((prev) => ({
-            ...prev,
-            phase: "processing",
-            processingPhase: statusData.phase || "Processing...",
-            processingPercent: statusData.percent || 0,
-            fileId: cachedFileId,
-          }));
-        } catch {
-          // Polling errors are non-fatal
-        }
-      };
-
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      pollingRef.current = setInterval(poll, 2000);
-      poll(); // Immediate first poll
-    },
-    []
-  );
-
   const cancel = useCallback(() => {
     uppyRef.current?.cancelAll();
-    if (pollingRef.current) clearInterval(pollingRef.current);
     setProgress(INITIAL_PROGRESS);
   }, []);
 
@@ -272,7 +208,6 @@ export function useTusUpload() {
   }, []);
 
   const reset = useCallback(() => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
     uppyRef.current?.cancelAll();
     setProgress(INITIAL_PROGRESS);
   }, []);

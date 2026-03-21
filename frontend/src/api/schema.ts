@@ -654,6 +654,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/markers/pipeline/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discover Pipeline
+         * @description Return available pipeline components per role and their parameter schemas.
+         */
+        get: operations["discover_pipeline_api_v1_markers_pipeline_discover_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/markers/{file_id}/{analysis_date}/auto-score-v2": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auto Score V2
+         * @description Auto-score using the configurable pipeline.
+         */
+        post: operations["auto_score_v2_api_v1_markers__file_id___analysis_date__auto_score_v2_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/markers/{file_id}/{analysis_date}": {
         parameters: {
             query?: never;
@@ -1012,46 +1052,6 @@ export interface paths {
          *     Returns suggestions for user to accept/reject.
          */
         post: operations["auto_nonwear_markers_api_v1_markers__file_id___analysis_date__auto_nonwear_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/markers/pipeline/discover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Discover Pipeline
-         * @description Return available pipeline components per role and their parameter schemas.
-         */
-        get: operations["discover_pipeline_api_v1_markers_pipeline_discover_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/markers/{file_id}/{analysis_date}/auto-score-v2": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Auto Score V2
-         * @description Auto-score using the configurable pipeline.
-         */
-        post: operations["auto_score_v2_api_v1_markers__file_id___analysis_date__auto_score_v2_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2227,6 +2227,11 @@ export interface components {
             is_no_sleep: boolean;
             /** Needs Consensus */
             needs_consensus: boolean;
+            /**
+             * Auto Flagged
+             * @default false
+             */
+            auto_flagged: boolean;
             /** Has Auto Score */
             has_auto_score: boolean;
             /** Complexity Pre */
@@ -2577,7 +2582,7 @@ export interface components {
          * @description File processing status.
          * @enum {string}
          */
-        FileStatus: "pending" | "uploading" | "processing" | "ready" | "failed";
+        FileStatus: "pending" | "uploading" | "processing" | "ready" | "failed" | "raw";
         /** FileSummary */
         FileSummary: {
             /** File Id */
@@ -2601,6 +2606,16 @@ export interface components {
              * @default false
              */
             has_diary: boolean;
+            /**
+             * Consensus Remaining
+             * @default 0
+             */
+            consensus_remaining: number;
+            /**
+             * Auto Flagged Count
+             * @default 0
+             */
+            auto_flagged_count: number;
         };
         /**
          * FileUploadResponse
@@ -2958,7 +2973,7 @@ export interface components {
             period_constructor: string;
             /**
              * Nonwear Detector
-             * @default choi
+             * @default flat_activity
              */
             nonwear_detector: string;
             /**
@@ -4489,6 +4504,76 @@ export interface operations {
             };
         };
     };
+    discover_pipeline_api_v1_markers_pipeline_discover_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_score_v2_api_v1_markers__file_id___analysis_date__auto_score_v2_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Site-Password"?: string | null;
+                "X-Username"?: string | null;
+            };
+            path: {
+                file_id: number;
+                analysis_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PipelineConfigRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoScoreResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_markers_api_v1_markers__file_id___analysis_date__get: {
         parameters: {
             query?: {
@@ -5086,76 +5171,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutoNonwearResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    discover_pipeline_api_v1_markers_pipeline_discover_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Site-Password"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PipelineDiscoveryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    auto_score_v2_api_v1_markers__file_id___analysis_date__auto_score_v2_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Site-Password"?: string | null;
-                "X-Username"?: string | null;
-            };
-            path: {
-                file_id: number;
-                analysis_date: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["PipelineConfigRequest"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AutoScoreResponse"];
                 };
             };
             /** @description Validation Error */

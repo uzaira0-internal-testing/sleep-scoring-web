@@ -11,8 +11,8 @@ describe("useTusUpload", () => {
 
   describe("TusPhase type", () => {
     it("accepts all valid phases", () => {
-      const phases: TusPhase[] = ["idle", "compressing", "uploading", "processing", "done", "error"];
-      expect(phases).toHaveLength(6);
+      const phases: TusPhase[] = ["idle", "compressing", "uploading", "done", "error"];
+      expect(phases).toHaveLength(5);
     });
   });
 
@@ -26,15 +26,11 @@ describe("useTusUpload", () => {
         speed: 0,
         eta: 0,
         fileName: "",
-        processingPhase: null,
-        processingPercent: 0,
         error: null,
-        fileId: null,
       };
 
       expect(progress.phase).toBe("idle");
       expect(progress.percent).toBe(0);
-      expect(progress.fileId).toBeNull();
     });
 
     it("accepts uploading state with progress", () => {
@@ -46,10 +42,7 @@ describe("useTusUpload", () => {
         speed: 1_000_000,
         eta: 6,
         fileName: "data.csv",
-        processingPhase: null,
-        processingPercent: 0,
         error: null,
-        fileId: null,
       };
 
       expect(progress.phase).toBe("uploading");
@@ -65,16 +58,13 @@ describe("useTusUpload", () => {
         speed: 0,
         eta: 0,
         fileName: "fail.csv",
-        processingPhase: null,
-        processingPercent: 0,
         error: "Network error",
-        fileId: null,
       };
 
       expect(progress.error).toBe("Network error");
     });
 
-    it("accepts done state with fileId", () => {
+    it("accepts done state", () => {
       const progress: TusProgress = {
         phase: "done",
         percent: 100,
@@ -83,13 +73,10 @@ describe("useTusUpload", () => {
         speed: 0,
         eta: 0,
         fileName: "complete.csv",
-        processingPhase: null,
-        processingPercent: 100,
         error: null,
-        fileId: 42,
       };
 
-      expect(progress.fileId).toBe(42);
+      expect(progress.percent).toBe(100);
     });
   });
 

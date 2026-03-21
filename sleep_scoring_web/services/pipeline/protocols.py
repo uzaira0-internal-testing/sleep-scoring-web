@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from sleep_scoring_web.schemas.enums import PeriodGuiderType
+
 if TYPE_CHECKING:  # pragma: no cover
     from datetime import datetime
 
@@ -77,6 +79,7 @@ class GuideWindow:
     onset_target: datetime
     offset_target: datetime
     in_bed_time: datetime | None = None
+    guider: PeriodGuiderType = PeriodGuiderType.NONE
 
 
 @dataclass(frozen=True)
@@ -215,6 +218,7 @@ class PeriodGuider(Protocol):  # pragma: no cover
         *,
         params: PeriodGuiderParams | None = None,
         diary_data: DiaryInput | None = None,
+        excluded_nonwear: list[NonwearPeriodResult] | None = None,
     ) -> tuple[GuideWindow | None, list[NapGuideWindow], list[str]]: ...
 
 
@@ -234,6 +238,7 @@ class PeriodConstructor(Protocol):  # pragma: no cover
         nap_guides: list[NapGuideWindow],
         *,
         params: PeriodConstructorParams | None = None,
+        excluded_nonwear: list[NonwearPeriodResult] | None = None,
     ) -> list[SleepPeriodResult]: ...
 
 

@@ -48,6 +48,22 @@ services:
       - sleep-scoring-network
 
   # ===========================================================================
+  # Redis (arq job broker)
+  # ===========================================================================
+
+  redis:
+    image: redis:7-alpine
+    container_name: sleep-scoring-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sleep-scoring-network
+
+  # ===========================================================================
   # Backend API (Local Build)
   # ===========================================================================
 
@@ -80,6 +96,10 @@ services:
       PYTHONUNBUFFERED: 1
       DEBUG: ${DEBUG:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8501}
+      APP_NAME: ${APP_NAME:-sleep-scoring}
+
+      # Redis / arq
+      REDIS_URL: redis://redis:6379
     volumes:
       # Mount data directory for CSV files to scan on startup
       - ../data:/app/data
@@ -90,6 +110,8 @@ services:
       - "${BACKEND_PORT:-8500}:8000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -111,6 +133,52 @@ services:
     networks:
       - sleep-scoring-network
       - traefik-apps
+
+  # ===========================================================================
+  # arq Worker (file processing — same image as backend, different CMD)
+  # ===========================================================================
+
+  worker:
+    image: ${BACKEND_IMAGE:-sleep-scoring-web-local-backend}
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile.local
+    container_name: sleep-scoring-worker
+    command: ["python", "-m", "arq", "sleep_scoring_web.worker.WorkerSettings"]
+    environment:
+      # Database (same as backend)
+      USE_SQLITE: "false"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-sleep}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-sleep_scoring}
+
+      # Redis / arq
+      REDIS_URL: redis://redis:6379
+      ARQ_MAX_JOBS: ${ARQ_MAX_JOBS:-2}
+
+      # Processing
+      PYTHONUNBUFFERED: 1
+    volumes:
+      # Must share the uploads volume so the worker can read TUS-uploaded files
+      - uploads_data:/app/uploads
+      - tus_uploads_data:/app/uploads/tus
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # arq doesn't expose HTTP — check the Redis health-check key arq writes every 30s
+      test: ["CMD", "redis-cli", "-u", "redis://redis:6379", "exists", "arq:health-check:default"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - sleep-scoring-network
 
   # ===========================================================================
   # Frontend
