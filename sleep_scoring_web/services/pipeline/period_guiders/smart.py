@@ -13,7 +13,15 @@ from sleep_scoring_web.services.pipeline.registry import register
 
 if TYPE_CHECKING:
     from sleep_scoring_web.services.pipeline.params import PeriodGuiderParams
-    from sleep_scoring_web.services.pipeline.protocols import Bout, ClassifiedEpochs, DiaryInput, EpochSeries, GuideWindow, NapGuideWindow, NonwearPeriodResult
+    from sleep_scoring_web.services.pipeline.protocols import (
+        Bout,
+        ClassifiedEpochs,
+        DiaryInput,
+        EpochSeries,
+        GuideWindow,
+        NapGuideWindow,
+        NonwearPeriodResult,
+    )
 
 
 @register("period_guider", "smart")
@@ -37,7 +45,9 @@ class SmartPeriodGuider:
         if diary_data is not None and diary_data.sleep_onset and diary_data.wake_time:
             from sleep_scoring_web.services.pipeline.period_guiders.diary import DiaryPeriodGuider
 
-            guide, naps, notes = DiaryPeriodGuider().guide(epochs, classified, bouts, params=params, diary_data=diary_data, excluded_nonwear=excluded_nonwear)
+            guide, naps, notes = DiaryPeriodGuider().guide(
+                epochs, classified, bouts, params=params, diary_data=diary_data, excluded_nonwear=excluded_nonwear
+            )
             notes.insert(0, "Smart guider: using diary")
             return guide, naps, notes
 

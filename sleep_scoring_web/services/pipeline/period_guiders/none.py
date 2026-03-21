@@ -8,7 +8,15 @@ from sleep_scoring_web.services.pipeline.registry import register
 
 if TYPE_CHECKING:  # pragma: no cover
     from sleep_scoring_web.services.pipeline.params import PeriodGuiderParams
-    from sleep_scoring_web.services.pipeline.protocols import Bout, ClassifiedEpochs, DiaryInput, EpochSeries, GuideWindow, NapGuideWindow, NonwearPeriodResult
+    from sleep_scoring_web.services.pipeline.protocols import (
+        Bout,
+        ClassifiedEpochs,
+        DiaryInput,
+        EpochSeries,
+        GuideWindow,
+        NapGuideWindow,
+        NonwearPeriodResult,
+    )
 
 
 @register("period_guider", "none")

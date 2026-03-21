@@ -31,5 +31,6 @@ async def close() -> None:
 def get_pool() -> ArqRedis:
     """Return the active pool. Raises if connect() was not called."""
     if _pool is None:
-        raise RuntimeError("Redis pool not initialized — call queue.connect() first")
+        msg = "Redis pool not initialized — call queue.connect() first"
+        raise RuntimeError(msg)
     return _pool

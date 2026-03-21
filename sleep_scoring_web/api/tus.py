@@ -76,7 +76,14 @@ def _on_upload_complete(file_path: str, metadata: dict) -> None:
             )
             logger.info("Enqueued processing job %s for %s", job and job.job_id, filename)
         except Exception:
-            logger.exception("Failed to enqueue processing job for %s", filename)
+            logger.exception("Failed to enqueue processing job for %s — falling back to inline processing", filename)
+            try:
+                from sleep_scoring_web.services.upload_processor import process_uploaded_file
+
+                await process_uploaded_file(file_path, filename, is_gzip, username, skip_rows=skip_rows)
+                logger.info("Inline processing completed for %s", filename)
+            except Exception:
+                logger.exception("Inline processing also failed for %s — file will need manual reprocessing", filename)
 
     task = asyncio.ensure_future(_enqueue())
     _background_tasks.add(task)

@@ -132,7 +132,7 @@ interface PreferencesState {
   showNonwearOverlays: boolean;
   autoScoreOnNavigate: boolean;
   autoNonwearOnNavigate: boolean;
-  periodGuider: string;
+  periodGuider: import("@/api/types").PeriodGuiderType;
 }
 
 /**
@@ -283,7 +283,7 @@ interface SleepScoringState
   setShowNonwearOverlays: (show: boolean) => void;
   setAutoScoreOnNavigate: (enabled: boolean) => void;
   setAutoNonwearOnNavigate: (enabled: boolean) => void;
-  setPeriodGuider: (guider: string) => void;
+  setPeriodGuider: (guider: import("@/api/types").PeriodGuiderType) => void;
 
   // Study settings actions
   setSleepDetectionRule: (rule: StudySettingsState["sleepDetectionRule"]) => void;

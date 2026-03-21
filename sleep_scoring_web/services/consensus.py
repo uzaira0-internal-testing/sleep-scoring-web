@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import func, select
+
+from sleep_scoring_web.db.models import ConsensusCandidate
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _normalize_marker(marker: dict[str, Any]) -> dict[str, Any]:
@@ -61,3 +68,34 @@ def compute_candidate_hash(
     payload = canonicalize_candidate_payload(sleep_markers, nonwear_markers, is_no_sleep)
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+async def get_auto_flagged_dates(
+    db: AsyncSession,
+    file_ids: list[int],
+) -> dict[int, set]:
+    """
+    Find dates where 2+ human scorers have different candidate hashes.
+
+    Returns {file_id: {analysis_date, ...}} mapping.
+    Works for both single-file and multi-file queries.
+    """
+    result = await db.execute(
+        select(
+            ConsensusCandidate.file_id,
+            ConsensusCandidate.analysis_date,
+        )
+        .where(
+            ConsensusCandidate.file_id.in_(file_ids),
+            ConsensusCandidate.source_username != "auto_score",
+        )
+        .group_by(ConsensusCandidate.file_id, ConsensusCandidate.analysis_date)
+        .having(
+            func.count(func.distinct(ConsensusCandidate.source_username)) >= 2,
+            func.count(func.distinct(ConsensusCandidate.candidate_hash)) >= 2,
+        )
+    )
+    flagged: dict[int, set] = {}
+    for row in result.all():
+        flagged.setdefault(row.file_id, set()).add(row.analysis_date)
+    return flagged

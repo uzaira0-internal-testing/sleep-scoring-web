@@ -872,10 +872,7 @@ async def get_unassigned_files(
         .where(FileModel.status == FileStatus.READY)
         .order_by(FileModel.filename)
     )
-    return [
-        UnassignedFileResponse(id=row[0], filename=row[1], participant_id=row[2], status=row[3])
-        for row in result.all()
-    ]
+    return [UnassignedFileResponse(id=row[0], filename=row[1], participant_id=row[2], status=row[3]) for row in result.all()]
 
 
 @router.post("/purge-excluded", response_model=PurgeExcludedResponse)
@@ -1065,21 +1062,10 @@ async def get_file_dates_status(
     complexity_map = {str(n.analysis_date): n for n in result.scalars().all()}
 
     # Detect auto-flagged dates: 2+ human scorers with different candidate hashes
-    from sleep_scoring_web.db.models import ConsensusCandidate
+    from sleep_scoring_web.services.consensus import get_auto_flagged_dates
 
-    discrepancy_result = await db.execute(
-        select(ConsensusCandidate.analysis_date)
-        .where(
-            ConsensusCandidate.file_id == file_id,
-            ConsensusCandidate.source_username != "auto_score",
-        )
-        .group_by(ConsensusCandidate.analysis_date)
-        .having(
-            func.count(func.distinct(ConsensusCandidate.source_username)) >= 2,
-            func.count(func.distinct(ConsensusCandidate.candidate_hash)) >= 2,
-        )
-    )
-    auto_flagged_dates: set[str] = {str(d) for d in discrepancy_result.scalars().all()}
+    auto_flagged_by_file = await get_auto_flagged_dates(db, [file_id])
+    auto_flagged_dates: set[str] = {str(d) for d in auto_flagged_by_file.get(file_id, set())}
 
     # Auto-compute missing complexity rows on-demand so scoring view is prepopulated
     # without requiring a manual "compute complexity" action.

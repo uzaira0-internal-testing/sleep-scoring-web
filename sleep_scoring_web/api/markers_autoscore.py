@@ -315,7 +315,7 @@ async def _run_auto_score_single(
         # Either markers were found, or the algorithm ran with valid diary but
         # determined no scoreable sleep exists (e.g. entire window is nonwear).
         # Both cases are meaningful consensus signals worth persisting.
-        markers_json = all_markers if all_markers else None
+        markers_json = all_markers or None
         await upsert_user_annotation(
             db,
             file_id=file_id,
@@ -399,14 +399,13 @@ async def _build_auto_score_batch_targets(
             assigned = set(await get_assigned_file_ids(db, username))
             candidate_ids &= assigned
         files_result = await db.execute(select(FileModel.id, FileModel.filename).where(FileModel.id.in_(candidate_ids)))
+    elif is_admin_user(username):
+        files_result = await db.execute(select(FileModel.id, FileModel.filename))
     else:
-        if is_admin_user(username):
-            files_result = await db.execute(select(FileModel.id, FileModel.filename))
-        else:
-            assigned_ids = await get_assigned_file_ids(db, username)
-            if not assigned_ids:
-                return [], 0, 0
-            files_result = await db.execute(select(FileModel.id, FileModel.filename).where(FileModel.id.in_(assigned_ids)))
+        assigned_ids = await get_assigned_file_ids(db, username)
+        if not assigned_ids:
+            return [], 0, 0
+        files_result = await db.execute(select(FileModel.id, FileModel.filename).where(FileModel.id.in_(assigned_ids)))
 
     file_ids = sorted({int(fid) for fid, filename in files_result.all() if not is_excluded_activity_filename(filename)})
 
@@ -430,12 +429,14 @@ async def _build_auto_score_batch_targets(
     # Always skip dates that have user-placed sleep markers — never overwrite manual work
     if targets:
         manual_result = await db.execute(
-            select(Marker.file_id, Marker.analysis_date).where(
+            select(Marker.file_id, Marker.analysis_date)
+            .where(
                 and_(
                     Marker.file_id.in_(file_ids),
                     Marker.marker_category == MarkerCategory.SLEEP,
                 )
-            ).distinct()
+            )
+            .distinct()
         )
         manual_dates = {(int(row[0]), row[1]) for row in manual_result.all()}
         before_manual = len(targets)
@@ -769,7 +770,8 @@ async def auto_nonwear_markers(
 
     # Also run flat-activity detector — catches sub-90-min device removals that Choi misses
     # (Choi requires ≥90 min; flat-activity defaults to ≥60 min with resumption check)
-    from datetime import UTC, datetime as _datetime
+    from datetime import UTC
+    from datetime import datetime as _datetime
 
     from sleep_scoring_web.services.pipeline.nonwear_detectors.flat_activity import FlatActivityNonwearDetector
     from sleep_scoring_web.services.pipeline.params import NonwearDetectorParams
@@ -794,7 +796,7 @@ async def auto_nonwear_markers(
             continue
         if any(fp_start < em_end and fp_end > em_start for em_start, em_end in placed_ranges):
             continue
-        dur_min = (fp.end_index - fp.start_index + 1)
+        dur_min = fp.end_index - fp.start_index + 1
         extra_notes.append(
             f"Nonwear (flat-activity): "
             f"{_epoch_times[fp.start_index].strftime('%H:%M')}-{_epoch_times[fp.end_index].strftime('%H:%M')} "

@@ -172,9 +172,7 @@ async def get_activity_data_with_scoring(
     from sleep_scoring_web.services.file_identity import is_excluded_file_obj
 
     combined = await db.execute(
-        select(FileModel, UserSettings.extra_settings_json)
-        .outerjoin(UserSettings, UserSettings.username == username)
-        .where(FileModel.id == file_id)
+        select(FileModel, UserSettings.extra_settings_json).outerjoin(UserSettings, UserSettings.username == username).where(FileModel.id == file_id)
     )
     row = combined.first()
     if not row or not row[0] or is_excluded_file_obj(row[0]):
@@ -228,10 +226,7 @@ async def get_activity_data_with_scoring(
         agg_cols.append("array_agg(COALESCE(axis_z, 0)::float ORDER BY timestamp)")
 
     result = await db.execute(
-        text(
-            f"SELECT {', '.join(agg_cols)} FROM raw_activity_data "
-            "WHERE file_id = :fid AND timestamp >= :start AND timestamp < :end"
-        ),
+        text(f"SELECT {', '.join(agg_cols)} FROM raw_activity_data WHERE file_id = :fid AND timestamp >= :start AND timestamp < :end"),
         {"fid": file_id, "start": start_time, "end": end_time},
     )
     agg_row = result.first()
@@ -275,8 +270,10 @@ async def get_activity_data_with_scoring(
 
         # Run Choi nonwear detection — use dict lookup instead of Pydantic model
         choi_col_data = {
-            "axis_x": axis_x_list, "axis_y": axis_y_list,
-            "axis_z": axis_z_list, "vector_magnitude": vm_list,
+            "axis_x": axis_x_list,
+            "axis_y": axis_y_list,
+            "axis_z": axis_z_list,
+            "vector_magnitude": vm_list,
         }
         choi = ChoiAlgorithm()
         choi_input = choi_col_data.get(choi_column, vm_list)
@@ -292,10 +289,7 @@ async def get_activity_data_with_scoring(
         ),
         {"fid": file_id, "ve": view_end, "vs": view_start},
     )
-    sensor_nw_periods = [
-        {"start_timestamp": row.start_timestamp, "end_timestamp": row.end_timestamp}
-        for row in sensor_nw_result.all()
-    ]
+    sensor_nw_periods = [{"start_timestamp": row.start_timestamp, "end_timestamp": row.end_timestamp} for row in sensor_nw_result.all()]
 
     # Build response dict directly (bypass Pydantic serialization overhead)
     import json

@@ -9,7 +9,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sleep_scoring_web.schemas.enums import PeriodGuiderType
-from sleep_scoring_web.services.pipeline.protocols import Bout, ClassifiedEpochs, DiaryInput, EpochSeries, GuideWindow, NapGuideWindow, NonwearPeriodResult
+from sleep_scoring_web.services.pipeline.protocols import (
+    Bout,
+    ClassifiedEpochs,
+    DiaryInput,
+    EpochSeries,
+    GuideWindow,
+    NapGuideWindow,
+    NonwearPeriodResult,
+)
 from sleep_scoring_web.services.pipeline.registry import register
 
 if TYPE_CHECKING:

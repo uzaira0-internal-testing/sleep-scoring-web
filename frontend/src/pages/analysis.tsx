@@ -13,7 +13,7 @@ import { useAppCapabilities } from "@/hooks/useAppCapabilities";
 import { computeLocalAnalysis, type LocalAnalysisSummary } from "@/services/local-analysis";
 
 type AnalysisSummaryResponse = LocalAnalysisSummary & {
-  files_summary: (LocalAnalysisSummary["files_summary"][number] & { consensus_remaining?: number })[];
+  files_summary: (LocalAnalysisSummary["files_summary"][number] & { consensus_remaining?: number; auto_flagged_count?: number })[];
 };
 
 function MetricCard({ label, value, unit, icon: Icon }: { label: string; value: number | null; unit: string; icon: React.ElementType }) {
@@ -270,10 +270,10 @@ export function AnalysisPage() {
                         )}
                       </td>
                       <td className="py-2.5 pr-4 text-center">
-                        {(file as any).auto_flagged_count > 0 ? (
+                        {file.auto_flagged_count > 0 ? (
                           <span className="inline-flex items-center gap-1 text-red-500 text-xs font-medium">
                             <AlertTriangle className="h-3.5 w-3.5" />
-                            {(file as any).auto_flagged_count}
+                            {file.auto_flagged_count}
                           </span>
                         ) : (
                           <span className="text-muted-foreground">—</span>

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import ClassVar
 
 # Set BLAS/OpenMP thread limits BEFORE numpy/agcounts are imported at module level.
 # If set in on_startup() it's too late — BLAS initializes on first import.
@@ -41,7 +42,7 @@ async def process_file_job(
     replace: bool = False,
 ) -> None:
     """
-    arq job: create the DB record (if needed) then process the uploaded file.
+    Arq job: create the DB record (if needed) then process the uploaded file.
 
     All heavy I/O and CPU work happens here in the worker process,
     keeping the web process event loop completely free.
@@ -100,7 +101,7 @@ async def shutdown(ctx: dict) -> None:
 class WorkerSettings:
     """arq worker configuration."""
 
-    functions = [process_file_job]
+    functions: ClassVar[list] = [process_file_job]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
     on_shutdown = shutdown

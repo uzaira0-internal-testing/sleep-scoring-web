@@ -137,10 +137,10 @@ def _find_valid_onset_near(
 
     # Prefer onset AT or BEFORE diary time (more inclusive — person may have
     # fallen asleep slightly earlier than reported).  But only when the nearest
-    # before-onset is within 2× the diary tolerance of the nearest after-onset;
+    # before-onset is within 2x the diary tolerance of the nearest after-onset;
     # a candidate 4 hours before diary should never beat one 12 minutes after.
     before = [idx for idx in valid_onsets if idx <= center]
-    after  = [idx for idx in valid_onsets if idx > center]
+    after = [idx for idx in valid_onsets if idx > center]
 
     def _nearest(pool: list[int]) -> tuple[int | None, float]:
         best: int | None = None
@@ -153,7 +153,7 @@ def _find_valid_onset_near(
         return best, best_dist
 
     best_before, dist_before = _nearest(before)
-    best_after,  dist_after  = _nearest(after)
+    best_after, dist_after = _nearest(after)
 
     if best_before is None:
         return best_after
@@ -355,12 +355,7 @@ def place_main_sleep(
     # inconsistency where someone reported falling asleep before getting into bed —
     # use in-bed time as the placement reference instead of the diary onset.
     # This compares diary times only; the scored onset position is irrelevant here.
-    if (
-        config.enable_rule_8_clamping
-        and diary.in_bed_time
-        and diary.sleep_onset
-        and diary.sleep_onset < diary.in_bed_time
-    ):
+    if config.enable_rule_8_clamping and diary.in_bed_time and diary.sleep_onset and diary.sleep_onset < diary.in_bed_time:
         clamped = _find_valid_onset_at_or_after(epochs, diary.in_bed_time, config.onset_min_consecutive_sleep)
         if clamped is not None and clamped < offset_idx:
             onset_idx = clamped
@@ -472,7 +467,11 @@ def _find_valid_onset_near_bounded(
             while i < len(epochs) and epochs[i].sleep_score == 1:
                 i += 1
             run_len = i - run_start
-            if run_len >= min_consecutive and lo <= run_start <= hi and not (epochs[run_start].is_choi_nonwear and epochs[run_start].is_sensor_nonwear):
+            if (
+                run_len >= min_consecutive
+                and lo <= run_start <= hi
+                and not (epochs[run_start].is_choi_nonwear and epochs[run_start].is_sensor_nonwear)
+            ):
                 valid_onsets.append(run_start)
         else:
             i += 1
@@ -1131,12 +1130,8 @@ def place_nonwear_markers(
         spike_start = ext_start
         while spike_start > 0:
             candidate = spike_start - 1
-            if activity_counts[candidate] <= threshold:
-                spike_start = candidate
-            elif (
-                _epoch_in_nonwear_signal(candidate, choi_nw_set, sensor_nw_ranges)
-                and candidate > 0
-                and activity_counts[candidate - 1] <= threshold
+            if activity_counts[candidate] <= threshold or (
+                _epoch_in_nonwear_signal(candidate, choi_nw_set, sensor_nw_ranges) and candidate > 0 and activity_counts[candidate - 1] <= threshold
             ):
                 spike_start = candidate
             else:
@@ -1145,9 +1140,7 @@ def place_nonwear_markers(
         spike_end = ext_end
         while spike_end < len(timestamps) - 1:
             candidate = spike_end + 1
-            if activity_counts[candidate] <= threshold:
-                spike_end = candidate
-            elif (
+            if activity_counts[candidate] <= threshold or (
                 _epoch_in_nonwear_signal(candidate, choi_nw_set, sensor_nw_ranges)
                 and candidate < len(timestamps) - 1
                 and activity_counts[candidate + 1] <= threshold

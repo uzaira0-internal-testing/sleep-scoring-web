@@ -84,7 +84,7 @@ class FlatActivityNonwearDetector:
                 # resumption_window epochs for activity above resumption_threshold.
                 # Exception: a run that reaches the END of the data is always
                 # nonwear — the device was removed and never put back on.
-                at_end_of_data = (i >= len(activity))
+                at_end_of_data = i >= len(activity)
                 if not at_end_of_data:
                     window_end = min(i + resumption_window, len(activity))
                     resumes = any(activity[j] >= resumption_threshold for j in range(i, window_end))

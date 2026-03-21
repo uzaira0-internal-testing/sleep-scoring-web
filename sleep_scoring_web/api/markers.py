@@ -786,38 +786,41 @@ async def _update_user_annotation(
     """Update or create user annotation for consensus tracking."""
     from sleep_scoring_web.db.session import async_session_maker
 
-    async with async_session_maker() as db:
-        sleep_json = [m.model_dump() for m in sleep_markers] if sleep_markers else None
-        nonwear_json = [m.model_dump() for m in nonwear_markers] if nonwear_markers else None
-        algo_str = algorithm_used.value if algorithm_used else None
+    try:
+        async with async_session_maker() as db:
+            sleep_json = [m.model_dump() for m in sleep_markers] if sleep_markers else None
+            nonwear_json = [m.model_dump() for m in nonwear_markers] if nonwear_markers else None
+            algo_str = algorithm_used.value if algorithm_used else None
 
-        await upsert_user_annotation(
-            db,
-            file_id=file_id,
-            analysis_date=analysis_date,
-            username=username,
-            sleep_markers_json=sleep_json,
-            nonwear_markers_json=nonwear_json,
-            is_no_sleep=is_no_sleep,
-            needs_consensus=needs_consensus,
-            algorithm_used=algo_str,
-            notes=notes,
-        )
+            await upsert_user_annotation(
+                db,
+                file_id=file_id,
+                analysis_date=analysis_date,
+                username=username,
+                sleep_markers_json=sleep_json,
+                nonwear_markers_json=nonwear_json,
+                is_no_sleep=is_no_sleep,
+                needs_consensus=needs_consensus,
+                algorithm_used=algo_str,
+                notes=notes,
+            )
 
-        # Also upsert consensus candidate so imported markers appear in consensus voting
-        await _upsert_consensus_candidate_snapshot(
-            db,
-            file_id=file_id,
-            analysis_date=analysis_date,
-            source_username=username,
-            sleep_markers_json=sleep_json,
-            nonwear_markers_json=nonwear_json,
-            is_no_sleep=is_no_sleep,
-            algorithm_used=algo_str,
-            notes=notes,
-        )
+            # Also upsert consensus candidate so imported markers appear in consensus voting
+            await _upsert_consensus_candidate_snapshot(
+                db,
+                file_id=file_id,
+                analysis_date=analysis_date,
+                source_username=username,
+                sleep_markers_json=sleep_json,
+                nonwear_markers_json=nonwear_json,
+                is_no_sleep=is_no_sleep,
+                algorithm_used=algo_str,
+                notes=notes,
+            )
 
-        await db.commit()
+            await db.commit()
+    except Exception:
+        logger.exception("Background task _update_user_annotation failed for file=%d date=%s", file_id, analysis_date)
 
 
 async def _patch_sleep_annotation(
@@ -832,36 +835,39 @@ async def _patch_sleep_annotation(
     """Update only sleep-related fields on an annotation, preserving nonwear data."""
     from sleep_scoring_web.db.session import async_session_maker
 
-    sleep_json = [m.model_dump() for m in sleep_markers] if sleep_markers else None
+    try:
+        sleep_json = [m.model_dump() for m in sleep_markers] if sleep_markers else None
 
-    async with async_session_maker() as db:
-        annotation = await upsert_user_annotation(
-            db,
-            file_id=file_id,
-            analysis_date=analysis_date,
-            username=username,
-            sleep_markers_json=sleep_json,
-            is_no_sleep=is_no_sleep,
-            needs_consensus=needs_consensus,
-            notes=notes,
-            with_for_update=True,
-        )
-        # Preserve existing nonwear for consensus snapshot
-        existing_nonwear_json = annotation.nonwear_markers_json
+        async with async_session_maker() as db:
+            annotation = await upsert_user_annotation(
+                db,
+                file_id=file_id,
+                analysis_date=analysis_date,
+                username=username,
+                sleep_markers_json=sleep_json,
+                is_no_sleep=is_no_sleep,
+                needs_consensus=needs_consensus,
+                notes=notes,
+                with_for_update=True,
+            )
+            # Preserve existing nonwear for consensus snapshot
+            existing_nonwear_json = annotation.nonwear_markers_json
 
-        await _upsert_consensus_candidate_snapshot(
-            db,
-            file_id=file_id,
-            analysis_date=analysis_date,
-            source_username=username,
-            sleep_markers_json=sleep_json,
-            nonwear_markers_json=existing_nonwear_json,
-            is_no_sleep=is_no_sleep,
-            algorithm_used=None,
-            notes=notes,
-        )
+            await _upsert_consensus_candidate_snapshot(
+                db,
+                file_id=file_id,
+                analysis_date=analysis_date,
+                source_username=username,
+                sleep_markers_json=sleep_json,
+                nonwear_markers_json=existing_nonwear_json,
+                is_no_sleep=is_no_sleep,
+                algorithm_used=None,
+                notes=notes,
+            )
 
-        await db.commit()
+            await db.commit()
+    except Exception:
+        logger.exception("Background task _patch_sleep_annotation failed for file=%d date=%s", file_id, analysis_date)
 
 
 async def _patch_nonwear_annotation(
@@ -875,56 +881,59 @@ async def _patch_nonwear_annotation(
     """Update only the nonwear_markers_json on an existing annotation, preserving sleep data."""
     from sleep_scoring_web.db.session import async_session_maker
 
-    nonwear_json = [m.model_dump() for m in nonwear_markers]
+    try:
+        nonwear_json = [m.model_dump() for m in nonwear_markers]
 
-    async with async_session_maker() as db:
-        existing = await db.execute(
-            select(UserAnnotation)
-            .where(
-                and_(
-                    UserAnnotation.file_id == file_id,
-                    UserAnnotation.analysis_date == analysis_date,
-                    UserAnnotation.username == username,
+        async with async_session_maker() as db:
+            existing = await db.execute(
+                select(UserAnnotation)
+                .where(
+                    and_(
+                        UserAnnotation.file_id == file_id,
+                        UserAnnotation.analysis_date == analysis_date,
+                        UserAnnotation.username == username,
+                    )
                 )
+                .with_for_update()
             )
-            .with_for_update()
-        )
-        annotation = existing.scalar_one_or_none()
+            annotation = existing.scalar_one_or_none()
 
-        existing_sleep_json = None
-        existing_is_no_sleep = False
+            existing_sleep_json = None
+            existing_is_no_sleep = False
 
-        if annotation:
-            existing_sleep_json = annotation.sleep_markers_json
-            existing_is_no_sleep = annotation.is_no_sleep or False
-            annotation.nonwear_markers_json = nonwear_json
-            annotation.notes = notes or annotation.notes
-            annotation.needs_consensus = needs_consensus or annotation.needs_consensus
-        else:
-            annotation = UserAnnotation(
+            if annotation:
+                existing_sleep_json = annotation.sleep_markers_json
+                existing_is_no_sleep = annotation.is_no_sleep or False
+                annotation.nonwear_markers_json = nonwear_json
+                annotation.notes = notes or annotation.notes
+                annotation.needs_consensus = needs_consensus or annotation.needs_consensus
+            else:
+                annotation = UserAnnotation(
+                    file_id=file_id,
+                    analysis_date=analysis_date,
+                    username=username,
+                    nonwear_markers_json=nonwear_json,
+                    notes=notes,
+                    needs_consensus=needs_consensus,
+                    status=VerificationStatus.SUBMITTED,
+                )
+                db.add(annotation)
+
+            await _upsert_consensus_candidate_snapshot(
+                db,
                 file_id=file_id,
                 analysis_date=analysis_date,
-                username=username,
+                source_username=username,
+                sleep_markers_json=existing_sleep_json,
                 nonwear_markers_json=nonwear_json,
-                notes=notes,
-                needs_consensus=needs_consensus,
-                status=VerificationStatus.SUBMITTED,
+                is_no_sleep=existing_is_no_sleep,
+                algorithm_used=None,
+                notes=annotation.notes,
             )
-            db.add(annotation)
 
-        await _upsert_consensus_candidate_snapshot(
-            db,
-            file_id=file_id,
-            analysis_date=analysis_date,
-            source_username=username,
-            sleep_markers_json=existing_sleep_json,
-            nonwear_markers_json=nonwear_json,
-            is_no_sleep=existing_is_no_sleep,
-            algorithm_used=None,
-            notes=annotation.notes,
-        )
-
-        await db.commit()
+            await db.commit()
+    except Exception:
+        logger.exception("Background task _patch_nonwear_annotation failed for file=%d date=%s", file_id, analysis_date)
 
 
 async def _calculate_and_store_metrics(

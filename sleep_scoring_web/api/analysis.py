@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 
 from sleep_scoring_web.api.access import get_assigned_file_ids, is_admin_user
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword  # noqa: TC001 — FastAPI needs these at runtime
-from sleep_scoring_web.db.models import ConsensusCandidate, ConsensusResult, DiaryEntry, File, Marker, RawActivityData, SleepMetric, UserAnnotation
+from sleep_scoring_web.db.models import ConsensusResult, DiaryEntry, File, Marker, RawActivityData, SleepMetric, UserAnnotation
 from sleep_scoring_web.schemas.enums import FileStatus, MarkerCategory, MarkerType
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
@@ -154,29 +154,13 @@ async def get_analysis_summary(
         needs_consensus.setdefault(row.file_id, set()).add(row.analysis_date)
 
     # (b) Dates with 2+ distinct human candidate hashes (auto-detected discrepancy)
-    auto_flagged: dict[int, set] = {}
-    discrepancy_result = await db.execute(
-        select(
-            ConsensusCandidate.file_id,
-            ConsensusCandidate.analysis_date,
-        )
-        .where(
-            ConsensusCandidate.file_id.in_(file_ids),
-            ConsensusCandidate.source_username != "auto_score",
-        )
-        .group_by(ConsensusCandidate.file_id, ConsensusCandidate.analysis_date)
-        .having(
-            func.count(func.distinct(ConsensusCandidate.source_username)) >= 2,
-            func.count(func.distinct(ConsensusCandidate.candidate_hash)) >= 2,
-        )
-    )
-    for row in discrepancy_result.all():
-        auto_flagged.setdefault(row.file_id, set()).add(row.analysis_date)
+    from sleep_scoring_web.services.consensus import get_auto_flagged_dates
+
+    auto_flagged = await get_auto_flagged_dates(db, file_ids)
 
     # Subtract dates where consensus has been reached
     consensus_reached_result = await db.execute(
-        select(ConsensusResult.file_id, ConsensusResult.analysis_date)
-        .where(
+        select(ConsensusResult.file_id, ConsensusResult.analysis_date).where(
             ConsensusResult.file_id.in_(file_ids),
             ConsensusResult.has_consensus.is_(True),
         )
@@ -236,30 +220,24 @@ async def get_analysis_summary(
     )
     row = metrics_result.one_or_none()
 
-    # Sleep-period counts should reflect THIS user's markers in visible files.
-    sleep_count_result = await db.execute(
-        select(func.count())
-        .select_from(Marker)
-        .where(
-            Marker.file_id.in_(file_ids),
-            Marker.marker_category == MarkerCategory.SLEEP,
-            Marker.created_by == username,
-        )
-    )
-    sleep_count = sleep_count_result.scalar() or 0
+    # Sleep + nap counts in a single query using conditional aggregation
+    from sqlalchemy import case
 
-    # Nap count is marker_type == NAP (not period_index > 0).
-    nap_count_result = await db.execute(
-        select(func.count())
+    marker_counts_result = await db.execute(
+        select(
+            func.count().label("sleep_count"),
+            func.count(case((Marker.marker_type == MarkerType.NAP, 1))).label("nap_count"),
+        )
         .select_from(Marker)
         .where(
             Marker.file_id.in_(file_ids),
             Marker.marker_category == MarkerCategory.SLEEP,
-            Marker.marker_type == MarkerType.NAP,
             Marker.created_by == username,
         )
     )
-    nap_count = nap_count_result.scalar() or 0
+    counts_row = marker_counts_result.one()
+    sleep_count = counts_row.sleep_count or 0
+    nap_count = counts_row.nap_count or 0
 
     aggregate = AggregateMetrics(
         mean_tst_minutes=round(row[0], 1) if row and row[0] else None,

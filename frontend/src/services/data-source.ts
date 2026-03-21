@@ -1,4 +1,4 @@
-import type { MarkerType, DateStatus } from "@/api/types";
+import { PERIOD_GUIDERS, type MarkerType, type DateStatus } from "@/api/types";
 import { getApiBase, fetchWithAuth } from "@/api/client";
 import * as localDb from "@/db";
 import type { SleepMarkerJson, NonwearMarkerJson, ActivityDay } from "@/db/schema";
@@ -293,7 +293,10 @@ export class ServerDataSource implements DataSource {
     const response = await fetch(`${getApiBase()}/files`, {
       headers: this.getHeaders(),
     });
-    if (!response.ok) return [];
+    if (!response.ok) {
+      console.warn(`listFiles failed: ${response.status} ${response.statusText}`);
+      return [];
+    }
     const data = await response.json();
     return ((data?.items ?? data) as Record<string, unknown>[]).map((f: Record<string, unknown>) => ({
       id: f.id as number,
@@ -307,7 +310,10 @@ export class ServerDataSource implements DataSource {
     const response = await fetch(`${getApiBase()}/files/${fileId}/dates`, {
       headers: this.getHeaders(),
     });
-    if (!response.ok) return [];
+    if (!response.ok) {
+      console.warn(`listDates(${fileId}) failed: ${response.status} ${response.statusText}`);
+      return [];
+    }
     const data = await response.json();
     return data ?? [];
   }
@@ -327,10 +333,10 @@ export class ServerDataSource implements DataSource {
   }
 
   async autoScore(fileId: number, date: string, options: AutoScoreOptions): Promise<AutoScoreResult> {
-    const guider = options.periodGuider ?? "diary";
+    const guider = options.periodGuider ?? PERIOD_GUIDERS.DIARY;
 
     // Non-diary guiders use the v2 pipeline endpoint
-    if (guider !== "diary") {
+    if (guider !== PERIOD_GUIDERS.DIARY) {
       const rule = getDetectionRuleParams(options.detectionRule);
       const body = {
         epoch_classifier: options.algorithm,
@@ -582,8 +588,8 @@ export class LocalDataSource implements DataSource {
   }
 
   async autoScore(fileId: number, date: string, options: AutoScoreOptions): Promise<AutoScoreResult> {
-    if (options.periodGuider && options.periodGuider !== "diary") {
-      return { sleep_markers: [], nap_markers: [], notes: [`Period guider "${options.periodGuider}" is not supported in local mode — only "diary" is available`] };
+    if (options.periodGuider && options.periodGuider !== PERIOD_GUIDERS.DIARY) {
+      return { sleep_markers: [], nap_markers: [], notes: [`Period guider "${options.periodGuider}" is not supported in local mode — only "${PERIOD_GUIDERS.DIARY}" is available`] };
     }
 
     const day = await localDb.getActivityDay(fileId, date);

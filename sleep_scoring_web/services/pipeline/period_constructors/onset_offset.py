@@ -11,7 +11,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sleep_scoring_web.schemas.enums import MarkerType, PeriodGuiderType
-from sleep_scoring_web.services.pipeline.protocols import Bout, ClassifiedEpochs, EpochSeries, GuideWindow, NapGuideWindow, NonwearPeriodResult, SleepPeriodResult
+from sleep_scoring_web.services.pipeline.protocols import (
+    Bout,
+    ClassifiedEpochs,
+    EpochSeries,
+    GuideWindow,
+    NapGuideWindow,
+    NonwearPeriodResult,
+    SleepPeriodResult,
+)
 from sleep_scoring_web.services.pipeline.registry import register
 
 if TYPE_CHECKING:
@@ -74,7 +82,7 @@ class OnsetOffsetPeriodConstructor:
         # Mark epochs within detected nonwear intervals as nonwear so onset
         # detection skips them — nonwear is computed before sleep placement.
         nonwear_index_set: set[int] = set()
-        for nw in (excluded_nonwear or []):
+        for nw in excluded_nonwear or []:
             nonwear_index_set.update(range(nw.start_index, nw.end_index + 1))
 
         epoch_data_list = _build_epoch_data(epochs, classified, nonwear_index_set)

@@ -70,10 +70,10 @@ class NonwearDetectorParams:
     min_duration_minutes: int = 10
     epoch_length_seconds: int = 60
     # FlatActivityNonwearDetector params
-    flat_activity_threshold: int = 0    # Max activity count to be considered "flat zero"
+    flat_activity_threshold: int = 0  # Max activity count to be considered "flat zero"
     flat_activity_min_minutes: int = 60  # Minimum flat-zero run duration (< Choi's 90 min)
     flat_activity_resumption_window_epochs: int = 30  # How far past the run end to look for resumption
-    flat_activity_resumption_threshold: int = 500     # Min activity to count as "resumed" (not sleep)
+    flat_activity_resumption_threshold: int = 500  # Min activity to count as "resumed" (not sleep)
 
 
 @dataclass(frozen=True)

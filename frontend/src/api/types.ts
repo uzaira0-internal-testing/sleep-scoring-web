@@ -266,6 +266,25 @@ export const SLEEP_DETECTION_RULES = {
   TUDOR_LOCKE_2014: "tudor_locke_2014" as const,
 } as const;
 
+/** Period guider types — mirrors backend PeriodGuiderType StrEnum */
+export type PeriodGuiderType = "diary" | "l5" | "smart" | "longest_bout" | "none";
+
+export const PERIOD_GUIDERS = {
+  DIARY: "diary" as const,
+  L5: "l5" as const,
+  SMART: "smart" as const,
+  LONGEST_BOUT: "longest_bout" as const,
+  NONE: "none" as const,
+} satisfies Record<string, PeriodGuiderType>;
+
+/** Options for the period guider select dropdown */
+export const PERIOD_GUIDER_OPTIONS: { value: PeriodGuiderType; label: string }[] = [
+  { value: PERIOD_GUIDERS.DIARY, label: "Diary" },
+  { value: PERIOD_GUIDERS.L5, label: "L5 (5h)" },
+  { value: PERIOD_GUIDERS.LONGEST_BOUT, label: "Longest Bout" },
+  { value: PERIOD_GUIDERS.SMART, label: "Smart" },
+];
+
 // =============================================================================
 // Pipeline Discovery (from /pipeline/discover)
 // =============================================================================

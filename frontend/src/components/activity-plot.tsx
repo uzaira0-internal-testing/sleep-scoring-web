@@ -28,6 +28,37 @@ interface ActivityPlotProps {
   highlightedCandidateId?: number | null;
 }
 
+/** Convert a binary mask array to contiguous regions with start/end timestamps. */
+function maskToRegions(mask: number[], timestamps: number[]): Array<{ startIdx: number; endIdx: number; startTs: number; endTs: number }> {
+  const regions: Array<{ startIdx: number; endIdx: number; startTs: number; endTs: number }> = [];
+  let regionStart: number | null = null;
+
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] === 1 && regionStart === null) {
+      regionStart = i;
+    } else if (mask[i] === 0 && regionStart !== null) {
+      regions.push({
+        startIdx: regionStart,
+        endIdx: i - 1,
+        startTs: timestamps[regionStart]!,
+        endTs: timestamps[i - 1]!,
+      });
+      regionStart = null;
+    }
+  }
+
+  if (regionStart !== null) {
+    regions.push({
+      startIdx: regionStart,
+      endIdx: mask.length - 1,
+      startTs: timestamps[regionStart]!,
+      endTs: timestamps[mask.length - 1]!,
+    });
+  }
+
+  return regions;
+}
+
 export function ActivityPlot({ showComparisonMarkers = false, highlightedCandidateId = null }: ActivityPlotProps) {
   const { dataSource } = useDataSource();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -136,9 +167,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
   const [containerReady, setContainerReady] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
-  // Track which marker keys have already played their spring-in animation so
-  // it only fires on first placement, not on re-renders or drag repositioning
-  const animatedMarkerKeysRef = useRef<Set<string>>(new Set());
   const isDark = resolvedTheme === "dark";
 
   const comparisonCandidates = useMemo(() => {
@@ -175,42 +203,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     }
     return map;
   }, [comparisonCandidates, isDark]);
-
-  // ============================================================================
-  // CONVERT MASK TO CONTIGUOUS REGIONS
-  // ============================================================================
-  function maskToRegions(mask: number[], timestamps: number[]): Array<{ startIdx: number; endIdx: number; startTs: number; endTs: number }> {
-    const regions: Array<{ startIdx: number; endIdx: number; startTs: number; endTs: number }> = [];
-    let regionStart: number | null = null;
-
-    for (let i = 0; i < mask.length; i++) {
-      if (mask[i] === 1 && regionStart === null) {
-        // Start of a new region
-        regionStart = i;
-      } else if (mask[i] === 0 && regionStart !== null) {
-        // End of current region
-        regions.push({
-          startIdx: regionStart,
-          endIdx: i - 1,
-          startTs: timestamps[regionStart]!,
-          endTs: timestamps[i - 1]!,
-        });
-        regionStart = null;
-      }
-    }
-
-    // Handle region that extends to end of data
-    if (regionStart !== null) {
-      regions.push({
-        startIdx: regionStart,
-        endIdx: mask.length - 1,
-        startTs: timestamps[regionStart]!,
-        endTs: timestamps[mask.length - 1]!,
-      });
-    }
-
-    return regions;
-  }
 
   // Refs for fast-changing values that shouldn't trigger full marker redraws.
   // These change on hover/theme toggle but the marker rendering reads them

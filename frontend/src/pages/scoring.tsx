@@ -24,7 +24,7 @@ import { ColorThemePopover } from "@/components/color-theme-popover";
 import { useKeyboardShortcuts, useMarkerAutoSave, useMarkerLoad, useColorThemeSync } from "@/hooks";
 import { getApiBase, fetchWithAuth, settingsApi } from "@/api/client";
 import { studySettingsQueryOptions } from "@/api/query-options";
-import { MARKER_TYPES, type DateStatus, type ConsensusBallotCandidate } from "@/api/types";
+import { MARKER_TYPES, PERIOD_GUIDER_OPTIONS, PERIOD_GUIDERS, type DateStatus, type ConsensusBallotCandidate } from "@/api/types";
 import { formatTime, formatDuration } from "@/utils/formatters";
 import { resolveEditedTimeToTimestamp } from "@/utils/time-edit";
 import {
@@ -306,17 +306,17 @@ export function ScoringPage() {
   useEffect(() => {
     if (isLocal || !currentFileId || !currentDate) return;
     const { currentAlgorithm: algo, sleepDetectionRule: rule, periodGuider: guider } = useSleepScoringStore.getState();
-    if (guider !== "diary") {
+    if (guider !== PERIOD_GUIDERS.DIARY) {
       // Non-diary guiders: use v2 pipeline endpoint (works without diary)
       const body = JSON.stringify({ epoch_classifier: algo, period_guider: guider });
       fetchWithAuth(`${getApiBase()}/markers/${currentFileId}/${currentDate}/auto-score-v2`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
-      }).catch(() => {});
+      }).catch((e) => console.warn("auto-score v2 failed:", e));
     } else {
       const params = new URLSearchParams({ algorithm: algo, detection_rule: rule });
-      fetchWithAuth(`${getApiBase()}/markers/${currentFileId}/${currentDate}/auto-score?${params}`, { method: "POST" }).catch(() => {});
+      fetchWithAuth(`${getApiBase()}/markers/${currentFileId}/${currentDate}/auto-score?${params}`, { method: "POST" }).catch((e) => console.warn("auto-score failed:", e));
     }
   }, [currentFileId, currentDate, isLocal]);
 
@@ -449,7 +449,7 @@ export function ScoringPage() {
   const currentDateStatus = currentDate ? dateStatusMap.get(currentDate) : undefined;
   const hasNoDiary = !currentDateStatus || currentDateStatus.complexity_pre === -1;
   // Non-diary guiders don't need diary data
-  const diaryBlocksAutoScore = periodGuider === "diary" && hasNoDiary;
+  const diaryBlocksAutoScore = periodGuider === PERIOD_GUIDERS.DIARY && hasNoDiary;
 
   // Auto-score on date navigate (when toggle is on and no existing markers)
   // Skip dates with infinite complexity (no/incomplete diary)
@@ -549,48 +549,44 @@ export function ScoringPage() {
     }
   }, [activityError]);
 
-  const commitTimeEdit = useCallback((field: "onset" | "offset", value: string) => {
-    if (markerMode !== "sleep" || selectedPeriodIndex === null || !sleepMarkers[selectedPeriodIndex]) return;
-    const marker = sleepMarkers[selectedPeriodIndex];
-    const refTs = field === "onset" ? marker.onsetTimestamp : marker.offsetTimestamp;
+  const commitMarkerTimeEdit = useCallback((
+    mode: "sleep" | "nonwear",
+    field: "onset" | "offset" | "start" | "end",
+    value: string,
+  ) => {
+    if (markerMode !== mode || selectedPeriodIndex === null) return;
+    const markers = mode === "sleep" ? sleepMarkers : nonwearMarkers;
+    const marker = markers[selectedPeriodIndex];
+    if (!marker) return;
+
+    // Map field names to timestamp keys
+    const tsKeys = mode === "sleep"
+      ? { first: "onsetTimestamp" as const, second: "offsetTimestamp" as const }
+      : { first: "startTimestamp" as const, second: "endTimestamp" as const };
+    const isFirst = field === "onset" || field === "start";
+    const refTs = (marker as Record<string, unknown>)[isFirst ? tsKeys.first : tsKeys.second] as number | null;
     if (refTs === null) return;
-    const counterpartTs = field === "onset" ? marker.offsetTimestamp : marker.onsetTimestamp;
+    const counterpartTs = (marker as Record<string, unknown>)[isFirst ? tsKeys.second : tsKeys.first] as number | null;
+
     const newTs = resolveEditedTimeToTimestamp({
       timeStr: value,
       currentDate,
       referenceTimestamp: refTs,
       otherBoundaryTimestamp: counterpartTs,
-      field,
+      field: isFirst ? "onset" : "offset",
     });
     if (newTs === null) return;
 
-    if (field === "onset") {
-      updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: newTs });
-    } else {
-      updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: newTs });
-    }
-  }, [markerMode, selectedPeriodIndex, sleepMarkers, currentDate, updateMarker]);
+    updateMarker(mode, selectedPeriodIndex, { [isFirst ? tsKeys.first : tsKeys.second]: newTs });
+  }, [markerMode, selectedPeriodIndex, sleepMarkers, nonwearMarkers, currentDate, updateMarker]);
+
+  const commitTimeEdit = useCallback((field: "onset" | "offset", value: string) => {
+    commitMarkerTimeEdit("sleep", field, value);
+  }, [commitMarkerTimeEdit]);
 
   const commitNwTimeEdit = useCallback((field: "start" | "end", value: string) => {
-    if (markerMode !== "nonwear" || selectedPeriodIndex === null || !nonwearMarkers[selectedPeriodIndex]) return;
-    const marker = nonwearMarkers[selectedPeriodIndex];
-    const refTs = field === "start" ? marker.startTimestamp : marker.endTimestamp;
-    if (refTs === null) return;
-    const counterpartTs = field === "start" ? marker.endTimestamp : marker.startTimestamp;
-    const newTs = resolveEditedTimeToTimestamp({
-      timeStr: value,
-      currentDate,
-      referenceTimestamp: refTs,
-      otherBoundaryTimestamp: counterpartTs,
-      field: field === "start" ? "onset" : "offset",
-    });
-    if (newTs === null) return;
-    if (field === "start") {
-      updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: newTs });
-    } else {
-      updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: newTs });
-    }
-  }, [markerMode, selectedPeriodIndex, nonwearMarkers, currentDate, updateMarker]);
+    commitMarkerTimeEdit("nonwear", field, value);
+  }, [commitMarkerTimeEdit]);
 
   const canGoPrev = currentDateIndex > 0;
   const canGoNext = currentDateIndex < availableDates.length - 1;
@@ -768,8 +764,8 @@ export function ScoringPage() {
             >
               {availableDates.map((date, idx) => {
                 const st = dateStatusMap.get(date);
-                if (consensusOnly && !st?.needs_consensus && !(st as any)?.auto_flagged) return null;
-                const autoFlagged = (st as any)?.auto_flagged;
+                if (consensusOnly && !st?.needs_consensus && !st?.auto_flagged) return null;
+                const autoFlagged = st?.auto_flagged;
                 const manualFlagged = st?.needs_consensus;
                 const flagPrefix = autoFlagged ? "\u26a0\ufe0f " : manualFlagged ? "\ud83d\udc65 " : "";
                 const prefix = st?.is_no_sleep ? "\u26d4 " : st?.has_markers ? "\u2713 " : "\u25cb ";
@@ -783,7 +779,7 @@ export function ScoringPage() {
             </select>
             {currentDate && (() => {
               const st = dateStatusMap.get(currentDate);
-              if ((st as any)?.auto_flagged) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-red-500" title="Scorers disagree" />;
+              if (st?.auto_flagged) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-red-500" title="Scorers disagree" />;
               if (st?.needs_consensus) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-orange-500" title="Flagged for consensus" />;
               if (st?.is_no_sleep) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-amber-500" title="No sleep" />;
               if (st?.has_markers) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green-500" title="Has markers" />;
@@ -914,15 +910,10 @@ export function ScoringPage() {
           <div className="flex items-center gap-1.5 shrink-0">
             <Select
               value={periodGuider}
-              onChange={(e) => setPeriodGuider(e.target.value)}
+              onChange={(e) => setPeriodGuider(e.target.value as import("@/api/types").PeriodGuiderType)}
               className="h-7 text-xs w-[100px]"
               title="Sleep period search method"
-              options={[
-                { value: "diary", label: "Diary" },
-                { value: "l5", label: "L5 (5h)" },
-                { value: "longest_bout", label: "Longest Bout" },
-                { value: "smart", label: "Smart" },
-              ]}
+              options={PERIOD_GUIDER_OPTIONS}
             />
             <Button
               variant="outline"
@@ -1274,7 +1265,7 @@ export function ScoringPage() {
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Button>
                   <ConsensusVoteSidebar
-                    autoFlagged={!!(currentDate && (dateStatusMap.get(currentDate) as any)?.auto_flagged)}
+                    autoFlagged={!!(currentDate && dateStatusMap.get(currentDate)?.auto_flagged)}
                     highlightedCandidateId={highlightedCandidateId}
                     onHighlightCandidate={(candidateId) => {
                       setHighlightedCandidateId(candidateId);

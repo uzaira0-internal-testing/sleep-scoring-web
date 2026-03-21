@@ -139,48 +139,42 @@ async def get_onset_offset_data(
     onset_timestamp = ensure_seconds(onset_timestamp)
     offset_timestamp = ensure_seconds(offset_timestamp)
 
-    # Get data around onset — strip tzinfo because raw_activity_data uses
-    # "timestamp without time zone" and asyncpg rejects tz-aware comparisons.
+    # Strip tzinfo — raw_activity_data uses "timestamp without time zone" and
+    # asyncpg rejects tz-aware comparisons.
     onset_dt = datetime.fromtimestamp(onset_timestamp, tz=UTC).replace(tzinfo=None)
     onset_start = onset_dt - timedelta(minutes=window_minutes)
     onset_end = onset_dt + timedelta(minutes=window_minutes)
 
-    onset_result = await db.execute(
-        select(RawActivityData)
-        .where(
-            and_(
-                RawActivityData.file_id == file_id,
-                RawActivityData.timestamp >= onset_start,
-                RawActivityData.timestamp <= onset_end,
-            )
-        )
-        .order_by(RawActivityData.timestamp)
-    )
-    onset_rows = onset_result.scalars().all()
-
-    # Get data around offset — strip tzinfo (see onset comment above)
     offset_dt = datetime.fromtimestamp(offset_timestamp, tz=UTC).replace(tzinfo=None)
     offset_start = offset_dt - timedelta(minutes=window_minutes)
     offset_end = offset_dt + timedelta(minutes=window_minutes)
 
-    offset_result = await db.execute(
+    # Single wide query covering 48h Sadeh context + onset/offset windows + Choi context.
+    # Eliminates 3 redundant queries (onset, offset, choi each loaded overlapping subsets).
+    day_start = datetime.combine(analysis_date, datetime.min.time()) - timedelta(hours=12)
+    day_end = day_start + timedelta(hours=48)
+    context_start = min(day_start, onset_start, offset_start)
+    context_end = max(day_end, onset_end, offset_end)
+
+    context_result = await db.execute(
         select(RawActivityData)
         .where(
             and_(
                 RawActivityData.file_id == file_id,
-                RawActivityData.timestamp >= offset_start,
-                RawActivityData.timestamp <= offset_end,
+                RawActivityData.timestamp >= context_start,
+                RawActivityData.timestamp < context_end,
             )
         )
         .order_by(RawActivityData.timestamp)
     )
-    offset_rows = offset_result.scalars().all()
+    context_rows = context_result.scalars().all()
 
-    # Get ALL sensor nonwear markers for this file that overlap the table's time range.
-    # Don't filter by analysis_date — sensor nonwear spans real timestamps and the
-    # table window can cross date boundaries.
+    # Partition display rows from the superset
+    onset_rows = [r for r in context_rows if onset_start <= r.timestamp <= onset_end]
+    offset_rows = [r for r in context_rows if offset_start <= r.timestamp <= offset_end]
+
+    # Sensor nonwear markers for the "N" column
     if not onset_rows and not offset_rows:
-        # No activity data in either window — skip sensor nonwear query
         sensor_nw_markers = []
     else:
         table_min_ts = min(
@@ -205,7 +199,6 @@ async def get_onset_offset_data(
 
     is_in_nonwear = _build_nonwear_checker(sensor_nw_markers)
 
-    # Run algorithms on the data ranges
     from sleep_scoring_web.services.algorithms.choi import ChoiAlgorithm
     from sleep_scoring_web.services.choi_helpers import extract_choi_input, get_choi_column
 
@@ -218,57 +211,14 @@ async def get_onset_offset_data(
     choi_column = await get_choi_column(db, username)
     scorer = create_algorithm(algorithm)
 
-    # Score Sadeh on 48h (noon prev day to noon next day) so epochs near
-    # any boundary see real surrounding data instead of zero-padding.
-    day_start = datetime.combine(analysis_date, datetime.min.time()) - timedelta(hours=12)
-    day_end = day_start + timedelta(hours=48)
-    sadeh_context_result = await db.execute(
-        select(RawActivityData)
-        .where(
-            and_(
-                RawActivityData.file_id == file_id,
-                RawActivityData.timestamp >= day_start,
-                RawActivityData.timestamp < day_end,
-            )
-        )
-        .order_by(RawActivityData.timestamp)
-    )
-    sadeh_context_rows = sadeh_context_result.scalars().all()
-    sadeh_results = scorer.score([row.axis_y or 0 for row in sadeh_context_rows])
-    sadeh_by_timestamp: dict[datetime, int] = {
-        row.timestamp: sadeh_results[i]
-        for i, row in enumerate(sadeh_context_rows)
-        if i < len(sadeh_results)
-    }
+    # Score Sadeh + Choi on the full context so boundary epochs get real neighbours
+    sadeh_results = scorer.score([row.axis_y or 0 for row in context_rows])
+    sadeh_by_timestamp: dict[datetime, int] = {row.timestamp: sadeh_results[i] for i, row in enumerate(context_rows) if i < len(sadeh_results)}
     onset_sleep = [sadeh_by_timestamp.get(row.timestamp) for row in onset_rows]
     offset_sleep = [sadeh_by_timestamp.get(row.timestamp) for row in offset_rows]
 
-    # Choi is context-sensitive (requires 90+ consecutive minutes of zeros).
-    # Running it on the ±window rows produces wrong results when the nonwear period
-    # extends outside the visible window. Fix: run Choi on the full noon-to-noon day
-    # (extended to cover the actual onset/offset windows), then look up results by timestamp.
-    choi_context_start = min(day_start, onset_start, offset_start)
-    choi_context_end = max(day_end, onset_end, offset_end)
-
-    choi_context_result = await db.execute(
-        select(RawActivityData)
-        .where(
-            and_(
-                RawActivityData.file_id == file_id,
-                RawActivityData.timestamp >= choi_context_start,
-                RawActivityData.timestamp < choi_context_end,
-            )
-        )
-        .order_by(RawActivityData.timestamp)
-    )
-    choi_context_rows = choi_context_result.scalars().all()
-
-    choi_results_list = ChoiAlgorithm().detect_mask(extract_choi_input(choi_context_rows, choi_column))
-    choi_by_timestamp: dict[datetime, int] = {
-        row.timestamp: choi_results_list[i]
-        for i, row in enumerate(choi_context_rows)
-        if i < len(choi_results_list)
-    }
+    choi_results_list = ChoiAlgorithm().detect_mask(extract_choi_input(context_rows, choi_column))
+    choi_by_timestamp: dict[datetime, int] = {row.timestamp: choi_results_list[i] for i, row in enumerate(context_rows) if i < len(choi_results_list)}
 
     # Convert to response format with all columns
     onset_data = [
@@ -377,29 +327,32 @@ async def get_full_table_data(
     if not file or is_excluded_file_obj(file):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    # Get 24h of data (noon to noon)
+    # Single query: 48h context (noon-12h to noon+36h) covers 24h display + algorithm context
     start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
     end_time = start_time + timedelta(hours=24)
+    context_start = start_time - timedelta(hours=12)
+    context_end = end_time + timedelta(hours=12)
 
-    activity_result = await db.execute(
+    context_result = await db.execute(
         select(RawActivityData)
         .where(
             and_(
                 RawActivityData.file_id == file_id,
-                RawActivityData.timestamp >= start_time,
-                RawActivityData.timestamp < end_time,
+                RawActivityData.timestamp >= context_start,
+                RawActivityData.timestamp < context_end,
             )
         )
         .order_by(RawActivityData.timestamp)
     )
-    rows = activity_result.scalars().all()
+    context_rows = context_result.scalars().all()
+
+    # Display rows: 24h subset (noon to noon)
+    rows = [r for r in context_rows if start_time <= r.timestamp < end_time]
 
     if not rows:
         return FullTableResponse(data=[], total_rows=0)
 
-    # Get sensor nonwear markers (from diary/CSV upload) for the "N" column.
-    # Query by timestamp overlap with the table's data range (not analysis_date)
-    # so sensor nonwear always shows regardless of which date it was stored under.
+    # Sensor nonwear markers for the "N" column
     table_min_ts = naive_to_unix(rows[0].timestamp)
     table_max_ts = naive_to_unix(rows[-1].timestamp)
     sensor_nw_result = await db.execute(
@@ -416,7 +369,6 @@ async def get_full_table_data(
 
     is_in_nonwear = _build_nonwear_checker(sensor_nw_markers)
 
-    # Run algorithms on 48h context so boundary epochs get real neighbours
     from sleep_scoring_web.services.algorithms.choi import ChoiAlgorithm
     from sleep_scoring_web.services.choi_helpers import extract_choi_input, get_choi_column
 
@@ -426,33 +378,15 @@ async def get_full_table_data(
             detail=f"Unknown algorithm: {algorithm}. Available: {ALGORITHM_TYPES}",
         )
 
-    context_start = start_time - timedelta(hours=12)
-    context_end = end_time + timedelta(hours=12)
-    context_result = await db.execute(
-        select(RawActivityData)
-        .where(
-            and_(
-                RawActivityData.file_id == file_id,
-                RawActivityData.timestamp >= context_start,
-                RawActivityData.timestamp < context_end,
-            )
-        )
-        .order_by(RawActivityData.timestamp)
-    )
-    context_rows = context_result.scalars().all()
-
+    # Score Sadeh + Choi on full 48h context so boundary epochs get real neighbours
     scorer = create_algorithm(algorithm)
     sadeh_context = scorer.score([r.axis_y or 0 for r in context_rows])
-    sadeh_by_ts: dict[datetime, int] = {
-        r.timestamp: sadeh_context[i] for i, r in enumerate(context_rows) if i < len(sadeh_context)
-    }
+    sadeh_by_ts: dict[datetime, int] = {r.timestamp: sadeh_context[i] for i, r in enumerate(context_rows) if i < len(sadeh_context)}
 
     choi_column = await get_choi_column(db, username)
     choi = ChoiAlgorithm()
     choi_context = choi.detect_mask(extract_choi_input(context_rows, choi_column))
-    choi_by_ts: dict[datetime, int] = {
-        r.timestamp: choi_context[i] for i, r in enumerate(context_rows) if i < len(choi_context)
-    }
+    choi_by_ts: dict[datetime, int] = {r.timestamp: choi_context[i] for i, r in enumerate(context_rows) if i < len(choi_context)}
 
     # Convert to response format (display rows stay 24h)
     data = [

@@ -108,9 +108,7 @@ async def process_uploaded_file(
                 epoch_filename = f"{stem}_60sec.csv"
 
                 # Check if epoch file already exists (re-upload)
-                existing_epoch = await db.execute(
-                    select(FileModel).where(FileModel.filename == epoch_filename)
-                )
+                existing_epoch = await db.execute(select(FileModel).where(FileModel.filename == epoch_filename))
                 epoch_model = existing_epoch.scalar_one_or_none()
                 if epoch_model:
                     # Clear old activity data for re-processing

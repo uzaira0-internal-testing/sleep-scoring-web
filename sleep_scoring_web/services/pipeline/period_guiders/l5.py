@@ -25,7 +25,8 @@ def _find_lights_out(
     search_from: int,
     min_wake_epochs: int,
 ) -> int:
-    """Walk backward through pre-computed wake bouts to find where
+    """
+    Walk backward through pre-computed wake bouts to find where
     sustained daytime activity ended.
 
     Uses the *bouts* list (already computed by the bout detector) instead of

@@ -6,6 +6,8 @@ Provides async SQLAlchemy engine and session factory using db-toolkit.
 
 from __future__ import annotations
 
+import logging
+
 from db_toolkit import create_engine, create_get_db, create_session_maker
 
 from sleep_scoring_web.config import settings
@@ -41,7 +43,7 @@ try:
 
     install_query_profiler(async_engine)
 except Exception:
-    pass
+    logging.getLogger(__name__).debug("Query profiler not available", exc_info=True)
 
 
 async def init_db() -> None:

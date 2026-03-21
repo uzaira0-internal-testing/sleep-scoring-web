@@ -31,6 +31,8 @@ init_sentry()
 if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import AsyncGenerator
 
+    from starlette.types import ASGIApp, Receive, Scope, Send
+
 # Configure structured logging (JSON in production, text in development)
 setup_logging(json_format=settings.environment == "production")
 logger = get_logger(__name__)
@@ -47,11 +49,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from sqlalchemy import select as sa_select
 
+    from sleep_scoring_web import queue
     from sleep_scoring_web.db.models import File as FileModel
     from sleep_scoring_web.db.session import async_session_maker, init_db
     from sleep_scoring_web.schemas.enums import FileStatus
     from sleep_scoring_web.services.file_watcher import start_file_watcher, stop_file_watcher
-    from sleep_scoring_web import queue
 
     # Startup
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
@@ -131,7 +133,6 @@ app = FastAPI(
 # already been stripped), so the Location header is missing the base path prefix.
 # This middleware rewrites it so the browser's PATCH/HEAD requests route correctly.
 if root_path:
-    from starlette.types import ASGIApp, Receive, Scope, Send
 
     class TusLocationFixMiddleware:
         """Prepend root_path to TUS Location headers missing it."""
@@ -154,7 +155,7 @@ if root_path:
                             loc = value.decode("utf-8")
                             if "/api/v1/tus/" in loc and self.prefix + "/api/v1/tus/" not in loc:
                                 loc = loc.replace("/api/v1/tus/", self.prefix + "/api/v1/tus/")
-                                value = loc.encode("utf-8")
+                                value = loc.encode("utf-8")  # noqa: PLW2901
                         new_headers.append((key, value))
                     message["headers"] = new_headers
                 await send(message)

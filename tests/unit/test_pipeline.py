@@ -1080,7 +1080,7 @@ class TestCompat:
         start = datetime(2024, 1, 15, 21, 0, tzinfo=UTC)
         n = 600  # 10 hours of data
         timestamps = _make_timestamps(n, start)
-        activity = [0.0] * n  # all zero = all sleep
+        activity = [5.0] * n  # low activity = sleep (nonzero avoids flat-activity nonwear detection)
 
         result = run_via_pipeline(
             timestamps,
@@ -1227,7 +1227,7 @@ class TestScoringPipeline:
         start = datetime(2024, 1, 15, 21, 0, tzinfo=UTC)
         n = 600
         timestamps = _make_timestamps(n, start)
-        activity = [0.0] * n
+        activity = [5.0] * n  # low activity = sleep (nonzero avoids flat-activity nonwear)
 
         raw_diary = RawDiaryInput(
             onset_time="22:00",
@@ -1236,7 +1236,7 @@ class TestScoringPipeline:
         )
         result = pipeline.run(timestamps, activity, raw_diary=raw_diary)
         assert isinstance(result, PipelineResult)
-        # With all-zero activity and diary, should find main sleep
+        # With low-activity data and diary, should find main sleep
         assert len(result.sleep_periods) >= 1
         # Main sleep should be MAIN_SLEEP type
         main_periods = [sp for sp in result.sleep_periods if sp.period_type == MarkerType.MAIN_SLEEP]
@@ -1405,9 +1405,9 @@ class TestPipelineIntegration:
             t = start + timedelta(minutes=i)
             hour = t.hour
             if 22 <= hour or hour < 6:
-                activity.append(0.0)  # sleep time
+                activity.append(5.0)  # sleep time (nonzero avoids flat-activity nonwear)
             elif 13 <= hour < 14:
-                activity.append(0.0)  # nap time
+                activity.append(5.0)  # nap time
             else:
                 activity.append(200.0)  # awake
         timestamps = _make_timestamps(n, start)

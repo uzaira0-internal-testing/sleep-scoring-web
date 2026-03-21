@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from asyncio import Lock
 from collections import defaultdict
 from datetime import UTC, date, datetime, timezone
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from fastapi import WebSocket
@@ -50,6 +53,7 @@ class ConsensusRealtimeBroker:
             try:
                 await ws.send_json(payload)
             except Exception:
+                logger.debug("WebSocket send failed for topic %s", topic, exc_info=True)
                 stale.append(ws)
 
         if stale:
