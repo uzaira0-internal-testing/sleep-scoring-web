@@ -592,8 +592,8 @@ export function ScoringPage() {
   const canGoNext = currentDateIndex < availableDates.length - 1;
 
   // Consensus-only filter toggle
-  const [consensusOnly, _setConsensusOnly] = useState(false);
-  void _setConsensusOnly;
+  // TODO: wire to UI toggle — filters date list to only show consensus/flagged dates
+  const [consensusOnly] = useState(false);
 
   // Fetch scoring progress per file (both server and local modes)
   const readyFiles = (dsFiles ?? []).filter((f) => isLocal || f.status === "ready");

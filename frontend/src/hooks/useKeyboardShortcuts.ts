@@ -24,13 +24,9 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
     markerMode,
     creationMode,
     selectedPeriodIndex,
-    sleepMarkers,
-    nonwearMarkers,
     cancelMarkerCreation,
     deleteMarker,
     updateMarker,
-    setSleepMarkers,
-    setNonwearMarkers,
     undo,
     redo,
   } = useMarkers();
@@ -50,6 +46,13 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
       ) {
         return;
       }
+
+      // Read markers from store to avoid stale closures (per CLAUDE.md)
+      const getMarker = () => {
+        const state = useSleepScoringStore.getState();
+        if (markerMode === "sleep") return state.sleepMarkers[selectedPeriodIndex ?? -1];
+        return state.nonwearMarkers[selectedPeriodIndex ?? -1];
+      };
 
       switch (e.key) {
         case "Escape":
@@ -74,20 +77,11 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
           // Move onset/start left by 1 epoch
           if (selectedPeriodIndex !== null) {
             e.preventDefault();
-            if (markerMode === "sleep") {
-              const marker = sleepMarkers[selectedPeriodIndex];
-              if (marker?.onsetTimestamp != null) {
-                updateMarker("sleep", selectedPeriodIndex, {
-                  onsetTimestamp: marker.onsetTimestamp - EPOCH_DURATION_SEC,
-                });
-              }
-            } else {
-              const marker = nonwearMarkers[selectedPeriodIndex];
-              if (marker?.startTimestamp != null) {
-                updateMarker("nonwear", selectedPeriodIndex, {
-                  startTimestamp: marker.startTimestamp - EPOCH_DURATION_SEC,
-                });
-              }
+            const marker = getMarker();
+            if (markerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.onsetTimestamp != null) {
+              updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: marker.onsetTimestamp - EPOCH_DURATION_SEC });
+            } else if (marker && "startTimestamp" in marker && marker.startTimestamp != null) {
+              updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: marker.startTimestamp - EPOCH_DURATION_SEC });
             }
           }
           break;
@@ -97,32 +91,16 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
           // Move onset/start right by 1 epoch
           if (selectedPeriodIndex !== null) {
             e.preventDefault();
-            if (markerMode === "sleep") {
-              const marker = sleepMarkers[selectedPeriodIndex];
-              if (
-                marker?.onsetTimestamp != null &&
-                marker?.offsetTimestamp != null
-              ) {
-                const newOnset = marker.onsetTimestamp + EPOCH_DURATION_SEC;
-                // Don't allow onset to go past offset
-                if (newOnset < marker.offsetTimestamp) {
-                  updateMarker("sleep", selectedPeriodIndex, {
-                    onsetTimestamp: newOnset,
-                  });
-                }
+            const marker = getMarker();
+            if (markerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.onsetTimestamp != null && marker.offsetTimestamp != null) {
+              const newOnset = marker.onsetTimestamp + EPOCH_DURATION_SEC;
+              if (newOnset < marker.offsetTimestamp) {
+                updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: newOnset });
               }
-            } else {
-              const marker = nonwearMarkers[selectedPeriodIndex];
-              if (
-                marker?.startTimestamp != null &&
-                marker?.endTimestamp != null
-              ) {
-                const newStart = marker.startTimestamp + EPOCH_DURATION_SEC;
-                if (newStart < marker.endTimestamp) {
-                  updateMarker("nonwear", selectedPeriodIndex, {
-                    startTimestamp: newStart,
-                  });
-                }
+            } else if (marker && "startTimestamp" in marker && marker.startTimestamp != null && marker.endTimestamp != null) {
+              const newStart = marker.startTimestamp + EPOCH_DURATION_SEC;
+              if (newStart < marker.endTimestamp) {
+                updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: newStart });
               }
             }
           }
@@ -133,32 +111,16 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
           // Move offset/end left by 1 epoch
           if (selectedPeriodIndex !== null) {
             e.preventDefault();
-            if (markerMode === "sleep") {
-              const marker = sleepMarkers[selectedPeriodIndex];
-              if (
-                marker?.onsetTimestamp != null &&
-                marker?.offsetTimestamp != null
-              ) {
-                const newOffset = marker.offsetTimestamp - EPOCH_DURATION_SEC;
-                // Don't allow offset to go before onset
-                if (newOffset > marker.onsetTimestamp) {
-                  updateMarker("sleep", selectedPeriodIndex, {
-                    offsetTimestamp: newOffset,
-                  });
-                }
+            const marker = getMarker();
+            if (markerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.onsetTimestamp != null && marker.offsetTimestamp != null) {
+              const newOffset = marker.offsetTimestamp - EPOCH_DURATION_SEC;
+              if (newOffset > marker.onsetTimestamp) {
+                updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: newOffset });
               }
-            } else {
-              const marker = nonwearMarkers[selectedPeriodIndex];
-              if (
-                marker?.startTimestamp != null &&
-                marker?.endTimestamp != null
-              ) {
-                const newEnd = marker.endTimestamp - EPOCH_DURATION_SEC;
-                if (newEnd > marker.startTimestamp) {
-                  updateMarker("nonwear", selectedPeriodIndex, {
-                    endTimestamp: newEnd,
-                  });
-                }
+            } else if (marker && "startTimestamp" in marker && marker.startTimestamp != null && marker.endTimestamp != null) {
+              const newEnd = marker.endTimestamp - EPOCH_DURATION_SEC;
+              if (newEnd > marker.startTimestamp) {
+                updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: newEnd });
               }
             }
           }
@@ -169,20 +131,11 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
           // Move offset/end right by 1 epoch
           if (selectedPeriodIndex !== null) {
             e.preventDefault();
-            if (markerMode === "sleep") {
-              const marker = sleepMarkers[selectedPeriodIndex];
-              if (marker?.offsetTimestamp != null) {
-                updateMarker("sleep", selectedPeriodIndex, {
-                  offsetTimestamp: marker.offsetTimestamp + EPOCH_DURATION_SEC,
-                });
-              }
-            } else {
-              const marker = nonwearMarkers[selectedPeriodIndex];
-              if (marker?.endTimestamp != null) {
-                updateMarker("nonwear", selectedPeriodIndex, {
-                  endTimestamp: marker.endTimestamp + EPOCH_DURATION_SEC,
-                });
-              }
+            const marker = getMarker();
+            if (markerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.offsetTimestamp != null) {
+              updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: marker.offsetTimestamp + EPOCH_DURATION_SEC });
+            } else if (marker && "startTimestamp" in marker && marker.endTimestamp != null) {
+              updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: marker.endTimestamp + EPOCH_DURATION_SEC });
             }
           }
           break;
@@ -265,16 +218,12 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
       markerMode,
       creationMode,
       selectedPeriodIndex,
-      sleepMarkers,
-      nonwearMarkers,
       cancelMarkerCreation,
       deleteMarker,
       updateMarker,
       navigateDate,
       viewModeHours,
       setViewModeHours,
-      setSleepMarkers,
-      setNonwearMarkers,
       undo,
       redo,
       onSave,

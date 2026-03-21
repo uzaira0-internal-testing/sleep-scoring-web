@@ -7,7 +7,7 @@ import { useCapabilitiesStore } from "@/store/capabilities-store";
 import { useTheme } from "@/components/theme-provider";
 import { useDataSource } from "@/contexts/data-source-context";
 import { getApiBase } from "@/api/client";
-import type { ConsensusBallotResponse, MarkersWithMetricsResponse } from "@/api/types";
+import type { ConsensusBallotResponse } from "@/api/types";
 import { detectSleepOnsetOffset } from "@/utils/sleep-rules";
 import { getDetectionRuleParams } from "@/constants/options";
 import { hexToRgba, markerColorPair, overlayBorderColor } from "@/lib/color-themes";
@@ -86,26 +86,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
   const colorTheme = useSleepScoringStore((state) => state.colorTheme);
   const { currentDate } = useDates();
   const serverAvailable = useCapabilitiesStore((state) => state.serverAvailable);
-
-  // Fetch markers with metrics for sleep rule arrows (server-only)
-  useQuery({
-    queryKey: ["markers", currentFileId, currentDate, username || "anonymous"],
-    queryFn: async () => {
-      if (!currentFileId || !currentDate) return null;
-      const response = await fetch(
-        `${getApiBase()}/markers/${currentFileId}/${currentDate}`,
-        {
-          headers: {
-            ...(sitePassword ? { "X-Site-Password": sitePassword } : {}),
-            "X-Username": username || "anonymous",
-          },
-        }
-      );
-      if (!response.ok) throw new Error(`Failed to fetch markers: ${response.status}`);
-      return response.json() as Promise<MarkersWithMetricsResponse>;
-    },
-    enabled: serverAvailable && !!currentFileId && !!currentDate,
-  });
 
   // Fetch adjacent day markers for continuity display (via DataSource for local/server parity)
   const { data: adjacentMarkersData } = useQuery({
