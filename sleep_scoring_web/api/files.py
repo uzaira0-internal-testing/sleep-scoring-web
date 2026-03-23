@@ -973,7 +973,7 @@ async def backfill_participant_ids(
     return BackfillResponse(updated=updated, total_files=eligible_total)
 
 
-@router.get("/{file_id}/dates")
+@router.get("/{file_id}/dates", response_model=list[str])
 async def get_file_dates(
     file_id: int,
     db: DbSession,

@@ -8,6 +8,7 @@ because FastAPI's dependency injection needs actual types, not string
 annotations. Using Annotated types requires runtime resolution.
 """
 
+import bisect
 import logging
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Annotated, Any, Final
@@ -390,17 +391,10 @@ async def get_markers(
                 if marker.onset_timestamp is None or marker.offset_timestamp is None:
                     continue
 
-                onset_idx = None
-                offset_idx = None
-                for i, ts in enumerate(timestamps_float):
-                    if onset_idx is None and ts >= marker.onset_timestamp:
-                        onset_idx = i
-                    if ts <= marker.offset_timestamp:
-                        offset_idx = i
-                    elif ts > marker.offset_timestamp:
-                        break
+                onset_idx = bisect.bisect_left(timestamps_float, marker.onset_timestamp)
+                offset_idx = bisect.bisect_right(timestamps_float, marker.offset_timestamp) - 1
 
-                if onset_idx is None or offset_idx is None:
+                if onset_idx >= len(timestamps_float) or offset_idx < 0:
                     continue
 
                 try:
@@ -1011,18 +1005,11 @@ async def _calculate_and_store_metrics(
             if not marker.is_complete or marker.onset_timestamp is None or marker.offset_timestamp is None:
                 continue
 
-            # Find indices for this period
-            onset_idx = None
-            offset_idx = None
-            for i, ts in enumerate(timestamps_float):
-                if onset_idx is None and ts >= marker.onset_timestamp:
-                    onset_idx = i
-                if ts <= marker.offset_timestamp:
-                    offset_idx = i
-                elif ts > marker.offset_timestamp:
-                    break
+            # Find indices for this period (O(log n) via bisect)
+            onset_idx = bisect.bisect_left(timestamps_float, marker.onset_timestamp)
+            offset_idx = bisect.bisect_right(timestamps_float, marker.offset_timestamp) - 1
 
-            if onset_idx is None or offset_idx is None:
+            if onset_idx >= len(timestamps_float) or offset_idx < 0:
                 logger.warning(
                     "Could not find indices for marker period %d (onset=%s, offset=%s)",
                     marker_num,

@@ -328,8 +328,13 @@ export class ServerDataSource implements DataSource {
   }
 
   async getDiaryEntry(fileId: number, date: string): Promise<DiaryEntryData | null> {
-    const all = await this.listDiaryEntries(fileId);
-    return all.find((e) => e.analysisDate === date) ?? null;
+    const response = await fetch(`${getApiBase()}/diary/${fileId}/${date}`, {
+      headers: this.getHeaders(),
+    });
+    if (!response.ok) return null;
+    const entry = await response.json();
+    if (!entry) return null;
+    return this.mapDiaryEntry(fileId, entry);
   }
 
   async autoScore(fileId: number, date: string, options: AutoScoreOptions): Promise<AutoScoreResult> {

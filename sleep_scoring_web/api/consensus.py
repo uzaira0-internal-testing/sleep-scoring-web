@@ -608,11 +608,7 @@ async def get_consensus_ballot(
     username: Username,
 ) -> ConsensusBallotResponse:
     """Get vote-ready candidate marker sets with aggregate counts."""
-    await require_file_access(db, username, file_id)
-
-    file_result = await db.execute(select(FileModel).where(FileModel.id == file_id))
-    if not file_result.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    await require_file_access(db, username, file_id)  # also verifies file exists
 
     return await _build_ballot_response(
         db,

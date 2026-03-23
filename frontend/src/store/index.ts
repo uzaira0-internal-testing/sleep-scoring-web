@@ -109,6 +109,7 @@ interface MarkerSnapshot {
   notes: string;
   selectedPeriodIndex: number | null;
   timestamp: number;
+  editGeneration: number;
 }
 
 /**
@@ -866,7 +867,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
 
         // Undo/redo actions
         pushMarkerSnapshot: () => {
-          const { sleepMarkers, nonwearMarkers, isNoSleep, needsConsensus, notes, selectedPeriodIndex, markerHistory, markerHistoryIndex } = get();
+          const { sleepMarkers, nonwearMarkers, isNoSleep, needsConsensus, notes, selectedPeriodIndex, markerHistory, markerHistoryIndex, _editGeneration } = get();
           const snapshot: MarkerSnapshot = {
             sleepMarkers: structuredClone(sleepMarkers),
             nonwearMarkers: structuredClone(nonwearMarkers),
@@ -875,6 +876,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             notes,
             selectedPeriodIndex,
             timestamp: Date.now(),
+            editGeneration: _editGeneration,
           };
           // Truncate any future history (if we undid and now making new changes)
           const newHistory = markerHistory.slice(0, markerHistoryIndex + 1);
@@ -888,7 +890,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
 
         undo: () => {
           auditLog.log("undo");
-          const { markerHistory, markerHistoryIndex, sleepMarkers, nonwearMarkers, isNoSleep, needsConsensus, notes, selectedPeriodIndex } = get();
+          const { markerHistory, markerHistoryIndex, sleepMarkers, nonwearMarkers, isNoSleep, needsConsensus, notes, selectedPeriodIndex, _editGeneration } = get();
           if (markerHistoryIndex < 0) return;
 
           // If at the end and haven't saved current state, push current first
@@ -901,11 +903,11 @@ export const useSleepScoringStore = create<SleepScoringState>()(
               notes,
               selectedPeriodIndex,
               timestamp: Date.now(),
+              editGeneration: _editGeneration,
             };
-            // Only push if different from last snapshot
+            // Only push if different from last snapshot (compare edit generation instead of JSON.stringify)
             const last = markerHistory[markerHistoryIndex];
-            if (JSON.stringify(last?.sleepMarkers) !== JSON.stringify(currentSnapshot.sleepMarkers) ||
-                JSON.stringify(last?.nonwearMarkers) !== JSON.stringify(currentSnapshot.nonwearMarkers)) {
+            if (!last || last.editGeneration !== _editGeneration) {
               const newHistory = [...markerHistory, currentSnapshot];
               set({ markerHistory: newHistory, markerHistoryIndex: newHistory.length - 1 });
               // Now undo from the newly pushed position
