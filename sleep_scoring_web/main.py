@@ -41,7 +41,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
-    from sleep_scoring_web.constants import BLAS_NUM_THREADS, GZIP_MIN_SIZE_BYTES, STALE_UPLOAD_TIMEOUT_HOURS
+    from sleep_scoring_web.constants import BLAS_NUM_THREADS, STALE_UPLOAD_TIMEOUT_HOURS
 
     # Set BLAS/OpenMP threading before any numpy/scipy import
     os.environ.setdefault("OMP_NUM_THREADS", BLAS_NUM_THREADS)

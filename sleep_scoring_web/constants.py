@@ -49,12 +49,13 @@ def get_analysis_window(analysis_date: date) -> tuple[datetime, datetime]:
 
 def get_context_window(analysis_date: date) -> tuple[datetime, datetime]:
     """
-    Return the 48-hour context window centred on the analysis day.
+    Return the 48-hour context window for algorithm scoring.
 
-    Returns ``(start, end)`` where *start* is noon minus 12 h and *end* is
-    noon plus 36 h, giving 48 h total.
+    Returns ``(start, end)`` where *start* is the previous day's noon
+    (12 h before the analysis window) and *end* is 48 h later.
+    This matches the original pattern: midnight - 12h to midnight + 36h.
     """
-    noon = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=ANALYSIS_NOON_OFFSET_HOURS)
-    start = noon - timedelta(hours=ANALYSIS_NOON_OFFSET_HOURS)
-    end = noon + timedelta(hours=ANALYSIS_CONTEXT_HOURS - ANALYSIS_NOON_OFFSET_HOURS)
+    midnight = datetime.combine(analysis_date, datetime.min.time())
+    start = midnight - timedelta(hours=ANALYSIS_NOON_OFFSET_HOURS)
+    end = start + timedelta(hours=ANALYSIS_CONTEXT_HOURS)
     return start, end

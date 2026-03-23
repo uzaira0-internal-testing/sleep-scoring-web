@@ -150,9 +150,7 @@ export const ScoringToolbar = React.memo(function ScoringToolbar({
           disabled={!currentFileId || !currentDate || autoScoreMutation.isPending || isNoSleep || diaryBlocksAutoScore || studySettingsLoading}
           title={studySettingsLoading ? "Loading study settings..." : diaryBlocksAutoScore ? "Cannot auto-score: no diary data for this date" : "Automatically detect and suggest sleep marker placements"}
         >
-          {studySettingsLoading ? (
-            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-          ) : autoScoreMutation.isPending ? (
+          {studySettingsLoading || autoScoreMutation.isPending ? (
             <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
           ) : (
             <Wand2 className="h-3.5 w-3.5 mr-1" />

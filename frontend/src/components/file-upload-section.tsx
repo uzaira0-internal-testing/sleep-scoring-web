@@ -54,10 +54,12 @@ export function FileUploadSection({ files, confirm }: FileUploadSectionProps) {
     if (activityFileRef.current) activityFileRef.current.value = "";
     if (activityFolderRef.current) activityFolderRef.current.value = "";
 
+    // Snapshot replace flag at submit time to avoid stale closure if user toggles mid-upload
+    const replace = replaceOnUpload;
     const hasLargeFile = csvFiles.some((f) => f.size > TUS_SIZE_THRESHOLD);
     if (hasLargeFile && csvFiles.length === 1) {
       tusReset();
-      tusUpload(csvFiles, replaceOnUpload);
+      tusUpload(csvFiles, replace);
       return;
     }
 
@@ -94,7 +96,7 @@ export function FileUploadSection({ files, confirm }: FileUploadSectionProps) {
           `Uploading (resumable) ${uploaded + failed + 1}/${csvFiles.length}: ${file.name}`
         );
         try {
-          await tusUpload([file], replaceOnUpload);
+          await tusUpload([file], replace);
           uploaded++;
         } catch (err) {
           failed++;
