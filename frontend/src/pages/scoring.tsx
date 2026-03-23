@@ -761,6 +761,7 @@ export function ScoringPage() {
                       className="h-7 w-7"
                       onClick={() => setIsConsensusCollapsed(false)}
                       title="Expand consensus panel"
+                      aria-label="Expand consensus panel"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
@@ -791,6 +792,7 @@ export function ScoringPage() {
                     className="absolute right-2 top-2 z-10 h-6 w-6"
                     onClick={() => setIsConsensusCollapsed(true)}
                     title="Collapse consensus panel to the right"
+                    aria-label="Collapse consensus panel"
                   >
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Button>

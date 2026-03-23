@@ -29,6 +29,7 @@ export function ColorThemePopover() {
           variant="ghost"
           size="icon"
           title="Color theme"
+          aria-label="Color theme"
           data-testid="color-theme-btn"
         >
           <Palette className="h-4 w-4" />

@@ -129,6 +129,7 @@ export function ColorLegendButton({ onClick }: { onClick: () => void }) {
       size="icon"
       onClick={onClick}
       title="Show color legend and keyboard shortcuts"
+      aria-label="Show color legend"
       data-testid="color-legend-btn"
     >
       <HelpCircle className="h-4 w-4" />

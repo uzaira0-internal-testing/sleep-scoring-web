@@ -1584,6 +1584,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           onClick={handleResetZoom}
           className="absolute top-2 right-2 z-20 px-2 py-1 text-xs font-medium rounded-md border shadow-sm bg-background/90 hover:bg-muted transition-colors"
           title="Reset zoom to full view"
+          aria-label="Reset zoom to full view"
         >
           Reset Zoom
         </button>
