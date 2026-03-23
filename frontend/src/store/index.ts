@@ -544,13 +544,10 @@ export const useSleepScoringStore = create<SleepScoringState>()(
           set({ markerMode: mode, creationMode: "idle", pendingOnsetTimestamp: null }),
 
         handlePlotClick: (timestamp) => {
-          const { markerMode, creationMode, pendingOnsetTimestamp, sleepMarkers, nonwearMarkers, isNoSleep, pushMarkerSnapshot, timestamps } = get();
+          const { markerMode, creationMode, pendingOnsetTimestamp, sleepMarkers, nonwearMarkers, isNoSleep, pushMarkerSnapshot } = get();
 
-          // Clamp to actual data range (both timestamp and timestamps[] are seconds)
-          let ts = timestamp;
-          if (timestamps.length > 0) {
-            ts = Math.max(timestamps[0]!, Math.min(timestamps[timestamps.length - 1]!, ts));
-          }
+          // Timestamp is already clamped by the plot's x-axis range
+          const ts = timestamp;
 
           if (creationMode === "idle") {
             // Check marker limits before starting creation
@@ -667,17 +664,8 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             get().pushMarkerSnapshot();
             auditLog.log("marker_adjusted", { category, periodIndex: index, updates });
           }
-          // Clamp timestamp fields to actual data range (both timestamps and markers are seconds)
-          const { timestamps } = get();
+          // Updates are already clamped by the plot's x-axis range during drag
           const clamped = { ...updates };
-          if (timestamps.length > 0) {
-            const minSec = timestamps[0]!;
-            const maxSec = timestamps[timestamps.length - 1]!;
-            if (clamped.onsetTimestamp !== undefined) clamped.onsetTimestamp = Math.max(minSec, Math.min(maxSec, clamped.onsetTimestamp));
-            if (clamped.offsetTimestamp !== undefined) clamped.offsetTimestamp = Math.max(minSec, Math.min(maxSec, clamped.offsetTimestamp));
-            if (clamped.startTimestamp !== undefined) clamped.startTimestamp = Math.max(minSec, Math.min(maxSec, clamped.startTimestamp));
-            if (clamped.endTimestamp !== undefined) clamped.endTimestamp = Math.max(minSec, Math.min(maxSec, clamped.endTimestamp));
-          }
           if (category === "sleep") {
             const { sleepMarkers } = get();
             const updated = sleepMarkers.map((m, i) =>
