@@ -9,11 +9,6 @@ interface DateNavigatorProps {
   dateStatusMap: Map<string, DateStatus>;
   consensusOnly: boolean;
   isLocal: boolean;
-  complexityBreakdown: {
-    complexity_pre: number | null;
-    complexity_post: number | null;
-    features: Record<string, unknown>;
-  } | null;
   onComplexityBreakdown: (data: {
     complexity_pre: number | null;
     complexity_post: number | null;

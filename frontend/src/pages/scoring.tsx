@@ -660,7 +660,6 @@ export function ScoringPage() {
           dateStatusMap={dateStatusMap}
           consensusOnly={consensusOnly}
           isLocal={isLocal}
-          complexityBreakdown={complexityBreakdown}
           onComplexityBreakdown={setComplexityBreakdown}
         />
 

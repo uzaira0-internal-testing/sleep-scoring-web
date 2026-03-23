@@ -457,7 +457,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             const timeStr = new Date(onsetTs * 1000).toLocaleTimeString('en-US', {
               hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC',
             });
-            createSleepRuleArrow(wrapper, plotLeft, onsetPx, arrowY, colorTheme.onset, 'onset', selIdx,
+            createSleepRuleArrow(plotLeft, onsetPx, arrowY, colorTheme.onset, 'onset', selIdx,
               timeStr, 'Sleep Onset', `${ruleParams.onsetN} consecutive sleep epochs`, getOrCreate);
           }
         }
@@ -469,7 +469,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
             const timeStr = new Date(offsetTs * 1000).toLocaleTimeString('en-US', {
               hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC',
             });
-            createSleepRuleArrow(wrapper, plotLeft, offsetPx, arrowY, colorTheme.offset, 'offset', selIdx,
+            createSleepRuleArrow(plotLeft, offsetPx, arrowY, colorTheme.offset, 'offset', selIdx,
               timeStr, 'Sleep Offset', offsetRuleText, getOrCreate);
           }
         }
@@ -478,7 +478,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
     /** Create a sleep rule arrow with shaft, head, and label - matching desktop ArrowItem style */
     function createSleepRuleArrow(
-      parent: HTMLElement, pLeft: number, px: number, y: number,
+      pLeft: number, px: number, y: number,
       color: string, type: string, idx: number,
       timeStr: string, titleText: string, ruleText: string,
       getOrCreateFn: typeof getOrCreate,
@@ -489,8 +489,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const ARROW_TAIL_LEN = 25;
       const ARROW_TAIL_WIDTH = 3;
       const ARROW_TOTAL_HEIGHT = ARROW_HEAD_LEN + ARROW_TAIL_LEN; // 40px
-
-      void parent; // wrapper is accessed via getOrCreateFn
 
       // Arrow container - positions the arrow pointing downward
       const arrowKey = `sleep-rule-arrow-${type}-${idx}`;
@@ -802,8 +800,10 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       inner.style.transform = 'translateX(-50%)';
       line.appendChild(inner);
 
-      // Drag handler — only attached on creation since timestamp is baked into key
-      attachDragHandler(line, inner, u, wrapper, type, index, edge, plotLeft, plotTop, plotWidth, plotHeight, isSelected, timestampSec);
+      // Drag handler — only attached on creation since timestamp is baked into key.
+      // Layout values (plotLeft/Top/Width/Height) are read fresh from uPlot inside
+      // the handler to avoid stale closure after resize/zoom.
+      attachDragHandler(line, inner, u, wrapper, type, index, edge, isSelected, timestampSec);
     }
     line.style.left = (plotLeft + px - 6) + 'px';
     line.style.top = plotTop + 'px';
@@ -862,13 +862,19 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     type: 'sleep' | 'nonwear',
     index: number,
     edge: 'start' | 'end',
-    plotLeft: number,
-    plotTop: number,
-    plotWidth: number,
-    plotHeight: number,
     isSelected: boolean,
     timestampSec: number | undefined,
   ) {
+    // Read layout from uPlot at drag time to avoid stale values after resize/zoom
+    const getLayout = () => {
+      const dpr = devicePixelRatio || 1;
+      return {
+        plotLeft: u.bbox.left / dpr,
+        plotTop: u.bbox.top / dpr,
+        plotWidth: u.bbox.width / dpr,
+        plotHeight: u.bbox.height / dpr,
+      };
+    };
     // Drag state
     let isDragging = false;
     let dragStartX = 0;
@@ -892,6 +898,9 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const cachedOnsetLabel = wrapper.querySelector('.sleep-rule-label.onset') as HTMLElement | null;
       const cachedOffsetArrow = wrapper.querySelector('.sleep-rule-arrow.offset') as HTMLElement | null;
       const cachedOffsetLabel = wrapper.querySelector('.sleep-rule-label.offset') as HTMLElement | null;
+
+      // Read fresh layout at drag start (not from stale closure)
+      let { plotLeft, plotTop, plotWidth, plotHeight } = getLayout();
 
       // Pending drag values — updated cheaply on every mousemove, applied
       // once per rAF frame so DOM mutations are capped at display refresh rate

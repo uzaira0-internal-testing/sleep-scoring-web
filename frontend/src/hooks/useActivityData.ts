@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSleepScoringStore } from "@/store";
 import { useDataSource } from "@/contexts/data-source-context";
@@ -51,7 +52,7 @@ export function useActivityData(): {
     enabled: !!currentFileId && !!currentDate,
   });
 
-  return {
+  return useMemo(() => ({
     timestamps: data?.timestamps ?? EMPTY_ARRAY,
     axisX: data?.axisX ?? EMPTY_ARRAY,
     axisY: data?.axisY ?? EMPTY_ARRAY,
@@ -64,5 +65,5 @@ export function useActivityData(): {
     preferredDisplayColumn,
     viewStart: data?.viewStart ?? null,
     viewEnd: data?.viewEnd ?? null,
-  };
+  }), [data, isLoading, preferredDisplayColumn]);
 }

@@ -5,7 +5,7 @@ import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useSleepScoringStore, useMarkers } from "@/store";
-import { MARKER_TYPES, PERIOD_GUIDER_OPTIONS, PERIOD_GUIDERS, type PeriodGuiderType } from "@/api/types";
+import { MARKER_TYPES, PERIOD_GUIDER_OPTIONS, type PeriodGuiderType } from "@/api/types";
 import { MarkerTimeEditor } from "@/components/marker-time-editor";
 import type { UseMutationResult } from "@tanstack/react-query";
 import type { AutoScoreResult, AutoNonwearResult } from "@/services/data-source";
