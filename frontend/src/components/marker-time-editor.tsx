@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useSleepScoringStore, useMarkers } from "@/store";
@@ -9,7 +9,7 @@ import { resolveEditedTimeToTimestamp } from "@/utils/time-edit";
  * Inline time editing inputs for sleep onset/offset and nonwear start/end.
  * Reads marker state directly from the store to avoid prop drilling.
  */
-export const MarkerTimeEditor = React.memo(function MarkerTimeEditor() {
+export function MarkerTimeEditor() {
   const [editingOnset, setEditingOnset] = useState<string | null>(null);
   const [editingOffset, setEditingOffset] = useState<string | null>(null);
   const [editingNwStart, setEditingNwStart] = useState<string | null>(null);
@@ -188,4 +188,4 @@ export const MarkerTimeEditor = React.memo(function MarkerTimeEditor() {
   }
 
   return null;
-});
+}

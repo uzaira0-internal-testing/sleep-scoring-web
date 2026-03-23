@@ -6,6 +6,7 @@
  */
 import { queryOptions } from "@tanstack/react-query";
 import { fetchWithAuth, getApiBase, filesApi, settingsApi, assignmentApi, autoScoreApi, pipelineApi } from "@/api/client";
+import type { DataSource } from "@/services/data-source";
 
 // ── Files ──────────────────────────────────────────────────────────
 
@@ -74,6 +75,29 @@ export function autoScoreBatchStatusQueryOptions() {
   return queryOptions({
     queryKey: ["auto-score-batch-status"] as const,
     queryFn: () => autoScoreApi.getBatchStatus(),
+  });
+}
+
+// ── Pipeline Discovery ───────────────────────────────────────────
+
+// ── Activity Data ───────────────────────────────────────────────
+
+export function activityDataQueryOptions(
+  dataSource: DataSource,
+  fileId: number | null,
+  date: string | null,
+  viewModeHours: number,
+  algorithm: string,
+  source: "local" | "server",
+) {
+  return queryOptions({
+    queryKey: ["activity", fileId, date, viewModeHours, algorithm, source] as const,
+    queryFn: () =>
+      dataSource.loadActivityData(fileId!, date!, {
+        algorithm,
+        viewHours: viewModeHours,
+      }),
+    enabled: !!fileId && !!date,
   });
 }
 

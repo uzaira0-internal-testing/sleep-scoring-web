@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSleepScoringStore } from "@/store";
 import { useDataSource } from "@/contexts/data-source-context";
+import { activityDataQueryOptions } from "@/api/query-options";
 import type { ActivityData } from "@/services/data-source";
 
 /** Empty sentinel to avoid re-creating empty arrays on every render. */
@@ -12,9 +13,7 @@ const EMPTY_SENSOR_NONWEAR: ActivityData["sensorNonwearPeriods"] = [];
  * Hook that fetches and exposes activity data via React Query.
  *
  * This is the single source of truth for activity data -- no copy in Zustand.
- * The query key matches the one in scoring.tsx so the cache is shared:
- * both the scoring page (which triggers the fetch) and ActivityPlot (which
- * reads the data) hit the same cache entry.
+ * Uses shared activityDataQueryOptions so the cache key is defined in one place.
  */
 export function useActivityData(): {
   timestamps: number[];
@@ -32,25 +31,15 @@ export function useActivityData(): {
 } {
   const { dataSource, isLocal } = useDataSource();
 
-  // Read store values needed for query key + display preference
   const currentFileId = useSleepScoringStore((s) => s.currentFileId);
-  const currentDateIndex = useSleepScoringStore((s) => s.currentDateIndex);
-  const availableDates = useSleepScoringStore((s) => s.availableDates);
+  const currentDate = useSleepScoringStore((s) => s.availableDates[s.currentDateIndex] ?? null);
   const viewModeHours = useSleepScoringStore((s) => s.viewModeHours);
   const currentAlgorithm = useSleepScoringStore((s) => s.currentAlgorithm);
   const preferredDisplayColumn = useSleepScoringStore((s) => s.preferredDisplayColumn);
 
-  const currentDate = availableDates[currentDateIndex] ?? null;
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["activity", currentFileId, currentDate, viewModeHours, currentAlgorithm, isLocal ? "local" : "server"],
-    queryFn: () =>
-      dataSource.loadActivityData(currentFileId!, currentDate!, {
-        algorithm: currentAlgorithm,
-        viewHours: viewModeHours,
-      }),
-    enabled: !!currentFileId && !!currentDate,
-  });
+  const { data, isLoading } = useQuery(
+    activityDataQueryOptions(dataSource, currentFileId, currentDate, viewModeHours, currentAlgorithm, isLocal ? "local" : "server"),
+  );
 
   return useMemo(() => ({
     timestamps: data?.timestamps ?? EMPTY_ARRAY,

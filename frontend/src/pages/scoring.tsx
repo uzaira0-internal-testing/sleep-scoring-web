@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
 import { Panel, Group, Separator, useDefaultLayout } from "react-resizable-panels";
 import { ChevronLeft, ChevronRight, Loader2, FileText, Check, CircleDot, AlertCircle, GripVertical, GripHorizontal, Wand2 } from "lucide-react";
@@ -23,7 +23,7 @@ import { ScoringToolbar } from "@/components/scoring-toolbar";
 // MetricsPanel and ConsensusPanel hidden by default — available via popout if needed
 import { useKeyboardShortcuts, useMarkerAutoSave, useMarkerLoad, useColorThemeSync } from "@/hooks";
 import { getApiBase, fetchWithAuth, settingsApi } from "@/api/client";
-import { studySettingsQueryOptions } from "@/api/query-options";
+import { studySettingsQueryOptions, activityDataQueryOptions } from "@/api/query-options";
 import { MARKER_TYPES, PERIOD_GUIDERS, type DateStatus, type ConsensusBallotCandidate } from "@/api/types";
 import { formatTime } from "@/utils/formatters";
 import {
@@ -413,9 +413,10 @@ export function ScoringPage() {
     refetchIntervalInBackground: false,
   });
 
-  // Build a map for quick lookup
-  const dateStatusMap = new Map(
-    (datesStatus ?? []).map((d) => [d.date, d])
+  // Build a map for quick lookup (memoized to preserve reference for React.memo children)
+  const dateStatusMap = useMemo(
+    () => new Map((datesStatus ?? []).map((d) => [d.date, d])),
+    [datesStatus],
   );
 
   // Diary availability check for auto-score.
@@ -480,15 +481,9 @@ export function ScoringPage() {
   }, [autoScoreResult]);
 
   // Fetch activity data for current date with selected algorithm via DataSource
-  const { isLoading: activityLoading, error: activityError } = useQuery({
-    queryKey: ["activity", currentFileId, currentDate, viewModeHours, currentAlgorithm, isLocal ? "local" : "server"],
-    queryFn: () =>
-      dataSource.loadActivityData(currentFileId!, currentDate!, {
-        algorithm: currentAlgorithm,
-        viewHours: viewModeHours,
-      }),
-    enabled: !!currentFileId && !!currentDate,
-  });
+  const { isLoading: activityLoading, error: activityError } = useQuery(
+    activityDataQueryOptions(dataSource, currentFileId, currentDate, viewModeHours, currentAlgorithm, isLocal ? "local" : "server"),
+  );
 
   // Ghost cross-fade: keep plot visible while loading, dim after 300ms if still loading
   useEffect(() => {
