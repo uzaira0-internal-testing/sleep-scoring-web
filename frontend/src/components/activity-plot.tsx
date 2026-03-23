@@ -222,7 +222,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
      * Elements are reused if their key exists and they're still in the wrapper;
      * handlers are re-bound.
      */
-    function getOrCreate(key: string, _tag: 'div'): { el: HTMLElement; created: boolean } {
+    function getOrCreate(key: string): { el: HTMLElement; created: boolean } {
       desiredKeys.add(key);
       const existing = prevElements.get(key);
       if (existing && existing.parentNode === wrapper) {
@@ -233,7 +233,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       if (existing && existing.parentNode === wrapper) {
         existing.remove();
       }
-      const el = document.createElement(tag);
+      const el = document.createElement('div');
       el.dataset.key = key;
       nextElements.set(key, el);
       wrapper.appendChild(el);
@@ -286,7 +286,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const visibleEndPx = Math.min(plotWidth, endPx);
       if (visibleEndPx > visibleStartPx) {
         const regionKey = `sleep-${index}-region`;
-        const { el: sleepRegion, created } = getOrCreate(regionKey, 'div');
+        const { el: sleepRegion, created } = getOrCreate(regionKey);
         if (created) {
           sleepRegion.className = `marker-region sleep`;
           sleepRegion.dataset.markerId = String(index);
@@ -353,7 +353,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         const visibleEndPx = Math.min(plotWidth, endPx);
 
         const sensorKey = `sensor-nw-${index}`;
-        const { el: sensorRegion, created } = getOrCreate(sensorKey, 'div');
+        const { el: sensorRegion, created } = getOrCreate(sensorKey);
         if (created) {
           sensorRegion.className = 'marker-region sensor-nonwear';
           sensorRegion.dataset.sensorIndex = String(index);
@@ -386,7 +386,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         const visibleEndPx = Math.min(plotWidth, endPx);
 
         const choiKey = `choi-nw-${index}`;
-        const { el: choiRegion, created } = getOrCreate(choiKey, 'div');
+        const { el: choiRegion, created } = getOrCreate(choiKey);
         if (created) {
           choiRegion.className = 'marker-region choi-nonwear';
           choiRegion.dataset.choiIndex = String(index);
@@ -411,7 +411,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
       if (pendingPx >= -10 && pendingPx <= plotWidth + 10) {
         const pendingKey = `pending-${pendingTs}`;
-        const { el: pendingLine, created } = getOrCreate(pendingKey, 'div');
+        const { el: pendingLine, created } = getOrCreate(pendingKey);
         if (created) {
           pendingLine.className = 'marker-line pending';
           pendingLine.dataset.testid = 'marker-line-pending';
@@ -492,7 +492,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
       // Arrow container - positions the arrow pointing downward
       const arrowKey = `sleep-rule-arrow-${type}-${idx}`;
-      const { el: arrowContainer, created: arrowCreated } = getOrCreateFn(arrowKey, 'div');
+      const { el: arrowContainer, created: arrowCreated } = getOrCreateFn(arrowKey);
       if (arrowCreated) {
         arrowContainer.className = `marker-region sleep-rule-arrow ${type}`;
         arrowContainer.dataset.testid = `sleep-rule-arrow-${type}-${idx}`;
@@ -535,7 +535,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       }
 
       const labelKey = `sleep-rule-label-${type}-${idx}`;
-      const { el: label, created: labelCreated } = getOrCreateFn(labelKey, 'div');
+      const { el: label, created: labelCreated } = getOrCreateFn(labelKey);
       if (labelCreated) {
         label.className = `marker-region sleep-rule-label ${type}`;
         label.style.position = 'absolute';
@@ -635,7 +635,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           if (widthPx <= 0) return;
 
           const compRegionKey = `comp-${candidate.candidate_id}-${annIndex}-${markerIndex}`;
-          const { el: region, created } = getOrCreate(compRegionKey, 'div');
+          const { el: region, created } = getOrCreate(compRegionKey);
           if (created) {
             region.className = "marker-region comparison-overlay";
             region.dataset.testid = `comparison-region-${candidate.candidate_id}-${annIndex}-${markerIndex}`;
@@ -653,7 +653,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
           if (!labeled) {
             const compLabelKey = `comp-label-${candidate.candidate_id}-${annIndex}`;
-            const { el: label, created: labelCreated } = getOrCreate(compLabelKey, 'div');
+            const { el: label, created: labelCreated } = getOrCreate(compLabelKey);
             if (labelCreated) {
               label.className = "marker-region comparison-label";
               label.style.position = "absolute";
@@ -699,7 +699,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     plotLeft: number,
     plotTop: number,
     plotHeight: number,
-    getOrCreateFn: (key: string, tag: 'div') => { el: HTMLElement; created: boolean },
+    getOrCreateFn: (key: string) => { el: HTMLElement; created: boolean },
   ) {
     // Use distinct muted colors per day: previous = amber, next = cyan
     const dayColor = day === 'prev'
@@ -713,7 +713,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       : (isDark ? 'rgba(60, 160, 200, 0.8)' : 'rgba(20, 100, 140, 0.8)');
 
     const lineKey = `adj-${day}-${index}-${edge}-line`;
-    const { el: line, created: lineCreated } = getOrCreateFn(lineKey, 'div');
+    const { el: line, created: lineCreated } = getOrCreateFn(lineKey);
     if (lineCreated) {
       line.className = `marker-region adjacent-day-line ${day}-${edge}`;
       line.dataset.testid = `adjacent-line-${day}-${index}-${edge}`;
@@ -738,7 +738,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
 
     // Add small label at top of line
     const adjLabelKey = `adj-${day}-${index}-${edge}-label`;
-    const { el: label, created: labelCreated } = getOrCreateFn(adjLabelKey, 'div');
+    const { el: label, created: labelCreated } = getOrCreateFn(adjLabelKey);
     if (labelCreated) {
       label.className = `marker-region adjacent-day-label`;
       label.style.position = 'absolute';
@@ -774,12 +774,12 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     color: string,
     isSelected: boolean,
     timestampSec: number | undefined,
-    getOrCreateFn: (key: string, tag: 'div') => { el: HTMLElement; created: boolean },
+    getOrCreateFn: (key: string) => { el: HTMLElement; created: boolean },
   ) {
     // Marker line key encodes the timestamp so drag handlers are recreated
     // when marker data changes, but reused for position-only updates (zoom/pan).
     const lineKey = `${type}-${index}-${edge}-line-${timestampSec ?? 'none'}`;
-    const { el: line, created } = getOrCreateFn(lineKey, 'div');
+    const { el: line, created } = getOrCreateFn(lineKey);
     if (created) {
       line.className = `marker-line ${type}-${edge}`;
       line.dataset.testid = `marker-line-${type}-${index}-${edge}`;
@@ -817,7 +817,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     // Time label above the line
     if (timestampSec !== undefined) {
       const timeLabelKey = `${type}-${index}-${edge}-timelabel`;
-      const { el: timeLabel, created: timeLabelCreated } = getOrCreateFn(timeLabelKey, 'div');
+      const { el: timeLabel, created: timeLabelCreated } = getOrCreateFn(timeLabelKey);
       if (timeLabelCreated) {
         timeLabel.className = `marker-line time-label`;
         timeLabel.dataset.lineType = `${type}-${edge}`;
