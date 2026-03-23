@@ -60,7 +60,7 @@ export function AnalysisPage() {
   const caps = useAppCapabilities();
 
   // Server analysis (when server available)
-  const { data: serverData, isLoading: isLoadingServer } = useQuery({
+  const { data: serverData, isLoading: isLoadingServer, error: serverError } = useQuery({
     queryKey: ["analysis-summary", username || "anonymous"],
     queryFn: () => fetchWithAuth<AnalysisSummaryResponse>(`${getApiBase()}/analysis/summary`),
     enabled: isAuthenticated && caps.server,
@@ -151,6 +151,23 @@ export function AnalysisPage() {
           Cross-file summary statistics and scoring progress
         </p>
       </div>
+
+      {serverError && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3 text-destructive">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-medium">Failed to load server analysis data</p>
+                <p className="text-sm text-muted-foreground">
+                  {serverError instanceof Error ? serverError.message : "An unexpected error occurred."}
+                  {" "}Local data (if any) is still shown below.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Overall Progress */}
       <Card>

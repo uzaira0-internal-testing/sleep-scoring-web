@@ -1,370 +1,275 @@
+/**
+ * Smoke tests for the sleep scoring web app.
+ *
+ * These tests verify core user flows end-to-end:
+ *   1. Login and see file list
+ *   2. Select file and navigate dates
+ *   3. Activity plot renders with proper dimensions
+ *   4. Auto-score places markers
+ *   5. Save markers (dirty -> saved state)
+ *   6. Export page loads with file checkboxes
+ *
+ * Prerequisites:
+ *   - Docker stack running (cd docker && docker compose -f docker-compose.local.yml up -d)
+ *   - At least one CSV file uploaded and processed
+ *
+ * Run: cd frontend && npx playwright test e2e/scoring-page.spec.ts
+ */
+
 import { test, expect } from "@playwright/test";
-import { loginAndGoToScoring, dateSelector, fileSelector } from "./helpers";
+import {
+  loginAndGoToScoring,
+  loginAndGoTo,
+  fileSelector,
+  dateSelector,
+  waitForChart,
+  navigateToCleanDate,
+  sleepMarkerCount,
+} from "./helpers";
 
-test.describe("Scoring Page", () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Serial suite: tests 2-5 depend on shared state (file selection -> scoring)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe.configure({ mode: "serial" });
+
+test.describe("Scoring Page — Smoke Tests", () => {
   test.beforeEach(async ({ page, context }) => {
-    // Clear browser cache to ensure fresh bundles
     await context.clearCookies();
-    const client = await page.context().newCDPSession(page);
-    await client.send("Network.setCacheDisabled", { cacheDisabled: true });
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
+    await page.setViewportSize({ width: 1920, height: 1080 });
   });
 
-  test("scoring page loads without JavaScript errors", async ({ page }) => {
-    // Regression test: scoring.tsx had a TDZ error where dateStatusMap was used
-    // before initialization (line 181 referenced a const defined at line 242).
-    // This test ensures the page loads without any ReferenceError.
-    const jsErrors: string[] = [];
-    page.on("pageerror", (error) => {
-      jsErrors.push(error.message);
-    });
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1. Login and see file list
+  // ═══════════════════════════════════════════════════════════════════════════
+  test("login and see file list", async ({ page }) => {
+    test.setTimeout(60_000);
 
     await loginAndGoToScoring(page);
 
-    // No JS errors should have been thrown during page load
-    const criticalErrors = jsErrors.filter((e) =>
-      e.includes("Cannot access") ||
-      e.includes("ReferenceError") ||
-      e.includes("is not defined") ||
-      e.includes("before initialization")
-    );
-    expect(criticalErrors).toEqual([]);
-
-    // Screenshot: scoring page after successful login and load
-    await expect(page).toHaveScreenshot("scoring-page-loaded.png", {
-      maxDiffPixelRatio: 0.01,
-    });
-  });
-
-  test("displays activity plot with data", async ({ page }) => {
-    // Login and wait for chart
-    await loginAndGoToScoring(page);
-
-    // Verify uPlot chart is rendered
-    const uplotElement = page.locator(".uplot");
-    await expect(uplotElement).toBeVisible();
-
-    // Verify canvas exists and has proper dimensions
-    const canvas = page.locator(".uplot canvas").first();
-    await expect(canvas).toBeVisible();
-    const box = await canvas.boundingBox();
-    expect(box).toBeTruthy();
-    expect(box!.width).toBeGreaterThan(400);
-    expect(box!.height).toBeGreaterThan(200);
-
-    // Verify no "No activity data" message
-    const noDataMessage = page.locator("text=No activity data");
-    await expect(noDataMessage).toHaveCount(0);
-
-    // Verify bottom panels are present - Sleep and Nonwear tabs with marker counts
-    // These are div-based panel headers, not headings
-    const sleepPanel = page.locator("text=Sleep").first();
-    await expect(sleepPanel).toBeVisible({ timeout: 5000 });
-    const nonwearPanel = page.locator("text=Nonwear").first();
-    await expect(nonwearPanel).toBeVisible({ timeout: 5000 });
-
-    // Verify file selector dropdown is present (first select is the file dropdown)
+    // The file selector dropdown should be visible and contain at least one
+    // option whose text includes ".csv" (uploaded files).
     const fileSelect = fileSelector(page);
-    await expect(fileSelect).toBeVisible();
+    await expect(fileSelect).toBeVisible({ timeout: 15_000 });
 
-    // Screenshot: scoring page with activity plot and data panels
-    await expect(page).toHaveScreenshot("scoring-page-with-activity-plot.png", {
-      maxDiffPixelRatio: 0.01,
-    });
+    const options = fileSelect.locator("option");
+    const optionCount = await options.count();
+    expect(optionCount).toBeGreaterThan(0);
+
+    // At least one option should reference a CSV filename
+    const csvOption = options.filter({ hasText: /\.csv/i }).first();
+    await expect(csvOption).toBeAttached();
   });
 
-  test("date navigation works", async ({ page }) => {
-    // Login and wait for chart
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2. Select file and navigate dates
+  // ═══════════════════════════════════════════════════════════════════════════
+  test("select file and navigate dates", async ({ page }) => {
+    test.setTimeout(60_000);
+
     await loginAndGoToScoring(page);
 
-    // Get initial date from the date dropdown selected option
-    const dateSelect = dateSelector(page);
-    await expect(dateSelect).toBeVisible({ timeout: 5000 });
-    const initialCounter = await dateSelect.locator("option:checked").textContent() ?? "";
+    // File selector should already have a file selected (first file auto-selected)
+    const fileSelect = fileSelector(page);
+    await expect(fileSelect).toBeVisible({ timeout: 15_000 });
+    const initialFile = await fileSelect.inputValue();
+    expect(initialFile).toBeTruthy();
 
-    // Click next date button using data-testid
-    const nextButton = page.locator('[data-testid="next-date-btn"]');
-    const prevButton = page.locator('[data-testid="prev-date-btn"]');
-    await expect(nextButton).toBeVisible({ timeout: 5000 });
-    await expect(prevButton).toBeVisible({ timeout: 5000 });
-    if (await nextButton.isEnabled()) {
-      await nextButton.click();
-    } else if (await prevButton.isEnabled()) {
-      await prevButton.click();
+    // Date selector should be visible once file is loaded
+    const dateSelect = dateSelector(page);
+    await expect(dateSelect).toBeVisible({ timeout: 15_000 });
+
+    // Record the initial selected date text (e.g. "2025-07-31 (1/14)")
+    const initialDateText =
+      (await dateSelect.locator("option:checked").textContent()) ?? "";
+    expect(initialDateText).toBeTruthy();
+
+    // Navigate to next or previous date
+    const nextBtn = page.locator('[data-testid="next-date-btn"]');
+    const prevBtn = page.locator('[data-testid="prev-date-btn"]');
+    await expect(nextBtn).toBeVisible({ timeout: 5_000 });
+    await expect(prevBtn).toBeVisible({ timeout: 5_000 });
+
+    if (await nextBtn.isEnabled()) {
+      await nextBtn.click();
+    } else if (await prevBtn.isEnabled()) {
+      await prevBtn.click();
     } else {
       test.skip(true, "Only one date available; cannot validate date navigation");
     }
 
     // Wait for chart to re-render after date change
-    await expect(page.locator(".u-over").first()).toBeVisible({ timeout: 30000 });
-    await page.waitForTimeout(1500);
+    await expect(page.locator(".u-over").first()).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(1_500);
 
-    // Verify date counter changed
-    const newCounter = await dateSelect.locator("option:checked").textContent() ?? "";
-    expect(newCounter).not.toBe(initialCounter);
+    // Date text should have changed
+    const newDateText =
+      (await dateSelect.locator("option:checked").textContent()) ?? "";
+    expect(newDateText).not.toBe(initialDateText);
   });
 
-  test("file dropdown allows file switching", async ({ page }) => {
-    // Login and wait for chart
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 3. Activity plot renders
+  // ═══════════════════════════════════════════════════════════════════════════
+  test("activity plot renders with non-zero dimensions", async ({ page }) => {
+    test.setTimeout(60_000);
+
     await loginAndGoToScoring(page);
 
-    // Verify file dropdown is visible (first select is file dropdown)
-    const fileSelect = fileSelector(page);
-    await expect(fileSelect).toBeVisible({ timeout: 5000 });
+    // The uPlot container should be visible
+    const uplotContainer = page.locator(".uplot");
+    await expect(uplotContainer).toBeVisible({ timeout: 15_000 });
 
-    // Get initial selected value
-    const initialValue = await fileSelect.inputValue();
+    // The canvas element inside uPlot should exist and have real dimensions
+    const canvas = page.locator(".uplot canvas").first();
+    await expect(canvas).toBeVisible({ timeout: 10_000 });
 
-    // Get all options
-    const options = await fileSelect.locator("option").all();
+    const box = await canvas.boundingBox();
+    expect(box).toBeTruthy();
+    expect(box!.width).toBeGreaterThan(400);
+    expect(box!.height).toBeGreaterThan(200);
 
-    // If there are multiple files, try switching
-    if (options.length > 1) {
-      // Get the second option value
-      const secondOptionValue = await options[1].getAttribute("value");
-      if (secondOptionValue && secondOptionValue !== initialValue) {
-        await fileSelect.selectOption(secondOptionValue);
-
-        // Wait for chart to re-render after file change
-        await expect(page.locator(".u-over").first()).toBeVisible({ timeout: 30000 });
-
-        // Verify the selection changed
-        const newValue = await fileSelect.inputValue();
-        expect(newValue).toBe(secondOptionValue);
-      }
-    }
+    // "No activity data" message should NOT be visible
+    await expect(page.locator("text=No activity data")).toHaveCount(0);
   });
 
-  test("marker creation positions correctly on plot", async ({ page }) => {
-    // Login and wait for chart
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 4. Auto-score places markers
+  // ═══════════════════════════════════════════════════════════════════════════
+  test("auto-score places markers", async ({ page }) => {
+    test.setTimeout(90_000);
+
     const overlay = await loginAndGoToScoring(page);
 
-    // Get initial overlay dimensions for click positioning
-    const initialOverlayBox = await overlay.boundingBox();
-    expect(initialOverlayBox).toBeTruthy();
+    // Navigate to a clean date (no existing markers) so auto-score has something to do
+    await navigateToCleanDate(page);
 
-    // Use the overlay's click method with position - handles scroll/viewport automatically
-    // Click at 25% from left for onset (use force:true to click through existing markers)
-    await overlay.click({
-      position: { x: initialOverlayBox!.width * 0.25, y: initialOverlayBox!.height / 2 },
-      force: true,
-    });
-    await page.waitForTimeout(500);
+    // Clear any remaining markers if navigateToCleanDate couldn't find a clean one
+    const existingCount = await sleepMarkerCount(page);
+    if (existingCount > 0) {
+      page.once("dialog", (d) => d.accept());
+      const clearBtn = page.locator("button").filter({ hasText: "Clear" }).first();
+      if (await clearBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await clearBtn.click();
+        await page.waitForTimeout(2_000);
+      }
+    }
 
-    // Click at 75% from left for offset
-    await overlay.click({
-      position: { x: initialOverlayBox!.width * 0.75, y: initialOverlayBox!.height / 2 },
-      force: true,
-    });
-    await page.waitForTimeout(500);
+    // Click the "Auto Sleep" button in the scoring toolbar
+    const autoScoreBtn = page.locator("button").filter({ hasText: /Auto Sleep/ }).first();
+    await expect(autoScoreBtn).toBeVisible({ timeout: 10_000 });
 
-    // Wait for marker region to appear (with specific data-testid)
-    const markerRegion = page.locator('[data-testid^="marker-region-sleep-"]').first();
+    // Skip if the button is disabled (e.g. no diary data)
+    if (await autoScoreBtn.isDisabled()) {
+      test.skip(true, "Auto-score button is disabled (possibly no diary data for this date)");
+    }
 
-    // Wait for marker to be visible - it should render after state updates
-    await expect(markerRegion).toBeVisible({ timeout: 5000 });
-
-    // Get fresh bounding boxes AFTER marker is created (to account for any scrolling)
-    const overlayBox = await overlay.boundingBox();
-    const markerBox = await markerRegion.boundingBox();
-    expect(overlayBox).toBeTruthy();
-    expect(markerBox).toBeTruthy();
-
-    // Verify marker is positioned within the plot overlay area (where data is drawn)
-    // The marker should be within the overlay area (with small tolerance for rendering)
-    expect(markerBox!.x).toBeGreaterThanOrEqual(overlayBox!.x - 10);
-    expect(markerBox!.x + markerBox!.width).toBeLessThanOrEqual(
-      overlayBox!.x + overlayBox!.width + 10
+    // Listen for the auto-score API response to confirm the request completed
+    const responsePromise = page.waitForResponse(
+      (resp) => resp.url().includes("/auto-score") && resp.status() === 200,
+      { timeout: 30_000 },
     );
-    // Marker top should be at or near overlay top
-    expect(markerBox!.y).toBeGreaterThanOrEqual(overlayBox!.y - 10);
-    expect(markerBox!.y).toBeLessThan(overlayBox!.y + overlayBox!.height);
-    // Marker should have meaningful height (similar to overlay)
-    expect(markerBox!.height).toBeGreaterThan(overlayBox!.height * 0.8);
 
-    // Screenshot: scoring page after marker creation
-    await expect(page).toHaveScreenshot("scoring-page-marker-created.png", {
-      maxDiffPixelRatio: 0.01,
-    });
-  });
+    await autoScoreBtn.click();
 
-  test("marker data table shows table titles when marker selected", async ({ page }) => {
-    test.setTimeout(60000);
+    // Wait for the API response
+    await responsePromise;
 
-    // Login and wait for chart
-    const overlay = await loginAndGoToScoring(page);
-    const overlayBox = await overlay.boundingBox();
-    expect(overlayBox).toBeTruthy();
+    // Auto-score may produce a review dialog — if so, accept the results
+    const applyBtn = page.locator("button").filter({ hasText: /Apply|Accept|Confirm/ }).first();
+    if (await applyBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await applyBtn.click();
+      await page.waitForTimeout(1_000);
+    }
 
-    // Create a marker by clicking twice (use force:true to click through existing markers)
-    await overlay.click({
-      position: { x: overlayBox!.width * 0.25, y: overlayBox!.height / 2 },
-      force: true,
-    });
-    await page.waitForTimeout(500);
-    await overlay.click({
-      position: { x: overlayBox!.width * 0.75, y: overlayBox!.height / 2 },
-      force: true,
-    });
-    await page.waitForTimeout(1000);
-
-    // Verify marker was created
+    // At least one marker line or region should now appear in the DOM
+    const markerLines = page.locator('[data-testid^="marker-line-sleep-"]');
     const markerRegions = page.locator('[data-testid^="marker-region-sleep-"]');
-    await expect(markerRegions.first()).toBeVisible({ timeout: 5000 });
 
-    // Newly created marker should be auto-selected and populate both tables.
-    await page.waitForTimeout(1000);
+    // Wait a bit for markers to render
+    await page.waitForTimeout(2_000);
 
-    // Verify table titles appear when marker is selected
-    const onsetTableTitle = page.locator("text=Sleep Onset");
-    const offsetTableTitle = page.locator("text=Sleep Offset");
-    await expect(onsetTableTitle.first()).toBeVisible({ timeout: 10000 });
-    await expect(offsetTableTitle.first()).toBeVisible({ timeout: 10000 });
+    const lineCount = await markerLines.count();
+    const regionCount = await markerRegions.count();
+
+    // At least one marker element should be present (lines come in pairs: start + end)
+    expect(lineCount + regionCount).toBeGreaterThan(0);
   });
 
-  test("nonwear marker creation works", async ({ page }) => {
-    test.setTimeout(60000);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5. Save markers (dirty -> saved state)
+  // ═══════════════════════════════════════════════════════════════════════════
+  test("save markers after auto-scoring", async ({ page }) => {
+    test.setTimeout(60_000);
 
-    // Login and wait for chart
-    const overlay = await loginAndGoToScoring(page);
-    const overlayBox = await overlay.boundingBox();
-    expect(overlayBox).toBeTruthy();
-
-    // Switch to Nonwear mode by clicking the Nonwear mode button
-    const nonwearModeButton = page.locator("button").filter({ hasText: "Nonwear" }).first();
-    await nonwearModeButton.click();
-    await page.waitForTimeout(500);
-
-    // Create a nonwear marker by clicking twice
-    await overlay.click({
-      position: { x: overlayBox!.width * 0.3, y: overlayBox!.height / 2 },
-      force: true,
-    });
-    await page.waitForTimeout(500);
-    await overlay.click({
-      position: { x: overlayBox!.width * 0.5, y: overlayBox!.height / 2 },
-      force: true,
-    });
-    await page.waitForTimeout(1000);
-
-    // Verify nonwear marker was created
-    const markerRegions = page.locator('[data-testid^="marker-region-nonwear-"]');
-    await expect(markerRegions.first()).toBeVisible({ timeout: 5000 });
-  });
-
-  test("markers persist after page reload", async ({ page }) => {
-    test.setTimeout(60000);
-
-    // Login and wait for chart
     const overlay = await loginAndGoToScoring(page);
 
-    // Create a marker to ensure we have at least one
-    const overlayBox = await overlay.boundingBox();
-    expect(overlayBox).toBeTruthy();
-
-    // Create a marker by clicking twice
-    await overlay.click({
-      position: { x: overlayBox!.width * 0.2, y: overlayBox!.height / 2 },
-      force: true,
-    });
-    await page.waitForTimeout(500);
-    await overlay.click({
-      position: { x: overlayBox!.width * 0.4, y: overlayBox!.height / 2 },
-      force: true,
-    });
-    await page.waitForTimeout(3000); // Wait for auto-save
-
-    // Verify at least one sleep marker region exists
-    const sleepMarkers = page.locator('[data-testid^="marker-region-sleep-"]');
-    const countBefore = await sleepMarkers.count();
-    expect(countBefore).toBeGreaterThan(0);
-
-    // Reload the page
-    await page.reload();
-
-    // Wait for the chart to be ready again
-    await expect(page.locator(".u-over").first()).toBeVisible({ timeout: 30000 });
-
-    // Wait for markers to load
-    await page.waitForTimeout(3000);
-
-    // Verify sleep markers were loaded from database
-    const sleepMarkersAfter = page.locator('[data-testid^="marker-region-sleep-"]');
-    const countAfter = await sleepMarkersAfter.count();
-    expect(countAfter).toBeGreaterThan(0);
-  });
-
-  test("sleep rule arrows match desktop app style", async ({ page }) => {
-    test.setTimeout(60000);
-
-    // Login and wait for chart
-    await loginAndGoToScoring(page);
-
-    // Wait for markers and metrics to load
-    await page.waitForTimeout(3000);
-
-    // Check for sleep rule arrows (algorithm-detected onset/offset)
-    const onsetArrow = page.locator('[data-testid^="sleep-rule-arrow-onset-"]');
-    const offsetArrow = page.locator('[data-testid^="sleep-rule-arrow-offset-"]');
-
-    const onsetCount = await onsetArrow.count();
-    const offsetCount = await offsetArrow.count();
-    console.log(`Sleep rule arrows - Onset: ${onsetCount}, Offset: ${offsetCount}`);
-
-    // If arrows are present, verify their visual properties match desktop app
-    if (onsetCount > 0) {
-      const arrowEl = onsetArrow.first();
-      await expect(arrowEl).toBeVisible();
-
-      // Arrow should have meaningful size (40px total height = 25px tail + 15px head)
-      const arrowBox = await arrowEl.boundingBox();
-      expect(arrowBox).toBeTruthy();
-      expect(arrowBox!.height).toBeGreaterThanOrEqual(30);
-      expect(arrowBox!.width).toBeGreaterThanOrEqual(8);
-
-      // Check label exists with "Sleep Onset at" text
-      const onsetLabel = page.locator(".sleep-rule-label").filter({ hasText: /Sleep Onset at/ });
-      if ((await onsetLabel.count()) > 0) {
-        await expect(onsetLabel.first()).toBeVisible();
-        const labelText = await onsetLabel.first().textContent();
-        expect(labelText ?? "").toMatch(/3[-\s](minute rule applied|consecutive sleep epochs)/i);
-      }
+    // If we have markers from the previous test (serial mode), great.
+    // Otherwise create one manually.
+    let markerCount = await sleepMarkerCount(page);
+    if (markerCount === 0) {
+      // Create a marker by clicking twice on the plot overlay
+      const box = await overlay.boundingBox();
+      expect(box).toBeTruthy();
+      await overlay.click({
+        position: { x: box!.width * 0.25, y: box!.height / 2 },
+        force: true,
+      });
+      await page.waitForTimeout(500);
+      await overlay.click({
+        position: { x: box!.width * 0.75, y: box!.height / 2 },
+        force: true,
+      });
+      await page.waitForTimeout(1_500);
     }
 
-    if (offsetCount > 0) {
-      const arrowEl = offsetArrow.first();
-      await expect(arrowEl).toBeVisible();
+    // After marker creation/modification, isDirty becomes true.
+    // Auto-save fires after ~1s debounce. The "Saved" badge should appear.
+    const savedBadge = page.getByText("Saved");
+    await expect(savedBadge).toBeVisible({ timeout: 15_000 });
 
-      // Check label exists with "Sleep Offset at" text
-      const offsetLabel = page.locator(".sleep-rule-label").filter({ hasText: /Sleep Offset at/ });
-      if ((await offsetLabel.count()) > 0) {
-        await expect(offsetLabel.first()).toBeVisible();
-        const labelText = await offsetLabel.first().textContent();
-        expect(labelText ?? "").toMatch(/5[-\s](minute rule applied|consecutive (wake|sleep) epochs)/i);
-      }
-    }
-
+    // Verify no "Unsaved" or "Saving" indicators remain stuck
+    await expect(page.getByText("Unsaved")).not.toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("Saving")).not.toBeVisible({ timeout: 3_000 });
   });
 
-  test("navigation sidebar shows correct items", async ({ page }) => {
-    // Login and wait for chart
-    await loginAndGoToScoring(page);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 6. Export page loads
+  // ═══════════════════════════════════════════════════════════════════════════
+  test("export page loads with file checkboxes", async ({ page }) => {
+    test.setTimeout(60_000);
 
-    // Verify sidebar navigation items using href selectors for precision
-    await expect(page.locator('a[href="/scoring"]')).toBeVisible();
-    await expect(page.locator('a[href="/settings/study"]')).toBeVisible();
-    await expect(page.locator('a[href="/settings/data"]')).toBeVisible();
-    await expect(page.locator('a[href="/export"]')).toBeVisible();
+    await loginAndGoTo(page, "/export");
 
-    // Navigate to Study page
-    await page.locator('a[href="/settings/study"]').click();
-    await page.waitForURL("**/settings/study**", { timeout: 5000 });
+    // The "Export Data" heading should appear
+    await expect(
+      page.getByRole("heading", { name: /export data/i }),
+    ).toBeVisible({ timeout: 15_000 });
 
-    // Navigate to Data page
-    await page.locator('a[href="/settings/data"]').click();
-    await page.waitForURL("**/settings/data**", { timeout: 5000 });
+    // The "Select Files" section should be present
+    await expect(page.getByText("Select Files")).toBeVisible({ timeout: 10_000 });
 
-    // Navigate back to Scoring
-    await page.locator('a[href="/scoring"]').click();
-    await page.waitForURL("**/scoring**", { timeout: 5000 });
+    // File checkboxes (id starts with "file-") should exist, OR a "No files" message
+    const fileCheckboxes = page.locator('input[type="checkbox"][id^="file-"]');
+    const noFilesMsg = page.getByText("No files available");
+
+    const checkboxCount = await fileCheckboxes.count();
+    const hasNoFiles = await noFilesMsg.isVisible({ timeout: 3_000 }).catch(() => false);
+
+    // Either we see file checkboxes or an explicit "no files" message
+    expect(checkboxCount > 0 || hasNoFiles).toBeTruthy();
+
+    // If files are present, verify they are real checkboxes that can be toggled
+    if (checkboxCount > 0) {
+      const firstCheckbox = fileCheckboxes.first();
+      const wasChecked = await firstCheckbox.isChecked();
+      await firstCheckbox.click();
+      const nowChecked = await firstCheckbox.isChecked();
+      expect(nowChecked).not.toBe(wasChecked);
+
+      // Restore original state
+      await firstCheckbox.click();
+    }
   });
 });

@@ -615,8 +615,14 @@ export function ExportPage() {
               </div>
 
               {exportMutation.isSuccess && (
-                <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded">
-                  Export completed successfully!
+                <div className={`mt-4 p-3 rounded ${
+                  exportMutation.data?.nonwearOk === false
+                    ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300"
+                    : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300"
+                }`}>
+                  {exportMutation.data?.nonwearOk === false
+                    ? "Sleep data exported successfully. Nonwear export failed -- please retry."
+                    : "Export completed successfully!"}
                 </div>
               )}
 

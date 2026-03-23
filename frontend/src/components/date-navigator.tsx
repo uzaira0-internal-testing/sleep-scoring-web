@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSleepScoringStore } from "@/store";
 import { fetchWithAuth, getApiBase } from "@/api/client";
@@ -8,6 +8,7 @@ import type { DateStatus } from "@/api/types";
 interface DateNavigatorProps {
   dateStatusMap: Map<string, DateStatus>;
   consensusOnly: boolean;
+  onConsensusOnlyChange?: (value: boolean) => void;
   isLocal: boolean;
   onComplexityBreakdown: (data: {
     complexity_pre: number | null;
@@ -19,6 +20,7 @@ interface DateNavigatorProps {
 export const DateNavigator = React.memo(function DateNavigator({
   dateStatusMap,
   consensusOnly,
+  onConsensusOnlyChange,
   isLocal,
   onComplexityBreakdown,
 }: DateNavigatorProps) {
@@ -90,6 +92,17 @@ export const DateNavigator = React.memo(function DateNavigator({
       >
         <ChevronRight className="h-4 w-4" />
       </Button>
+      {!isLocal && onConsensusOnlyChange && (
+        <Button
+          variant={consensusOnly ? "default" : "outline"}
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          onClick={() => onConsensusOnlyChange(!consensusOnly)}
+          title={consensusOnly ? "Showing flagged/disagreed dates only. Click to show all." : "Filter to flagged/disagreed dates only"}
+        >
+          <Filter className="h-3.5 w-3.5" />
+        </Button>
+      )}
       {currentDate && (() => {
         const st = dateStatusMap.get(currentDate);
         const complexity = st?.complexity_post ?? st?.complexity_pre;

@@ -1,7 +1,8 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
-import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Panel, Group, Separator, useDefaultLayout } from "react-resizable-panels";
-import { ChevronLeft, ChevronRight, Loader2, FileText, Check, CircleDot, AlertCircle, GripVertical, GripHorizontal, Wand2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight, Loader2, FileText, Check, CircleDot, AlertCircle, GripVertical, GripHorizontal, Wand2, AlertTriangle, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -40,6 +41,8 @@ import { getLocalStudySettings } from "@/db";
  * Includes integrated file selection dropdown
  */
 export function ScoringPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [onsetPopoutOpen, setOnsetPopoutOpen] = useState(false);
   const [offsetPopoutOpen, setOffsetPopoutOpen] = useState(false);
   const [colorLegendOpen, setColorLegendOpen] = useState(false);
@@ -139,13 +142,13 @@ export function ScoringPage() {
   });
 
   // Study settings (for auto-nonwear threshold)
-  const { data: studySettings } = useQuery({
+  const { data: studySettings, isLoading: studySettingsLoading } = useQuery({
     ...studySettingsQueryOptions(),
     queryFn: settingsApi.getStudySettings,
     enabled: !isLocal,
   });
   // Local study settings from IndexedDB
-  const { data: localStudySettings } = useQuery({
+  const { data: localStudySettings, isLoading: localStudySettingsLoading } = useQuery({
     queryKey: ["local-study-settings"],
     queryFn: getLocalStudySettings,
     enabled: isLocal,
@@ -290,12 +293,18 @@ export function ScoringPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
-      }).catch((e) => console.warn("auto-score v2 failed:", e));
+      }).catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        alert({ title: "Background Auto-Score Failed", description: `Could not refresh auto-score candidate: ${msg}` });
+      });
     } else {
       const params = new URLSearchParams({ algorithm: algo, detection_rule: rule });
-      fetchWithAuth(`${getApiBase()}/markers/${currentFileId}/${currentDate}/auto-score?${params}`, { method: "POST" }).catch((e) => console.warn("auto-score failed:", e));
+      fetchWithAuth(`${getApiBase()}/markers/${currentFileId}/${currentDate}/auto-score?${params}`, { method: "POST" }).catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        alert({ title: "Background Auto-Score Failed", description: `Could not refresh auto-score candidate: ${msg}` });
+      });
     }
-  }, [currentFileId, currentDate, isLocal]);
+  }, [currentFileId, currentDate, isLocal, alert]);
 
   const copyCandidateMarkers = useCallback(async (candidate: ConsensusBallotCandidate) => {
     // Read fresh state via getState() to avoid stale closure after await
@@ -481,7 +490,7 @@ export function ScoringPage() {
   }, [autoScoreResult]);
 
   // Fetch activity data for current date with selected algorithm via DataSource
-  const { isLoading: activityLoading, error: activityError } = useQuery(
+  const { isLoading: activityLoading, error: activityError, data: activityData } = useQuery(
     activityDataQueryOptions(dataSource, currentFileId, currentDate, viewModeHours, currentAlgorithm, isLocal ? "local" : "server"),
   );
 
@@ -503,9 +512,8 @@ export function ScoringPage() {
     }
   }, [activityError]);
 
-  // Consensus-only filter toggle
-  // TODO: wire to UI toggle — filters date list to only show consensus/flagged dates
-  const [consensusOnly] = useState(false);
+  // Consensus-only filter toggle — filters date list to only show consensus/flagged dates
+  const [consensusOnly, setConsensusOnly] = useState(false);
 
   // Fetch scoring progress per file (both server and local modes)
   const readyFiles = (dsFiles ?? []).filter((f) => isLocal || f.status === "ready");
@@ -571,9 +579,14 @@ export function ScoringPage() {
         </h2>
         <p className="text-muted-foreground mb-6 text-center max-w-md">
           {isLocal
-            ? "Open a file from Settings to start scoring."
-            : "Request an admin to assign files to your account."}
+            ? "Open a CSV file from the Data Settings page to start scoring accelerometer data."
+            : "No files are assigned to your account yet. Ask an admin to assign files, or import data from the Data Settings page."}
         </p>
+        <Button variant="outline" onClick={() => navigate("/settings/data")}>
+          Go to Data Settings
+        </Button>
+        {confirmDialog}
+        {alertDialog}
       </div>
     );
   }
@@ -627,13 +640,17 @@ export function ScoringPage() {
         {/* Center: File selector */}
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-          <SearchableSelect
-            options={fileOptions}
-            value={currentFileId ? String(currentFileId) : ""}
-            onChange={handleFileChange}
-            className="w-[min(560px,50vw)] min-w-[200px]"
-            placeholder="Select a file..."
-          />
+          {filesLoading ? (
+            <div className="w-[min(560px,50vw)] min-w-[200px] h-9 bg-muted rounded-md animate-pulse" />
+          ) : (
+            <SearchableSelect
+              options={fileOptions}
+              value={currentFileId ? String(currentFileId) : ""}
+              onChange={handleFileChange}
+              className="w-[min(560px,50vw)] min-w-[200px]"
+              placeholder="Select a file..."
+            />
+          )}
         </div>
 
         {/* Right: View */}
@@ -654,6 +671,7 @@ export function ScoringPage() {
         <DateNavigator
           dateStatusMap={dateStatusMap}
           consensusOnly={consensusOnly}
+          onConsensusOnlyChange={setConsensusOnly}
           isLocal={isLocal}
           onComplexityBreakdown={setComplexityBreakdown}
         />
@@ -664,6 +682,7 @@ export function ScoringPage() {
           autoNonwearMutation={autoNonwearMutation}
           autoScoreRef={autoScoreRef}
           diaryBlocksAutoScore={diaryBlocksAutoScore}
+          studySettingsLoading={isLocal ? localStudySettingsLoading : studySettingsLoading}
           showComparisonMarkers={showComparisonMarkers}
           onShowComparisonMarkersChange={setShowComparisonMarkers}
           confirm={confirm}
@@ -702,8 +721,29 @@ export function ScoringPage() {
                 </CardHeader>
                 <CardContent className="flex-1 p-0 relative min-h-0">
                   {activityError ? (
-                    <div className="absolute inset-0 flex items-center justify-center text-destructive">
-                      <p>Failed to load activity data</p>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                      <div className="flex items-center gap-2 text-destructive">
+                        <AlertTriangle className="h-5 w-5" />
+                        <p className="font-medium">Failed to load activity data.</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          void queryClient.invalidateQueries({
+                            queryKey: ["activity", currentFileId, currentDate],
+                          });
+                        }}
+                      >
+                        <RefreshCcw className="h-3.5 w-3.5 mr-1.5" />
+                        Click to retry
+                      </Button>
+                    </div>
+                  ) : activityLoading && !activityData ? (
+                    <div className="absolute inset-0 flex flex-col gap-2 p-4">
+                      <div className="h-4 w-32 bg-muted rounded animate-pulse" />
+                      <div className="flex-1 bg-muted/60 rounded animate-pulse" />
+                      <div className="h-4 w-full bg-muted rounded animate-pulse" />
                     </div>
                   ) : (
                     <>

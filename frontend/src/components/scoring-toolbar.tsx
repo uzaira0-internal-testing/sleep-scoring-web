@@ -15,6 +15,7 @@ interface ScoringToolbarProps {
   autoNonwearMutation: UseMutationResult<AutoNonwearResult, Error, void, unknown>;
   autoScoreRef: React.MutableRefObject<boolean>;
   diaryBlocksAutoScore: boolean;
+  studySettingsLoading: boolean;
   showComparisonMarkers: boolean;
   onShowComparisonMarkersChange: (value: boolean) => void;
   confirm: (opts: { title: string; description: string; variant?: string; confirmLabel?: string }) => Promise<boolean>;
@@ -25,6 +26,7 @@ export const ScoringToolbar = React.memo(function ScoringToolbar({
   autoNonwearMutation,
   autoScoreRef,
   diaryBlocksAutoScore,
+  studySettingsLoading,
   showComparisonMarkers,
   onShowComparisonMarkersChange,
   confirm,
@@ -145,15 +147,17 @@ export const ScoringToolbar = React.memo(function ScoringToolbar({
           size="sm"
           className="h-7 text-xs px-2.5"
           onClick={() => { autoScoreRef.current = false; autoScoreMutation.mutate(); }}
-          disabled={!currentFileId || !currentDate || autoScoreMutation.isPending || isNoSleep || diaryBlocksAutoScore}
-          title={diaryBlocksAutoScore ? "Cannot auto-score: no diary data for this date" : "Automatically detect and suggest sleep marker placements"}
+          disabled={!currentFileId || !currentDate || autoScoreMutation.isPending || isNoSleep || diaryBlocksAutoScore || studySettingsLoading}
+          title={studySettingsLoading ? "Loading study settings..." : diaryBlocksAutoScore ? "Cannot auto-score: no diary data for this date" : "Automatically detect and suggest sleep marker placements"}
         >
-          {autoScoreMutation.isPending ? (
+          {studySettingsLoading ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+          ) : autoScoreMutation.isPending ? (
             <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
           ) : (
             <Wand2 className="h-3.5 w-3.5 mr-1" />
           )}
-          Auto Sleep
+          {studySettingsLoading ? "Loading settings..." : "Auto Sleep"}
         </Button>
         <div className="flex items-center gap-1">
           <Checkbox

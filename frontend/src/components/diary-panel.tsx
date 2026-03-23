@@ -357,8 +357,24 @@ export function DiaryPanel({ compact = false }: DiaryPanelProps) {
   const vis = useVisibleColumns(entries);
   const ampmCorrections = useAmPmCorrections(entries);
 
-  // Hide entirely if no file or no diary data
-  if (!currentFileId || !entries || entries.length === 0) return null;
+  // Show empty state if no file or no diary data
+  if (!currentFileId || !entries || entries.length === 0) {
+    return (
+      <Card className={compact ? "h-full flex flex-col" : ""}>
+        <CardHeader className={compact ? "py-1.5 px-3 flex-none" : ""}>
+          <CardTitle className={compact ? "text-sm" : "text-base"}>
+            <Book className="h-4 w-4 inline mr-1.5" />
+            Sleep Diary
+          </CardTitle>
+        </CardHeader>
+        <CardContent className={compact ? "flex-1 flex items-center justify-center" : "flex items-center justify-center py-8"}>
+          <p className="text-sm text-muted-foreground text-center">
+            No diary entries for this file. Import a diary CSV from Data Settings.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const napIndices = ([1, 2, 3] as const).filter(
     (i) => vis[`hasNap${i}` as keyof typeof vis]
