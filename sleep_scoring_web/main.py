@@ -41,9 +41,11 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
+    from sleep_scoring_web.constants import BLAS_NUM_THREADS, GZIP_MIN_SIZE_BYTES, STALE_UPLOAD_TIMEOUT_HOURS
+
     # Set BLAS/OpenMP threading before any numpy/scipy import
-    os.environ.setdefault("OMP_NUM_THREADS", "8")
-    os.environ.setdefault("OPENBLAS_NUM_THREADS", "8")
+    os.environ.setdefault("OMP_NUM_THREADS", BLAS_NUM_THREADS)
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", BLAS_NUM_THREADS)
 
     from datetime import datetime, timedelta, timezone
 
@@ -71,10 +73,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.warning("Redis unavailable at startup — file uploads will fail until Redis is reachable", exc_info=True)
 
-    # Cleanup stale uploads (UPLOADING status older than 24h → FAILED)
+    # Cleanup stale uploads (UPLOADING status older than configured timeout → FAILED)
     try:
         async with async_session_maker() as db:
-            cutoff = datetime.now(tz=UTC).replace(tzinfo=None) - timedelta(hours=24)
+            cutoff = datetime.now(tz=UTC).replace(tzinfo=None) - timedelta(hours=STALE_UPLOAD_TIMEOUT_HOURS)
             result = await db.execute(
                 sa_select(FileModel).where(
                     FileModel.status == FileStatus.UPLOADING,
@@ -165,7 +167,9 @@ if root_path:
     app.add_middleware(TusLocationFixMiddleware, prefix=root_path)
 
 # GZip compression — 70-80% reduction on JSON responses (skip small responses <1KB)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+from sleep_scoring_web.constants import GZIP_MIN_SIZE_BYTES
+
+app.add_middleware(GZipMiddleware, minimum_size=GZIP_MIN_SIZE_BYTES)
 
 # Install standard error handlers from fastapi-errors
 setup_error_handlers(app, debug=settings.debug)

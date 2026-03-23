@@ -21,6 +21,7 @@ from sqlalchemy import and_, delete, or_, select
 
 from sleep_scoring_web.api.access import require_file_access, require_file_and_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
+from sleep_scoring_web.constants import get_analysis_window
 from sleep_scoring_web.db.models import ConsensusCandidate, DiaryEntry, Marker, RawActivityData, SleepMetric, UserAnnotation
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.schemas import ManualNonwearPeriod, MarkerDeleteResponse, MarkerUpdateRequest, SleepMetrics, SleepPeriod
@@ -316,8 +317,7 @@ async def get_markers(
         nonlocal activity_rows_cache
         if activity_rows_cache is not None:
             return activity_rows_cache
-        start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
-        end_time = start_time + timedelta(hours=24)
+        start_time, end_time = get_analysis_window(analysis_date)
         activity_result = await db.execute(
             select(RawActivityData)
             .where(
@@ -330,6 +330,12 @@ async def get_markers(
             .order_by(RawActivityData.timestamp)
         )
         activity_rows_cache = activity_result.scalars().all()  # pyright: ignore[reportAssignmentType]
+        if not activity_rows_cache:
+            logger.warning(
+                "Activity data query returned empty for file_id=%d, date=%s",
+                file_id,
+                analysis_date,
+            )
         return activity_rows_cache
 
     metrics: list[SleepMetrics] = []
@@ -674,8 +680,6 @@ async def get_adjacent_day_markers(
     """
     await require_file_access(db, username, file_id)
 
-    from datetime import timedelta
-
     prev_date = analysis_date - timedelta(days=1)
     next_date = analysis_date + timedelta(days=1)
 
@@ -953,8 +957,7 @@ async def _calculate_and_store_metrics(
 
     async with async_session_maker() as db:
         # Get activity data for the date
-        start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
-        end_time = start_time + timedelta(hours=24)
+        start_time, end_time = get_analysis_window(analysis_date)
 
         activity_result = await db.execute(
             select(RawActivityData)

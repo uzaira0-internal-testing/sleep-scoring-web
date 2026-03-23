@@ -15,6 +15,7 @@ from sqlalchemy import and_, select
 
 from sleep_scoring_web.api.access import require_file_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
+from sleep_scoring_web.constants import get_analysis_window, get_context_window
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import Marker, RawActivityData
 from sleep_scoring_web.schemas.enums import AlgorithmType, MarkerCategory
@@ -151,8 +152,7 @@ async def get_onset_offset_data(
 
     # Single wide query covering 48h Sadeh context + onset/offset windows + Choi context.
     # Eliminates 3 redundant queries (onset, offset, choi each loaded overlapping subsets).
-    day_start = datetime.combine(analysis_date, datetime.min.time()) - timedelta(hours=12)
-    day_end = day_start + timedelta(hours=48)
+    day_start, day_end = get_context_window(analysis_date)
     context_start = min(day_start, onset_start, offset_start)
     context_end = max(day_end, onset_end, offset_end)
 
@@ -328,10 +328,8 @@ async def get_full_table_data(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     # Single query: 48h context (noon-12h to noon+36h) covers 24h display + algorithm context
-    start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
-    end_time = start_time + timedelta(hours=24)
-    context_start = start_time - timedelta(hours=12)
-    context_end = end_time + timedelta(hours=12)
+    start_time, end_time = get_analysis_window(analysis_date)
+    context_start, context_end = get_context_window(analysis_date)
 
     context_result = await db.execute(
         select(RawActivityData)

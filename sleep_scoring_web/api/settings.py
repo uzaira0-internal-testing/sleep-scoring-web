@@ -217,7 +217,7 @@ async def update_settings(
     )
 
 
-@router.delete("", status_code=204)
+@router.delete("", status_code=204, response_model=None)
 async def reset_settings(
     db: DbSession,
     _: VerifiedPassword,
@@ -381,7 +381,7 @@ async def update_study_settings(
     )
 
 
-@router.delete("/study", status_code=204)
+@router.delete("/study", status_code=204, response_model=None)
 async def reset_study_settings(
     db: DbSession,
     _: VerifiedPassword,

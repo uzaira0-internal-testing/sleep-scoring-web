@@ -22,6 +22,7 @@ from sleep_scoring_web.api.markers import (
     naive_to_unix,
     upsert_user_annotation,
 )
+from sleep_scoring_web.constants import get_analysis_window
 from sleep_scoring_web.db.models import DiaryEntry, Marker, RawActivityData, UserAnnotation
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.schemas import AutoScoreResultResponse, PipelineDiscoveryResponse
@@ -206,8 +207,7 @@ async def _run_auto_score_single(
     if not file or is_excluded_file_obj(file):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    start_dt = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
-    end_dt = start_dt + timedelta(hours=24)
+    start_dt, end_dt = get_analysis_window(analysis_date)
 
     data_result = await db.execute(
         select(RawActivityData)
@@ -669,9 +669,8 @@ async def auto_nonwear_markers(
     # The 2h lookback lets us detect zero runs that started before noon —
     # e.g. a device removed at 7 AM local (11 UTC) would otherwise produce a
     # marker starting abruptly at the window boundary instead of at the real onset.
-    start_dt = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
+    start_dt, end_dt = get_analysis_window(analysis_date)
     data_start_dt = start_dt - timedelta(hours=2)
-    end_dt = start_dt + timedelta(hours=24)
 
     data_result = await db.execute(
         select(RawActivityData)
@@ -855,8 +854,7 @@ async def auto_score_v2(
         request = PipelineConfigRequest()
 
     # Load activity data (noon-to-noon)
-    start_dt = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
-    end_dt = start_dt + timedelta(hours=24)
+    start_dt, end_dt = get_analysis_window(analysis_date)
 
     data_result = await db.execute(
         select(RawActivityData)

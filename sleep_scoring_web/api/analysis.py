@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import datetime
+import logging
 
 from fastapi import APIRouter
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
@@ -67,6 +70,7 @@ async def get_analysis_summary(
     files = files_result.scalars().all()
 
     if not files:
+        logger.warning("Analysis summary found no files for user=%s", username)
         return AnalysisSummaryResponse()
 
     # Batch queries to avoid N+1 per file

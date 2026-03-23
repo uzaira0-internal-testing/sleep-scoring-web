@@ -26,6 +26,7 @@ from sqlalchemy import func, or_, select
 from sleep_scoring_web.api.access import is_admin_user, require_file_access
 from sleep_scoring_web.api.deps import ApiKey, DbSession, Username, VerifiedPassword
 from sleep_scoring_web.config import get_settings, settings
+from sleep_scoring_web.constants import get_analysis_window
 from sleep_scoring_web.db.models import DiaryEntry, FileAssignment, RawActivityData, UserSettings
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.session import async_session_maker
@@ -1192,6 +1193,10 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
 
     from sqlalchemy import and_
 
+    if not dates:
+        logging.getLogger(__name__).warning("Batch complexity load returned no dates for file_id=%d", file_id)
+        return
+
     from sleep_scoring_web.db.models import DiaryEntry, Marker, NightComplexity
     from sleep_scoring_web.db.session import async_session_maker
     from sleep_scoring_web.schemas.enums import MarkerCategory
@@ -1247,8 +1252,7 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
         for analysis_date in dates:
             try:
                 # Load activity data (noon-to-noon window) — still per-date (different time ranges)
-                start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
-                end_time = start_time + timedelta(hours=24)
+                start_time, end_time = get_analysis_window(analysis_date)
 
                 activity_result = await db.execute(
                     select(RawActivityData)

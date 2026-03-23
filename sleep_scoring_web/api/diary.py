@@ -254,7 +254,7 @@ async def update_diary_entry(
     return DiaryEntryResponse.model_validate(entry)
 
 
-@router.delete("/{file_id}/{analysis_date}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{file_id}/{analysis_date}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_diary_entry(
     file_id: int,
     analysis_date: date,
