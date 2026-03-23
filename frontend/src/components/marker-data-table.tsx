@@ -283,7 +283,10 @@ export function MarkerDataTable({ type, onOpenPopout }: MarkerDataTableProps) {
                   key={idx}
                   ref={isMarkerRow ? markerRowRef : undefined}
                   onClick={() => handleRowClick(ts)}
-                  className={`border-b border-border/20 cursor-pointer transition-colors ${
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowClick(ts); } }}
+                  tabIndex={0}
+                  role="row"
+                  className={`border-b border-border/20 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${
                     isMarkerRow
                       ? "font-bold"
                       : "hover:bg-muted/40"
@@ -336,6 +339,7 @@ function TableHeader({
             className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             onClick={onScrollToMarker}
             title="Go to current marker"
+            aria-label="Go to current marker"
           >
             <Home className="h-3.5 w-3.5" />
           </button>
@@ -345,6 +349,7 @@ function TableHeader({
             className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             onClick={onOpenPopout}
             title="Open full table"
+            aria-label="Open full table"
           >
             <Maximize2 className="h-3.5 w-3.5" />
           </button>

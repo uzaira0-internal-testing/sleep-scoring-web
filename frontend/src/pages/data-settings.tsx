@@ -4,21 +4,20 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Database, FileText, Trash2, RefreshCw, Info, Loader2, Save, Check, Columns, Upload, Book, CircleOff, X, AlertTriangle, FolderOpen } from "lucide-react";
+import { Database, FileText, Trash2, RefreshCw, Info, Loader2, Save, Check, Columns, Upload, CircleOff, AlertTriangle, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog, useAlertDialog } from "@/components/ui/confirm-dialog";
 import { useSleepScoringStore } from "@/store";
-import { settingsApi, filesApi, diaryApi, nonwearApi, importApi, autoScoreApi } from "@/api/client";
+import { settingsApi, nonwearApi, importApi, autoScoreApi } from "@/api/client";
 import type { FileInfo } from "@/api/types";
-import { useTusUpload, TUS_SIZE_THRESHOLD } from "@/hooks/useTusUpload";
-import { UploadProgress } from "@/components/upload-progress";
 import { useAppCapabilities } from "@/hooks/useAppCapabilities";
-import { useLocalFile } from "@/hooks/useLocalFile";
-import { LocalProcessingProgress } from "@/components/local-processing-progress";
-import { getLocalFiles, deleteFileRecord, saveSensorNonwear, saveDiaryEntry, type FileRecord } from "@/db";
+import { getLocalFiles, saveSensorNonwear, type FileRecord } from "@/db";
 import { parseNonwearCsv } from "@/services/nonwear-csv-parser";
-import { parseDiaryCsv } from "@/services/diary-parser";
 import { studySettingsQueryOptions, filesQueryOptions, autoScoreBatchStatusQueryOptions } from "@/api/query-options";
+import { ActionResult } from "@/components/action-result";
+import { FileUploadSection } from "@/components/file-upload-section";
+import { LocalFileSection } from "@/components/local-file-section";
+import { ServerDiaryImportSection, LocalDiaryImportSection } from "@/components/diary-import-section";
 
 
 const DEVICE_PRESET_OPTIONS = [
@@ -39,24 +38,6 @@ const PRESET_DEFAULTS: Record<string, { epochLengthSeconds: number; skipRows: nu
 };
 
 // =============================================================================
-// Action Result Component (used by both local import and server upload)
-// =============================================================================
-
-function ActionResult({ message, type, onDismiss }: { message: string; type: "success" | "error"; onDismiss: () => void }) {
-  return (
-    <div className={`flex items-center gap-2 text-sm rounded-md px-3 py-2 ${
-      type === "success" ? "bg-green-500/10 text-green-700 dark:text-green-400" : "bg-destructive/10 text-destructive"
-    }`}>
-      {type === "success" ? <Check className="h-3.5 w-3.5 flex-shrink-0" /> : <X className="h-3.5 w-3.5 flex-shrink-0" />}
-      <span className="flex-1">{message}</span>
-      <button onClick={onDismiss} className="hover:opacity-70">
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
-
-// =============================================================================
 // Local Nonwear Import Component
 // =============================================================================
 
@@ -65,7 +46,7 @@ function LocalNonwearImport({ localFiles }: { localFiles: FileRecord[] }) {
   const [result, setResult] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
 
@@ -175,108 +156,6 @@ function LocalNonwearImport({ localFiles }: { localFiles: FileRecord[] }) {
 }
 
 // =============================================================================
-// Local Diary Import Component
-// =============================================================================
-
-function LocalDiaryImport({ localFiles }: { localFiles: FileRecord[] }) {
-  const [isImporting, setIsImporting] = useState(false);
-  const [result, setResult] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsImporting(true);
-    setResult(null);
-
-    try {
-      const text = await file.text();
-      const parsed = parseDiaryCsv(text, localFiles);
-
-      // Save to IndexedDB
-      for (const { entries } of parsed.matched) {
-        for (const entry of entries) {
-          await saveDiaryEntry(entry.fileId, entry.analysisDate, entry);
-        }
-      }
-
-      if (parsed.matchedRows > 0) {
-        setResult({
-          message: `Imported ${parsed.matchedRows} diary entries across ${parsed.matched.length} file(s).${parsed.unmatchedRows > 0 ? ` ${parsed.unmatchedRows} rows unmatched.` : ""}`,
-          type: "success",
-        });
-      } else {
-        setResult({
-          message: `No rows matched local files.${parsed.errors.length > 0 ? ` ${parsed.errors[0]}` : ""}`,
-          type: "error",
-        });
-      }
-    } catch (err) {
-      setResult({
-        message: err instanceof Error ? err.message : "Import failed",
-        type: "error",
-      });
-    } finally {
-      setIsImporting(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Book className="h-5 w-5" />
-          Sleep Diary Import
-        </CardTitle>
-        <CardDescription>
-          Import a sleep diary CSV. Rows are matched to local files by <strong>filename</strong> column.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".csv"
-          onChange={handleImport}
-          className="hidden"
-        />
-        <Button
-          variant="outline"
-          onClick={() => fileRef.current?.click()}
-          disabled={isImporting}
-          className="gap-2"
-        >
-          {isImporting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <FolderOpen className="h-4 w-4" />
-          )}
-          Import Diary CSV
-        </Button>
-
-        {result && (
-          <ActionResult message={result.message} type={result.type} onDismiss={() => setResult(null)} />
-        )}
-
-        <div className="rounded-lg border p-3 bg-muted/30 text-sm">
-          <div className="flex items-start gap-2">
-            <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-            <div className="space-y-1">
-              <div><strong>Required:</strong> filename, date (or startdate)</div>
-              <div><strong>Sleep:</strong> in_bed_time, sleep_offset_time, sleep_onset_time</div>
-              <div><strong>Naps:</strong> napstart_1_time, napend_1_time (up to 3 naps)</div>
-              <div><strong>Nonwear:</strong> nonwear_start_time, nonwear_end_time, nonwear_reason (up to 3)</div>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// =============================================================================
 // Main Component
 // =============================================================================
 
@@ -284,7 +163,6 @@ export function DataSettingsPage() {
   const queryClient = useQueryClient();
   const isAuthenticated = useSleepScoringStore((state) => state.isAuthenticated);
   const caps = useAppCapabilities();
-  const { openLocalFiles, openLocalFolder, isProcessing, progress: localProgress } = useLocalFile();
   const [localFiles, setLocalFiles] = useState<FileRecord[]>([]);
   const { confirm, confirmDialog } = useConfirmDialog();
   const { alert, alertDialog } = useAlertDialog();
@@ -305,28 +183,18 @@ export function DataSettingsPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Upload refs and state
-  const activityFileRef = useRef<HTMLInputElement>(null);
-  const activityFolderRef = useRef<HTMLInputElement>(null);
-  const diaryFileRef = useRef<HTMLInputElement>(null);
+  // Upload refs and state (for nonwear + marker import sections that remain here)
   const nonwearFileRef = useRef<HTMLInputElement>(null);
   const nonwearFolderRef = useRef<HTMLInputElement>(null);
   const sleepImportRef = useRef<HTMLInputElement>(null);
-  const [diaryResult, setDiaryResult] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [sleepImportResult, setSleepImportResult] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [sleepImportLoading, setSleepImportLoading] = useState(false);
   const [autoScoreBatchResult, setAutoScoreBatchResult] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [autoScoreOnlyMissing, setAutoScoreOnlyMissing] = useState(true);
-  const [replaceOnUpload, setReplaceOnUpload] = useState(true);
   // Upload progress lives in store so it survives page navigation
   const uploadProgress = useSleepScoringStore((state) => state.uploadProgress);
   const isUploading = useSleepScoringStore((state) => state.isUploading);
   const uploadResult = useSleepScoringStore((state) => state.uploadResult);
-
-  // TUS resumable upload hook (for large files >50MB)
-  const { progress: tusProgress, upload: tusUpload, cancel: tusCancel, pause: tusPause, resume: tusResume, reset: tusReset } = useTusUpload();
-  const [isPaused, setIsPaused] = useState(false);
-  const isTusActive = tusProgress.phase !== "idle";
 
   // Column mapping state
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({
@@ -363,12 +231,12 @@ export function DataSettingsPage() {
     refetchIntervalInBackground: true,
   });
 
-  // Load local files from IndexedDB
+  // Load local files from IndexedDB (for nonwear import)
   useEffect(() => {
     getLocalFiles().then(setLocalFiles).catch((err) => {
       console.error("Failed to load local files from IndexedDB:", err);
     });
-  }, [isProcessing]); // Re-fetch after local file processing
+  }, []);
 
 
   // Sync backend data settings to store on load
@@ -414,21 +282,6 @@ export function DataSettingsPage() {
     },
   });
 
-  // Diary upload mutation (study-wide, no file_id needed)
-  const diaryUploadMutation = useMutation({
-    mutationFn: (file: File) => diaryApi.uploadDiaryCsv(file),
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["diary"] });
-      queryClient.invalidateQueries({ queryKey: ["dates-status"] });
-      const msg = `Imported ${result.entries_imported} entries, skipped ${result.entries_skipped}`;
-      const errMsg = result.errors?.length ? `. ${result.errors[0]}` : "";
-      setDiaryResult({ message: msg + errMsg, type: result.entries_imported > 0 ? "success" : "error" });
-    },
-    onError: (error: Error) => {
-      setDiaryResult({ message: error.message, type: "error" });
-    },
-  });
-
   const autoScoreBatchMutation = useMutation({
     mutationFn: () => {
       const { currentAlgorithm, sleepDetectionRule } = useSleepScoringStore.getState();
@@ -450,18 +303,7 @@ export function DataSettingsPage() {
     },
   });
 
-  // Delete file mutation
-  const deleteFileMutation = useMutation({
-    mutationFn: filesApi.deleteFile,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: filesQueryOptions().queryKey });
-    },
-    onError: (error: Error) => {
-      alert({ title: "Delete Failed", description: error.message });
-    },
-  });
-
-  const handleSave = () => {
+  const handleSave = (): void => {
     saveMutation.mutate({
       device_preset: devicePreset,
       epoch_length_seconds: epochLengthSeconds,
@@ -474,132 +316,37 @@ export function DataSettingsPage() {
     });
   };
 
-  const handleColumnMappingChange = (key: string, value: string) => {
+  const handleColumnMappingChange = (key: string, value: string): void => {
     setColumnMapping((prev) => ({ ...prev, [key]: value }));
     setHasChanges(true);
   };
 
-  const handleClearSleepMarkers = async () => {
+  const handleClearSleepMarkers = async (): Promise<void> => {
     const ok = await confirm({ title: "Clear Sleep Markers", description: "Clear all sleep markers for the current date?", variant: "destructive", confirmLabel: "Clear" });
     if (ok) setSleepMarkers([]);
   };
 
-  const handleClearNonwearMarkers = async () => {
+  const handleClearNonwearMarkers = async (): Promise<void> => {
     const ok = await confirm({ title: "Clear Nonwear Markers", description: "Clear all nonwear markers for the current date?", variant: "destructive", confirmLabel: "Clear" });
     if (ok) setNonwearMarkers([]);
   };
 
-  const handleClearAllMarkers = async () => {
+  const handleClearAllMarkers = async (): Promise<void> => {
     const ok = await confirm({ title: "Clear All Markers", description: "Clear ALL markers for the current date?", variant: "destructive", confirmLabel: "Clear All" });
     if (ok) {
       useSleepScoringStore.getState().clearAllMarkers();
     }
   };
 
-  const handleApplyPreset = (preset: string) => {
+  const handleApplyPreset = (preset: string): void => {
     const defaults = PRESET_DEFAULTS[preset] ?? PRESET_DEFAULTS["generic"]!;
     setEpochLengthSeconds(defaults.epochLengthSeconds);
     setSkipRows(defaults.skipRows);
     setHasChanges(true);
   };
 
-  /** Upload multiple activity CSV files sequentially with progress.
-   *  Uses store state so uploads survive page navigation. */
-  const handleActivityUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
-    const csvFiles = Array.from(fileList).filter((f) => f.name.toLowerCase().endsWith(".csv") || f.name.toLowerCase().endsWith(".xlsx"));
-    if (csvFiles.length === 0) {
-      useSleepScoringStore.getState().setUploadResult({ message: "No CSV/XLSX files found", type: "error" });
-      return;
-    }
-    // Clear refs immediately (before async starts)
-    if (activityFileRef.current) activityFileRef.current.value = "";
-    if (activityFolderRef.current) activityFolderRef.current.value = "";
-
-    // Route large files to TUS upload path
-    const hasLargeFile = csvFiles.some((f) => f.size > TUS_SIZE_THRESHOLD);
-    if (hasLargeFile && csvFiles.length === 1) {
-      // Single large file → use TUS resumable upload
-      tusReset();
-      tusUpload(csvFiles, replaceOnUpload);
-      return;
-    }
-
-    // Small files or batch → use existing simple upload path
-    const store = useSleepScoringStore.getState();
-    store.setIsUploading(true);
-    store.setUploadResult(null);
-    const replace = replaceOnUpload;
-
-    (async () => {
-      let uploaded = 0;
-      let failed = 0;
-      const failedNames: string[] = [];
-      let lastError = "";
-
-      // Separate large and small files
-      const largeFiles = csvFiles.filter((f) => f.size > TUS_SIZE_THRESHOLD);
-      const smallFiles = csvFiles.filter((f) => f.size <= TUS_SIZE_THRESHOLD);
-
-      // Upload small files via simple path
-      for (const file of smallFiles) {
-        useSleepScoringStore.getState().setUploadProgress(
-          `Uploading ${uploaded + failed + 1}/${csvFiles.length}: ${file.name}`
-        );
-        try {
-          await filesApi.uploadFile(file, replace);
-          uploaded++;
-        } catch (err) {
-          failed++;
-          failedNames.push(file.name);
-          if (err instanceof Error) lastError = err.message;
-        }
-      }
-
-      // Upload large files via TUS (one at a time)
-      for (const file of largeFiles) {
-        useSleepScoringStore.getState().setUploadProgress(
-          `Uploading (resumable) ${uploaded + failed + 1}/${csvFiles.length}: ${file.name}`
-        );
-        try {
-          await tusUpload([file], replaceOnUpload);
-          uploaded++;
-        } catch (err) {
-          failed++;
-          failedNames.push(file.name);
-          if (err instanceof Error) lastError = err.message;
-        }
-      }
-
-      useSleepScoringStore.getState().setUploadProgress(null);
-      useSleepScoringStore.getState().setIsUploading(false);
-      let message = `Uploaded ${uploaded} file${uploaded !== 1 ? "s" : ""}`;
-      if (failed > 0) {
-        message += `, ${failed} failed`;
-        if (failedNames.length <= 3) message += ` (${failedNames.join(", ")})`;
-        if (lastError) message += `: ${lastError}`;
-      }
-      const result = {
-        message,
-        type: (failed > 0 ? "error" : "success") as "success" | "error",
-      };
-      useSleepScoringStore.getState().setUploadResult(result);
-      queryClient.invalidateQueries({ queryKey: filesQueryOptions().queryKey });
-      queryClient.invalidateQueries({ queryKey: ["dates-status"] });
-    })();
-  };
-
-  const handleDiaryUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    diaryUploadMutation.mutate(file);
-    if (diaryFileRef.current) diaryFileRef.current.value = "";
-  };
-
-  /** Upload multiple nonwear CSVs sequentially with progress.
-   *  Uses store state so uploads survive page navigation. */
-  const handleNonwearUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  /** Upload multiple nonwear CSVs sequentially with progress. */
+  const handleNonwearUpload = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     const csvFiles = Array.from(fileList).filter((f) => f.name.toLowerCase().endsWith(".csv"));
@@ -607,11 +354,9 @@ export function DataSettingsPage() {
       useSleepScoringStore.getState().setUploadResult({ message: "No CSV files found", type: "error" });
       return;
     }
-    // Clear refs immediately (before async starts)
     if (nonwearFileRef.current) nonwearFileRef.current.value = "";
     if (nonwearFolderRef.current) nonwearFolderRef.current.value = "";
 
-    // Run upload in a detached async — store state keeps progress alive across navigation
     const store = useSleepScoringStore.getState();
     store.setIsUploading(true);
     store.setUploadResult(null);
@@ -649,7 +394,7 @@ export function DataSettingsPage() {
     })();
   };
 
-  const handleSleepImportUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSleepImportUpload = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = e.target.files?.[0];
     if (!file) return;
     setSleepImportResult(null);
@@ -677,7 +422,7 @@ export function DataSettingsPage() {
     }
   };
 
-  const handleStartAutoScoreBatch = () => {
+  const handleStartAutoScoreBatch = (): void => {
     setAutoScoreBatchResult(null);
     autoScoreBatchMutation.mutate();
   };
@@ -732,194 +477,16 @@ export function DataSettingsPage() {
       {/* File Uploads / Open Files Section                                */}
       {/* ================================================================ */}
 
-      {/* Server uploads shown first when online */}
+      {/* Server uploads */}
       {caps.server && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" />
-            Upload to Server
-          </CardTitle>
-          <CardDescription>
-            Upload epoch CSV files with activity counts. Re-uploading a file with the same name replaces the existing data.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <input
-            ref={activityFileRef}
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            multiple
-            onChange={handleActivityUpload}
-            className="hidden"
-          />
-          <input
-            ref={activityFolderRef}
-            type="file"
-            {...{ webkitdirectory: "" } as React.InputHTMLAttributes<HTMLInputElement>}
-            onChange={handleActivityUpload}
-            className="hidden"
-          />
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={() => activityFileRef.current?.click()}
-              disabled={!!uploadProgress}
-              className="gap-2"
-            >
-              {uploadProgress && uploadProgress.includes("Uploading") ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Upload className="h-4 w-4" />
-              )}
-              Upload Files
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => activityFolderRef.current?.click()}
-              disabled={!!uploadProgress}
-              className="gap-2"
-            >
-              <FileText className="h-4 w-4" />
-              Upload Folder
-            </Button>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={replaceOnUpload}
-                onChange={(e) => setReplaceOnUpload(e.target.checked)}
-                className="rounded"
-              />
-              Replace existing
-            </label>
-          </div>
-
-          {/* TUS resumable upload progress */}
-          {isTusActive && (
-            <UploadProgress
-              progress={tusProgress}
-              onPause={() => { tusPause(); setIsPaused(true); }}
-              onResume={() => { tusResume(); setIsPaused(false); }}
-              onCancel={() => { tusCancel(); setIsPaused(false); }}
-              onDismiss={tusReset}
-              isPaused={isPaused}
-            />
-          )}
-
-          {/* Simple upload progress (small files) */}
-          {uploadProgress && !isTusActive && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
-              {uploadProgress}
-            </div>
-          )}
-
-          {uploadResult && !isUploading && (
-            <ActionResult message={uploadResult.message} type={uploadResult.type} onDismiss={() => useSleepScoringStore.getState().setUploadResult(null)} />
-          )}
-
-          {/* Current files list */}
-          {files.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                Server files ({files.length})
-              </p>
-              <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
-                {files.map((f) => (
-                  <div key={f.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                      <span className="truncate">{f.filename}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${
-                        f.status === "ready" ? "bg-success/10 text-success" :
-                        f.status === "failed" ? "bg-destructive/10 text-destructive" :
-                        f.status === "uploading" || f.status === "processing" ? "bg-primary/10 text-primary" :
-                        "bg-muted text-muted-foreground"
-                      }`}>
-                        {f.status}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                      {f.row_count && (
-                        <span className="text-xs text-muted-foreground">{f.row_count.toLocaleString()} rows</span>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        onClick={async () => {
-                          const ok = await confirm({ title: "Delete File", description: `Delete ${f.filename}?`, variant: "destructive", confirmLabel: "Delete" });
-                          if (ok) deleteFileMutation.mutate(f.id);
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        <FileUploadSection files={files} confirm={confirm} />
       )}
 
       {/* Diary CSV Upload (server only) */}
-      {caps.server && (<Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Book className="h-5 w-5" />
-            Sleep Diary Import
-          </CardTitle>
-          <CardDescription>
-            Upload a sleep diary CSV exported from REDCap or similar. Rows are automatically matched to activity files by the <strong>participant_id</strong> column.
-            Existing entries for matching dates are updated (upsert).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <input
-            ref={diaryFileRef}
-            type="file"
-            accept=".csv"
-            onChange={handleDiaryUpload}
-            className="hidden"
-          />
-          <Button
-            variant="outline"
-            onClick={() => diaryFileRef.current?.click()}
-            disabled={diaryUploadMutation.isPending}
-            className="gap-2"
-          >
-            {diaryUploadMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            Upload Diary CSV
-          </Button>
-
-          {diaryResult && (
-            <ActionResult message={diaryResult.message} type={diaryResult.type} onDismiss={() => setDiaryResult(null)} />
-          )}
-
-          <div className="rounded-lg border p-3 bg-muted/30 text-sm">
-            <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-              <div className="space-y-1">
-                <div><strong>Required:</strong> participant_id, startdate (or date)</div>
-                <div><strong>Sleep:</strong> in_bed_time (or bedtime), sleep_offset_time (or wake_time), sleep_onset_time</div>
-                <div><strong>Naps:</strong> napstart_1_time, napend_1_time, nap_onset_time_2, nap_offset_time_2, nap_onset_time_3, nap_offset_time_3</div>
-                <div><strong>Nonwear:</strong> nonwear_start_time, nonwear_end_time, nonwear_reason (up to 3 periods)</div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      )}
+      {caps.server && <ServerDiaryImportSection />}
 
       {/* Local Diary Import (local mode only) */}
-      {!caps.server && <LocalDiaryImport localFiles={localFiles} />}
+      {!caps.server && <LocalDiaryImportSection />}
 
       {/* Nonwear Sensor Data Upload (server only) */}
       {caps.server && (<Card>
@@ -1364,94 +931,10 @@ export function DataSettingsPage() {
       {/* ================================================================ */}
       {/* Local / Browser Processing (bottom of page)                      */}
       {/* ================================================================ */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5" />
-            {caps.server ? "Local / Browser Processing" : "Activity Data Files"}
-          </CardTitle>
-          <CardDescription>
-            {caps.server
-              ? "Process files locally in your browser using WASM. Data stays on your machine and is stored in IndexedDB — nothing is uploaded to the server."
-              : "Open CSV files from your computer. Files are processed locally using WASM and stored in your browser."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={openLocalFiles}
-              disabled={isProcessing}
-              className="gap-2"
-            >
-              {isProcessing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <FolderOpen className="h-4 w-4" />
-              )}
-              Open Files
-            </Button>
-            <Button
-              variant="outline"
-              onClick={openLocalFolder}
-              disabled={isProcessing}
-              className="gap-2"
-            >
-              <FolderOpen className="h-4 w-4" />
-              Open Folder
-            </Button>
-          </div>
-
-          {localProgress && <LocalProcessingProgress progress={localProgress} isProcessing={isProcessing} />}
-
-          {localFiles.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                Local files ({localFiles.length})
-              </p>
-              <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
-                {localFiles.map((f) => (
-                  <div key={f.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                      <span className="truncate">{f.filename}</span>
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                        local
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                      <span className="text-xs text-muted-foreground">{f.availableDates.length} dates</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        onClick={async () => {
-                          const ok = await confirm({ title: "Delete File", description: `Delete ${f.filename}?`, variant: "destructive", confirmLabel: "Delete" });
-                          if (ok && f.id) {
-                            try {
-                              await deleteFileRecord(f.id);
-                              setLocalFiles((prev) => prev.filter((lf) => lf.id !== f.id));
-                            } catch (err) {
-                              console.error("Failed to delete file:", err);
-                              await alert({ title: "Delete Failed", description: `Could not delete ${f.filename}. Please try again.` });
-                            }
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <LocalFileSection isServerMode={caps.server} confirm={confirm} alert={alert} />
 
       {confirmDialog}
       {alertDialog}
     </div>
   );
 }
-

@@ -42,6 +42,7 @@ export const DateNavigator = React.memo(function DateNavigator({
         onClick={() => navigateDate(-1)}
         disabled={!canGoPrev || !currentFileId}
         data-testid="prev-date-btn"
+        aria-label="Previous date"
       >
         <ChevronLeft className="h-4 w-4" />
       </Button>
@@ -89,6 +90,7 @@ export const DateNavigator = React.memo(function DateNavigator({
         onClick={() => navigateDate(1)}
         disabled={!canGoNext || !currentFileId}
         data-testid="next-date-btn"
+        aria-label="Next date"
       >
         <ChevronRight className="h-4 w-4" />
       </Button>
@@ -119,6 +121,7 @@ export const DateNavigator = React.memo(function DateNavigator({
           <button
             className={`text-xs font-medium px-1.5 py-0.5 rounded ${color} tabular-nums cursor-pointer hover:ring-1 hover:ring-current transition-shadow`}
             title={`Scoring difficulty: ${complexity}/100 (higher = easier)${isLocal ? "" : "\nClick for breakdown"}`}
+            aria-label={`Scoring difficulty ${complexity} out of 100`}
             onClick={async () => {
               if (!currentFileId || !currentDate || isLocal) return;
               try {
