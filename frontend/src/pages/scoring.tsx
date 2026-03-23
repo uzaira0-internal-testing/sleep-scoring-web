@@ -293,18 +293,13 @@ export function ScoringPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
-      }).catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e);
-        alert({ title: "Background Auto-Score Failed", description: `Could not refresh auto-score candidate: ${msg}` });
-      });
+      }).catch((e) => console.warn("Background auto-score v2 failed:", e));
     } else {
       const params = new URLSearchParams({ algorithm: algo, detection_rule: rule });
-      fetchWithAuth(`${getApiBase()}/markers/${currentFileId}/${currentDate}/auto-score?${params}`, { method: "POST" }).catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e);
-        alert({ title: "Background Auto-Score Failed", description: `Could not refresh auto-score candidate: ${msg}` });
-      });
+      fetchWithAuth(`${getApiBase()}/markers/${currentFileId}/${currentDate}/auto-score?${params}`, { method: "POST" })
+        .catch((e) => console.warn("Background auto-score failed:", e));
     }
-  }, [currentFileId, currentDate, isLocal, alert]);
+  }, [currentFileId, currentDate, isLocal]);
 
   const copyCandidateMarkers = useCallback(async (candidate: ConsensusBallotCandidate) => {
     // Read fresh state via getState() to avoid stale closure after await

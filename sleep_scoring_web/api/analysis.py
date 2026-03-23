@@ -6,10 +6,10 @@ import datetime
 import logging
 
 from fastapi import APIRouter
-
-logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+
+logger = logging.getLogger(__name__)
 
 from sleep_scoring_web.api.access import get_assigned_file_ids, is_admin_user
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword  # noqa: TC001 — FastAPI needs these at runtime

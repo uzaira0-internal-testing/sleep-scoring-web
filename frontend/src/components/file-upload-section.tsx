@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText, Trash2, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAlertDialog } from "@/components/ui/confirm-dialog";
 import { useSleepScoringStore } from "@/store";
 import { filesApi } from "@/api/client";
 import type { FileInfo } from "@/api/types";
@@ -18,6 +19,7 @@ interface FileUploadSectionProps {
 
 export function FileUploadSection({ files, confirm }: FileUploadSectionProps) {
   const queryClient = useQueryClient();
+  const { alert } = useAlertDialog();
 
   const activityFileRef = useRef<HTMLInputElement>(null);
   const activityFolderRef = useRef<HTMLInputElement>(null);
@@ -35,6 +37,9 @@ export function FileUploadSection({ files, confirm }: FileUploadSectionProps) {
     mutationFn: filesApi.deleteFile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: filesQueryOptions().queryKey });
+    },
+    onError: (error: Error) => {
+      alert({ title: "Delete Failed", description: error.message });
     },
   });
 
