@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DataSourceProvider } from "@/contexts/data-source-context";
 import { useSleepScoringStore } from "@/store";
+import { ALGORITHM_TYPES } from "@/api/types";
+import type { ActivityData } from "@/services/data-source";
 import { ActivityPlot } from "./activity-plot";
 
 // ---------------------------------------------------------------------------
@@ -45,66 +47,6 @@ function generateMockNonwearResults(count = 1440): number[] {
   return results;
 }
 
-const storyQueryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: false, staleTime: Infinity, refetchOnWindowFocus: false },
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Store configurator decorator
-// ---------------------------------------------------------------------------
-
-/** Sets Zustand store state for the story and resets on unmount. */
-function StoreConfigurator({
-  state,
-  children,
-}: {
-  state: Record<string, unknown>;
-  children: React.ReactNode;
-}) {
-  useEffect(() => {
-    useSleepScoringStore.setState(state);
-    return () => {
-      useSleepScoringStore.setState({
-        timestamps: [],
-        axisY: [],
-        vectorMagnitude: [],
-        algorithmResults: null,
-        nonwearResults: null,
-        sleepMarkers: [],
-        nonwearMarkers: [],
-        isLoading: false,
-        currentFileId: null,
-        currentDateIndex: 0,
-        availableDates: [],
-        selectedPeriodIndex: null,
-        sensorNonwearPeriods: [],
-      });
-    };
-  }, [state]);
-  return <>{children}</>;
-}
-
-/** Wrap in all providers the ActivityPlot needs. */
-function withProviders(storeState: Record<string, unknown>) {
-  return function Decorator(Story: React.ComponentType) {
-    return (
-      <ThemeProvider defaultTheme="light" storageKey="storybook-activity-plot">
-        <QueryClientProvider client={storyQueryClient}>
-          <DataSourceProvider>
-            <StoreConfigurator state={storeState}>
-              <div style={{ width: 900, height: 400, position: "relative" }}>
-                <Story />
-              </div>
-            </StoreConfigurator>
-          </DataSourceProvider>
-        </QueryClientProvider>
-      </ThemeProvider>
-    );
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Shared mock data
 // ---------------------------------------------------------------------------
@@ -115,29 +57,110 @@ const MOCK_VM = generateMockActivity(); // separate random vector magnitude
 const MOCK_ALGO = generateMockAlgorithmResults();
 const MOCK_NW = generateMockNonwearResults();
 
+/** Default activity data seeded into React Query cache. */
+const BASE_ACTIVITY_DATA: ActivityData = {
+  timestamps: MOCK_TIMESTAMPS,
+  axisX: MOCK_ACTIVITY,
+  axisY: MOCK_ACTIVITY,
+  axisZ: MOCK_ACTIVITY,
+  vectorMagnitude: MOCK_VM,
+  algorithmResults: MOCK_ALGO,
+  nonwearResults: null,
+  sensorNonwearPeriods: [],
+  viewStart: MOCK_TIMESTAMPS[0]!,
+  viewEnd: MOCK_TIMESTAMPS[MOCK_TIMESTAMPS.length - 1]!,
+};
+
+/** Store state that does NOT include activity data (kept in React Query cache). */
 const BASE_STORE_STATE = {
   currentFileId: 1,
   currentFilename: "participant_001.csv",
   currentDateIndex: 0,
   availableDates: ["2025-01-15"],
   currentFileSource: "server" as const,
+  currentAlgorithm: ALGORITHM_TYPES.SADEH_1994_ACTILIFE,
+  viewModeHours: 24 as const,
   isAuthenticated: true,
   sitePassword: null,
   username: "storybook",
-  timestamps: MOCK_TIMESTAMPS,
-  axisY: MOCK_ACTIVITY,
-  vectorMagnitude: MOCK_VM,
-  algorithmResults: MOCK_ALGO,
-  nonwearResults: null,
-  sensorNonwearPeriods: [],
-  isLoading: false,
   preferredDisplayColumn: "axis_y" as const,
-  viewStart: MOCK_TIMESTAMPS[0],
-  viewEnd: MOCK_TIMESTAMPS[MOCK_TIMESTAMPS.length - 1],
   sleepMarkers: [],
   nonwearMarkers: [],
   selectedPeriodIndex: null,
 };
+
+/** Build the query key that useActivityData will look up. */
+function activityQueryKey(overrides?: { fileId?: number; date?: string; hours?: number; algo?: string }): unknown[] {
+  return [
+    "activity",
+    overrides?.fileId ?? 1,
+    overrides?.date ?? "2025-01-15",
+    overrides?.hours ?? 24,
+    overrides?.algo ?? ALGORITHM_TYPES.SADEH_1994_ACTILIFE,
+    "server",
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Store + Query configurator decorator
+// ---------------------------------------------------------------------------
+
+/** Sets Zustand store state AND seeds React Query cache for the story. */
+function StoreConfigurator({
+  state,
+  activityData,
+  queryClient,
+  children,
+}: {
+  state: Record<string, unknown>;
+  activityData: ActivityData | null;
+  queryClient: QueryClient;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    useSleepScoringStore.setState(state);
+    if (activityData) {
+      queryClient.setQueryData(activityQueryKey(), activityData);
+    }
+    return () => {
+      useSleepScoringStore.setState({
+        sleepMarkers: [],
+        nonwearMarkers: [],
+        currentFileId: null,
+        currentDateIndex: 0,
+        availableDates: [],
+        selectedPeriodIndex: null,
+      });
+      queryClient.clear();
+    };
+  }, [state, activityData, queryClient]);
+  return <>{children}</>;
+}
+
+/** Wrap in all providers the ActivityPlot needs. */
+function withProviders(storeState: Record<string, unknown>, activityData: ActivityData | null = BASE_ACTIVITY_DATA) {
+  const qc = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity, refetchOnWindowFocus: false },
+    },
+  });
+
+  return function Decorator(Story: React.ComponentType) {
+    return (
+      <ThemeProvider defaultTheme="light" storageKey="storybook-activity-plot">
+        <QueryClientProvider client={qc}>
+          <DataSourceProvider>
+            <StoreConfigurator state={storeState} activityData={activityData} queryClient={qc}>
+              <div style={{ width: 900, height: 400, position: "relative" }}>
+                <Story />
+              </div>
+            </StoreConfigurator>
+          </DataSourceProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    );
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Meta
@@ -172,30 +195,22 @@ export const Default: Story = {
   decorators: [withProviders(BASE_STORE_STATE)],
 };
 
-/** Loading state -- the store's isLoading flag is true. */
+/** Loading state -- no activity data in cache, query would be loading. */
 export const Loading: Story = {
   decorators: [
-    withProviders({
-      ...BASE_STORE_STATE,
-      timestamps: [],
-      axisY: [],
-      vectorMagnitude: [],
-      algorithmResults: null,
-      isLoading: true,
-    }),
+    withProviders(BASE_STORE_STATE, null),
   ],
 };
 
-/** Empty data state -- file selected but no activity data available. */
+/** Empty data state -- file selected but activity data has empty arrays. */
 export const EmptyData: Story = {
   decorators: [
-    withProviders({
-      ...BASE_STORE_STATE,
+    withProviders(BASE_STORE_STATE, {
+      ...BASE_ACTIVITY_DATA,
       timestamps: [],
       axisY: [],
       vectorMagnitude: [],
       algorithmResults: null,
-      isLoading: false,
     }),
   ],
 };
@@ -221,43 +236,47 @@ export const WithSleepMarkers: Story = {
 /** With nonwear marker overlay (a 90-minute block). */
 export const WithNonwearMarkers: Story = {
   decorators: [
-    withProviders({
-      ...BASE_STORE_STATE,
-      nonwearResults: MOCK_NW,
-      nonwearMarkers: [
-        {
-          startTimestamp: MOCK_TIMESTAMPS[300]!, // ~17:00
-          endTimestamp: MOCK_TIMESTAMPS[390]!, // ~18:30
-          markerIndex: 0,
-        },
-      ],
-    }),
+    withProviders(
+      {
+        ...BASE_STORE_STATE,
+        nonwearMarkers: [
+          {
+            startTimestamp: MOCK_TIMESTAMPS[300]!, // ~17:00
+            endTimestamp: MOCK_TIMESTAMPS[390]!, // ~18:30
+            markerIndex: 0,
+          },
+        ],
+      },
+      { ...BASE_ACTIVITY_DATA, nonwearResults: MOCK_NW },
+    ),
   ],
 };
 
 /** With both sleep and nonwear markers overlapping on the same day. */
 export const WithSleepAndNonwear: Story = {
   decorators: [
-    withProviders({
-      ...BASE_STORE_STATE,
-      nonwearResults: MOCK_NW,
-      sleepMarkers: [
-        {
-          onsetTimestamp: MOCK_TIMESTAMPS[660]!,
-          offsetTimestamp: MOCK_TIMESTAMPS[1140]!,
-          markerIndex: 0,
-          markerType: "MAIN_SLEEP",
-        },
-      ],
-      nonwearMarkers: [
-        {
-          startTimestamp: MOCK_TIMESTAMPS[300]!,
-          endTimestamp: MOCK_TIMESTAMPS[390]!,
-          markerIndex: 0,
-        },
-      ],
-      selectedPeriodIndex: 0,
-    }),
+    withProviders(
+      {
+        ...BASE_STORE_STATE,
+        sleepMarkers: [
+          {
+            onsetTimestamp: MOCK_TIMESTAMPS[660]!,
+            offsetTimestamp: MOCK_TIMESTAMPS[1140]!,
+            markerIndex: 0,
+            markerType: "MAIN_SLEEP",
+          },
+        ],
+        nonwearMarkers: [
+          {
+            startTimestamp: MOCK_TIMESTAMPS[300]!,
+            endTimestamp: MOCK_TIMESTAMPS[390]!,
+            markerIndex: 0,
+          },
+        ],
+        selectedPeriodIndex: 0,
+      },
+      { ...BASE_ACTIVITY_DATA, nonwearResults: MOCK_NW },
+    ),
   ],
 };
 

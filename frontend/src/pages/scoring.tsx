@@ -117,7 +117,6 @@ export function ScoringPage() {
 
   // Get stable action references
   const setAvailableDates = useSleepScoringStore((state) => state.setAvailableDates);
-  const setActivityData = useSleepScoringStore((state) => state.setActivityData);
   const setCurrentFile = useSleepScoringStore((state) => state.setCurrentFile);
   const setAvailableFiles = useSleepScoringStore((state) => state.setAvailableFiles);
 
@@ -481,7 +480,7 @@ export function ScoringPage() {
   }, [autoScoreResult]);
 
   // Fetch activity data for current date with selected algorithm via DataSource
-  const { data: activityData, isLoading: activityLoading, error: activityError } = useQuery({
+  const { isLoading: activityLoading, error: activityError } = useQuery({
     queryKey: ["activity", currentFileId, currentDate, viewModeHours, currentAlgorithm, isLocal ? "local" : "server"],
     queryFn: () =>
       dataSource.loadActivityData(currentFileId!, currentDate!, {
@@ -501,24 +500,6 @@ export function ScoringPage() {
     }
     return () => { if (staleTimeoutRef.current) { clearTimeout(staleTimeoutRef.current); staleTimeoutRef.current = null; } };
   }, [activityLoading]);
-
-  // Update store when activity data is fetched
-  useEffect(() => {
-    if (activityData) {
-      setActivityData({
-        timestamps: activityData.timestamps,
-        axisX: activityData.axisX,
-        axisY: activityData.axisY,
-        axisZ: activityData.axisZ,
-        vectorMagnitude: activityData.vectorMagnitude,
-        algorithmResults: activityData.algorithmResults ?? null,
-        nonwearResults: activityData.nonwearResults ?? null,
-        sensorNonwearPeriods: activityData.sensorNonwearPeriods ?? [],
-        viewStart: activityData.viewStart,
-        viewEnd: activityData.viewEnd,
-      });
-    }
-  }, [activityData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Log activity query errors
   useEffect(() => {
