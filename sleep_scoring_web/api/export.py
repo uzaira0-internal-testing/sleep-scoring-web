@@ -8,7 +8,7 @@ Sleep and nonwear markers are exported as separate CSV files.
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from sleep_scoring_web.api.access import get_assigned_file_ids, is_admin_user
@@ -179,6 +179,12 @@ async def quick_export(
 
     if not visible_ids:
         return _error_csv("No file IDs provided")
+
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"start_date ({start_date}) must be <= end_date ({end_date})",
+        )
 
     service = ExportService(db)
 

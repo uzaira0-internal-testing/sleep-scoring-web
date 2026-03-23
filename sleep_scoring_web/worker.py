@@ -13,8 +13,10 @@ from typing import ClassVar
 
 # Set BLAS/OpenMP thread limits BEFORE numpy/agcounts are imported at module level.
 # If set in on_startup() it's too late — BLAS initializes on first import.
-os.environ.setdefault("OMP_NUM_THREADS", "8")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "8")
+from sleep_scoring_web.constants import BLAS_NUM_THREADS
+
+os.environ.setdefault("OMP_NUM_THREADS", BLAS_NUM_THREADS)
+os.environ.setdefault("OPENBLAS_NUM_THREADS", BLAS_NUM_THREADS)
 
 from arq.connections import RedisSettings
 from sqlalchemy import delete, select

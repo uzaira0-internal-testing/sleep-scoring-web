@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime  # noqa: TC003 — Pydantic needs these at runtime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from sleep_scoring_web.utils import ensure_seconds
 
@@ -63,6 +63,13 @@ class SleepPeriod(BaseModel):
     def _validate_timestamp(cls, v: float | None) -> float | None:
         return _normalize_timestamp(v)
 
+    @model_validator(mode="after")
+    def _onset_before_offset(self) -> SleepPeriod:
+        if self.onset_timestamp is not None and self.offset_timestamp is not None and self.onset_timestamp > self.offset_timestamp:
+            msg = f"onset_timestamp ({self.onset_timestamp}) must be <= offset_timestamp ({self.offset_timestamp})"
+            raise ValueError(msg)
+        return self
+
     @property
     def is_complete(self) -> bool:
         """Check if both markers are set."""
@@ -100,6 +107,13 @@ class ManualNonwearPeriod(BaseModel):
     @classmethod
     def _validate_timestamp(cls, v: float | None) -> float | None:
         return _normalize_timestamp(v)
+
+    @model_validator(mode="after")
+    def _start_before_end(self) -> ManualNonwearPeriod:
+        if self.start_timestamp is not None and self.end_timestamp is not None and self.start_timestamp > self.end_timestamp:
+            msg = f"start_timestamp ({self.start_timestamp}) must be <= end_timestamp ({self.end_timestamp})"
+            raise ValueError(msg)
+        return self
 
     @property
     def is_complete(self) -> bool:
@@ -352,6 +366,15 @@ class ExportRequest(BaseModel):
     columns: list[str] | None = Field(default=None, description="Columns to include (None = all)")
     include_header: bool = Field(default=True, description="Include CSV header row")
     include_metadata: bool = Field(default=False, description="Include metadata comments at top")
+
+    @model_validator(mode="after")
+    def _validate_date_range(self) -> ExportRequest:
+        if self.date_range is not None:
+            start, end = self.date_range
+            if start > end:
+                msg = f"start_date ({start}) must be <= end_date ({end})"
+                raise ValueError(msg)
+        return self
 
 
 class ExportResponse(BaseModel):

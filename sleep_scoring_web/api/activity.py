@@ -17,6 +17,7 @@ from sqlalchemy import and_, distinct, func, select
 
 from sleep_scoring_web.api.access import require_file_access, require_file_and_access
 from sleep_scoring_web.api.deps import DbSession, Username, VerifiedPassword
+from sleep_scoring_web.constants import get_analysis_window
 from sleep_scoring_web.db.models import File as FileModel
 from sleep_scoring_web.db.models import RawActivityData
 from sleep_scoring_web.schemas import ActivityDataColumnar, ActivityDataResponse
@@ -62,8 +63,7 @@ async def get_activity_data(
         end_time = start_time + timedelta(hours=48)
     else:
         # 24hr view: noon to noon
-        start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
-        end_time = start_time + timedelta(hours=24)
+        start_time, end_time = get_analysis_window(analysis_date)
 
     # Query activity data within time window
     result = await db.execute(
@@ -204,8 +204,7 @@ async def get_activity_data_with_scoring(
         start_time = datetime.combine(analysis_date, datetime.min.time())
         end_time = start_time + timedelta(hours=48)
     else:
-        start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
-        end_time = start_time + timedelta(hours=24)
+        start_time, end_time = get_analysis_window(analysis_date)
 
     # Determine which columns to load
     need_axis_x = requested_fields is None or "axis_x" in requested_fields
