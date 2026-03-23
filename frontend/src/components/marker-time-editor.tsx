@@ -37,13 +37,23 @@ export const MarkerTimeEditor = React.memo(function MarkerTimeEditor() {
     const marker = markers[selectedPeriodIndex];
     if (!marker) return;
 
-    const tsKeys = mode === "sleep"
-      ? { first: "onsetTimestamp" as const, second: "offsetTimestamp" as const }
-      : { first: "startTimestamp" as const, second: "endTimestamp" as const };
     const isFirst = field === "onset" || field === "start";
-    const refTs = (marker as Record<string, unknown>)[isFirst ? tsKeys.first : tsKeys.second] as number | null;
-    if (refTs === null) return;
-    const counterpartTs = (marker as Record<string, unknown>)[isFirst ? tsKeys.second : tsKeys.first] as number | null;
+    let refTs: number | null;
+    let counterpartTs: number | null;
+    let updateKey: string;
+
+    if (mode === "sleep" && "onsetTimestamp" in marker) {
+      refTs = isFirst ? marker.onsetTimestamp : marker.offsetTimestamp;
+      counterpartTs = isFirst ? marker.offsetTimestamp : marker.onsetTimestamp;
+      updateKey = isFirst ? "onsetTimestamp" : "offsetTimestamp";
+    } else if ("startTimestamp" in marker) {
+      refTs = isFirst ? marker.startTimestamp : marker.endTimestamp;
+      counterpartTs = isFirst ? marker.endTimestamp : marker.startTimestamp;
+      updateKey = isFirst ? "startTimestamp" : "endTimestamp";
+    } else {
+      return;
+    }
+    if (refTs == null) return;
 
     const newTs = resolveEditedTimeToTimestamp({
       timeStr: value,
@@ -54,7 +64,7 @@ export const MarkerTimeEditor = React.memo(function MarkerTimeEditor() {
     });
     if (newTs === null) return;
 
-    updateMarker(mode, selectedPeriodIndex, { [isFirst ? tsKeys.first : tsKeys.second]: newTs });
+    updateMarker(mode, selectedPeriodIndex, { [updateKey]: newTs });
   }, [markerMode, selectedPeriodIndex, sleepMarkers, nonwearMarkers, currentDate, updateMarker]);
 
   const commitTimeEdit = useCallback((field: "onset" | "offset", value: string) => {

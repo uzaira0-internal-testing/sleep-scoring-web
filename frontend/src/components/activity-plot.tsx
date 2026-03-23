@@ -219,17 +219,17 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
      * updates happen after). Otherwise create a fresh element.
      *
      * For elements that carry event listeners (marker lines with drag),
-     * pass `forceRecreate: true` when the underlying data has changed so
+     * Elements are reused if their key exists and they're still in the wrapper;
      * handlers are re-bound.
      */
-    function getOrCreate(key: string, tag: 'div', forceRecreate = false): { el: HTMLElement; created: boolean } {
+    function getOrCreate(key: string, _tag: 'div'): { el: HTMLElement; created: boolean } {
       desiredKeys.add(key);
       const existing = prevElements.get(key);
-      if (existing && !forceRecreate && existing.parentNode === wrapper) {
+      if (existing && existing.parentNode === wrapper) {
         nextElements.set(key, existing);
         return { el: existing, created: false };
       }
-      // Remove stale element if force-recreating
+      // Remove stale element
       if (existing && existing.parentNode === wrapper) {
         existing.remove();
       }
@@ -579,13 +579,13 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         if (marker.onset_timestamp) {
           const px = u.valToPos(marker.onset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'prev', index, 'onset', px, plotLeft, plotTop, plotHeight, getOrCreate);
+            createAdjacentDayLine('prev', index, 'onset', px, plotLeft, plotTop, plotHeight, getOrCreate);
           }
         }
         if (marker.offset_timestamp) {
           const px = u.valToPos(marker.offset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'prev', index, 'offset', px, plotLeft, plotTop, plotHeight, getOrCreate);
+            createAdjacentDayLine('prev', index, 'offset', px, plotLeft, plotTop, plotHeight, getOrCreate);
           }
         }
       });
@@ -597,13 +597,13 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         if (marker.onset_timestamp) {
           const px = u.valToPos(marker.onset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'next', index, 'onset', px, plotLeft, plotTop, plotHeight, getOrCreate);
+            createAdjacentDayLine('next', index, 'onset', px, plotLeft, plotTop, plotHeight, getOrCreate);
           }
         }
         if (marker.offset_timestamp) {
           const px = u.valToPos(marker.offset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'next', index, 'offset', px, plotLeft, plotTop, plotHeight, getOrCreate);
+            createAdjacentDayLine('next', index, 'offset', px, plotLeft, plotTop, plotHeight, getOrCreate);
           }
         }
       });
@@ -692,7 +692,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
   // CREATE ADJACENT DAY LINE - Dashed line for markers from neighboring days
   // ============================================================================
   function createAdjacentDayLine(
-    _wrapper: HTMLElement,
     day: 'prev' | 'next',
     index: number,
     edge: 'onset' | 'offset',
@@ -700,7 +699,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     plotLeft: number,
     plotTop: number,
     plotHeight: number,
-    getOrCreateFn: (key: string, tag: 'div', forceRecreate?: boolean) => { el: HTMLElement; created: boolean },
+    getOrCreateFn: (key: string, tag: 'div') => { el: HTMLElement; created: boolean },
   ) {
     // Use distinct muted colors per day: previous = amber, next = cyan
     const dayColor = day === 'prev'
@@ -775,7 +774,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     color: string,
     isSelected: boolean,
     timestampSec: number | undefined,
-    getOrCreateFn: (key: string, tag: 'div', forceRecreate?: boolean) => { el: HTMLElement; created: boolean },
+    getOrCreateFn: (key: string, tag: 'div') => { el: HTMLElement; created: boolean },
   ) {
     // Marker line key encodes the timestamp so drag handlers are recreated
     // when marker data changes, but reused for position-only updates (zoom/pan).
