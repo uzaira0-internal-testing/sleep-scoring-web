@@ -66,7 +66,6 @@ export function FileUploadSection({ files, confirm }: FileUploadSectionProps) {
     const store = useSleepScoringStore.getState();
     store.setIsUploading(true);
     store.setUploadResult(null);
-    const replace = replaceOnUpload;
 
     (async () => {
       let uploaded = 0;
