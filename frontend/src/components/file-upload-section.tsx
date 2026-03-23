@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText, Trash2, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAlertDialog } from "@/components/ui/confirm-dialog";
+import { useAlertDialog, type ConfirmFn } from "@/components/ui/confirm-dialog";
 import { useSleepScoringStore } from "@/store";
 import { filesApi } from "@/api/client";
 import type { FileInfo } from "@/api/types";
@@ -14,7 +14,7 @@ import { ActionResult } from "@/components/action-result";
 
 interface FileUploadSectionProps {
   files: FileInfo[];
-  confirm: (opts: { title: string; description: string; variant?: string; confirmLabel?: string }) => Promise<boolean>;
+  confirm: ConfirmFn;
 }
 
 export function FileUploadSection({ files, confirm }: FileUploadSectionProps) {

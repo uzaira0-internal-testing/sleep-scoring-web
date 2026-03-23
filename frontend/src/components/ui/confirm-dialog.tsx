@@ -120,6 +120,9 @@ interface ConfirmState {
   variant?: "default" | "destructive";
 }
 
+/** Callback type for the confirm dialog — reuse in component props instead of inline types. */
+export type ConfirmFn = (opts: Omit<ConfirmState, "open">) => Promise<boolean>;
+
 /**
  * Hook that provides an imperative confirm() replacement.
  *

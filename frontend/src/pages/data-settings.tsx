@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -11,9 +11,9 @@ import { useSleepScoringStore } from "@/store";
 import { settingsApi, nonwearApi, importApi, autoScoreApi } from "@/api/client";
 import type { FileInfo } from "@/api/types";
 import { useAppCapabilities } from "@/hooks/useAppCapabilities";
-import { getLocalFiles, saveSensorNonwear, type FileRecord } from "@/db";
+import { saveSensorNonwear, type FileRecord } from "@/db";
 import { parseNonwearCsv } from "@/services/nonwear-csv-parser";
-import { studySettingsQueryOptions, filesQueryOptions, autoScoreBatchStatusQueryOptions } from "@/api/query-options";
+import { studySettingsQueryOptions, filesQueryOptions, autoScoreBatchStatusQueryOptions, localFilesQueryOptions } from "@/api/query-options";
 import { ActionResult } from "@/components/action-result";
 import { FileUploadSection } from "@/components/file-upload-section";
 import { LocalFileSection } from "@/components/local-file-section";
@@ -163,7 +163,7 @@ export function DataSettingsPage() {
   const queryClient = useQueryClient();
   const isAuthenticated = useSleepScoringStore((state) => state.isAuthenticated);
   const caps = useAppCapabilities();
-  const [localFiles, setLocalFiles] = useState<FileRecord[]>([]);
+  const { data: localFiles = [] } = useQuery({ ...localFilesQueryOptions(), enabled: !caps.server });
   const { confirm, confirmDialog } = useConfirmDialog();
   const { alert, alertDialog } = useAlertDialog();
   const {
@@ -230,14 +230,6 @@ export function DataSettingsPage() {
     refetchInterval: (query) => (query.state.data?.is_running ? 1500 : false),
     refetchIntervalInBackground: true,
   });
-
-  // Load local files from IndexedDB (for nonwear import)
-  useEffect(() => {
-    getLocalFiles().then(setLocalFiles).catch((err) => {
-      console.error("Failed to load local files from IndexedDB:", err);
-    });
-  }, []);
-
 
   // Sync backend data settings to store on load
   useEffect(() => {

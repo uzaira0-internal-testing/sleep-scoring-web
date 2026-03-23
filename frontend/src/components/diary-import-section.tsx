@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useRef } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Info, Loader2, Upload, Book, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { diaryApi } from "@/api/client";
+import { localFilesQueryOptions } from "@/api/query-options";
 import { parseDiaryCsv } from "@/services/diary-parser";
-import { getLocalFiles, saveDiaryEntry, type FileRecord } from "@/db";
+import { saveDiaryEntry, type FileRecord } from "@/db";
 import { ActionResult } from "@/components/action-result";
 
 // =============================================================================
@@ -97,16 +98,10 @@ export function ServerDiaryImportSection(): JSX.Element {
 // =============================================================================
 
 export function LocalDiaryImportSection(): JSX.Element {
-  const [localFiles, setLocalFiles] = useState<FileRecord[]>([]);
+  const { data: localFiles = [] } = useQuery(localFilesQueryOptions());
   const [isImporting, setIsImporting] = useState(false);
   const [result, setResult] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    getLocalFiles().then(setLocalFiles).catch((err) => {
-      console.error("Failed to load local files for diary import:", err);
-    });
-  }, []);
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = e.target.files?.[0];

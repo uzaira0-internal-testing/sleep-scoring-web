@@ -30,8 +30,38 @@ export const DateNavigator = React.memo(function DateNavigator({
   const navigateDate = useSleepScoringStore((state) => state.navigateDate);
 
   const currentDate = availableDates[currentDateIndex] ?? null;
-  const canGoPrev = currentDateIndex > 0;
-  const canGoNext = currentDateIndex < availableDates.length - 1;
+
+  // When consensus filter is active, compute filtered indices for navigation
+  const isFlagged = (date: string) => {
+    const st = dateStatusMap.get(date);
+    return !!(st?.needs_consensus || st?.auto_flagged);
+  };
+
+  // Filtered indices: all dates when filter off, only flagged when on
+  const filteredIndices = consensusOnly
+    ? availableDates.map((d, i) => ({ date: d, idx: i })).filter(({ date }) => isFlagged(date))
+    : availableDates.map((d, i) => ({ date: d, idx: i }));
+
+  const currentFilteredPos = filteredIndices.findIndex(({ idx }) => idx === currentDateIndex);
+  const canGoPrev = consensusOnly ? currentFilteredPos > 0 : currentDateIndex > 0;
+  const canGoNext = consensusOnly
+    ? currentFilteredPos < filteredIndices.length - 1
+    : currentDateIndex < availableDates.length - 1;
+
+  const goToPrev = () => {
+    if (consensusOnly && currentFilteredPos > 0) {
+      useSleepScoringStore.getState().setCurrentDateIndex(filteredIndices[currentFilteredPos - 1].idx);
+    } else {
+      navigateDate(-1);
+    }
+  };
+  const goToNext = () => {
+    if (consensusOnly && currentFilteredPos < filteredIndices.length - 1) {
+      useSleepScoringStore.getState().setCurrentDateIndex(filteredIndices[currentFilteredPos + 1].idx);
+    } else {
+      navigateDate(1);
+    }
+  };
 
   return (
     <div className="px-4 py-2 flex items-center justify-center gap-2">
@@ -39,7 +69,7 @@ export const DateNavigator = React.memo(function DateNavigator({
         variant="outline"
         size="icon"
         className="h-7 w-7 shrink-0"
-        onClick={() => navigateDate(-1)}
+        onClick={goToPrev}
         disabled={!canGoPrev || !currentFileId}
         data-testid="prev-date-btn"
         aria-label="Previous date"
@@ -56,11 +86,10 @@ export const DateNavigator = React.memo(function DateNavigator({
               useSleepScoringStore.getState().setCurrentDateIndex(idx);
             }
           }}
-          disabled={!currentFileId || availableDates.length === 0}
+          disabled={!currentFileId || filteredIndices.length === 0}
         >
-          {availableDates.map((date, idx) => {
+          {filteredIndices.map(({ date, idx }) => {
             const st = dateStatusMap.get(date);
-            if (consensusOnly && !st?.needs_consensus && !st?.auto_flagged) return null;
             const autoFlagged = st?.auto_flagged;
             const manualFlagged = st?.needs_consensus;
             const flagPrefix = autoFlagged ? "\u26a0\ufe0f " : manualFlagged ? "\ud83d\udc65 " : "";
@@ -87,7 +116,7 @@ export const DateNavigator = React.memo(function DateNavigator({
         variant="outline"
         size="icon"
         className="h-7 w-7 shrink-0"
-        onClick={() => navigateDate(1)}
+        onClick={goToNext}
         disabled={!canGoNext || !currentFileId}
         data-testid="next-date-btn"
         aria-label="Next date"

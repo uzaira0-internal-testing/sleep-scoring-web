@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useSleepScoringStore, useMarkers } from "@/store";
 import { MARKER_TYPES, PERIOD_GUIDER_OPTIONS, type PeriodGuiderType } from "@/api/types";
 import { MarkerTimeEditor } from "@/components/marker-time-editor";
+import type { ConfirmFn } from "@/components/ui/confirm-dialog";
 import type { UseMutationResult } from "@tanstack/react-query";
 import type { AutoScoreResult, AutoNonwearResult } from "@/services/data-source";
 
@@ -18,7 +19,7 @@ interface ScoringToolbarProps {
   studySettingsLoading: boolean;
   showComparisonMarkers: boolean;
   onShowComparisonMarkersChange: (value: boolean) => void;
-  confirm: (opts: { title: string; description: string; variant?: string; confirmLabel?: string }) => Promise<boolean>;
+  confirm: ConfirmFn;
 }
 
 export const ScoringToolbar = React.memo(function ScoringToolbar({

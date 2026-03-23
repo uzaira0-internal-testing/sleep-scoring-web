@@ -1,26 +1,26 @@
-import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText, Trash2, Loader2, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { ConfirmFn } from "@/components/ui/confirm-dialog";
 import { useLocalFile } from "@/hooks/useLocalFile";
 import { LocalProcessingProgress } from "@/components/local-processing-progress";
-import { getLocalFiles, deleteFileRecord, type FileRecord } from "@/db";
+import { deleteFileRecord } from "@/db";
+import { localFilesQueryOptions } from "@/api/query-options";
 
 interface LocalFileSectionProps {
   isServerMode: boolean;
-  confirm: (opts: { title: string; description: string; variant?: string; confirmLabel?: string }) => Promise<boolean>;
+  confirm: ConfirmFn;
   alert: (opts: { title: string; description: string }) => Promise<void>;
 }
 
 export function LocalFileSection({ isServerMode, confirm, alert }: LocalFileSectionProps) {
+  const queryClient = useQueryClient();
   const { openLocalFiles, openLocalFolder, isProcessing, progress: localProgress } = useLocalFile();
-  const [localFiles, setLocalFiles] = useState<FileRecord[]>([]);
-
-  useEffect(() => {
-    getLocalFiles().then(setLocalFiles).catch((err) => {
-      console.error("Failed to load local files from IndexedDB:", err);
-    });
-  }, [isProcessing]);
+  const { data: localFiles = [] } = useQuery({
+    ...localFilesQueryOptions(),
+    refetchInterval: isProcessing ? 1000 : false,
+  });
 
   return (
     <Card>
@@ -89,7 +89,7 @@ export function LocalFileSection({ isServerMode, confirm, alert }: LocalFileSect
                         if (ok && f.id) {
                           try {
                             await deleteFileRecord(f.id);
-                            setLocalFiles((prev) => prev.filter((lf) => lf.id !== f.id));
+                            queryClient.invalidateQueries({ queryKey: localFilesQueryOptions().queryKey });
                           } catch (err) {
                             console.error("Failed to delete file:", err);
                             await alert({ title: "Delete Failed", description: `Could not delete ${f.filename}. Please try again.` });

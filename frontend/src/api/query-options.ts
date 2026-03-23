@@ -6,6 +6,7 @@
  */
 import { queryOptions } from "@tanstack/react-query";
 import { fetchWithAuth, getApiBase, filesApi, settingsApi, assignmentApi, autoScoreApi, pipelineApi } from "@/api/client";
+import { getLocalFiles } from "@/db";
 import type { DataSource } from "@/services/data-source";
 
 // ── Files ──────────────────────────────────────────────────────────
@@ -14,6 +15,15 @@ export function filesQueryOptions() {
   return queryOptions({
     queryKey: ["files"] as const,
     queryFn: () => filesApi.listFiles(),
+  });
+}
+
+// ── Local Files (IndexedDB) ─────────────────────────────────────────
+
+export function localFilesQueryOptions() {
+  return queryOptions({
+    queryKey: ["local-files"] as const,
+    queryFn: () => getLocalFiles(),
   });
 }
 
