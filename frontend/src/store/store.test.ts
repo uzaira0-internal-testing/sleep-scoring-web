@@ -20,13 +20,6 @@ describe("SleepScoringStore", () => {
       currentDateIndex: 0,
       availableDates: [],
       availableFiles: [],
-      timestamps: [],
-      axisX: [],
-      axisY: [],
-      axisZ: [],
-      vectorMagnitude: [],
-      algorithmResults: null,
-      isLoading: false,
       sleepMarkers: [],
       nonwearMarkers: [],
       isDirty: false,
@@ -158,57 +151,6 @@ describe("SleepScoringStore", () => {
 
       const state = useSleepScoringStore.getState();
       expect(state.currentDateIndex).toBe(0); // Should stay at 0
-    });
-  });
-
-  describe("Activity data state", () => {
-    it("should set activity data correctly", () => {
-      const { setActivityData } = useSleepScoringStore.getState();
-
-      setActivityData({
-        timestamps: [1000, 2000, 3000],
-        axisX: [10, 20, 30],
-        axisY: [15, 25, 35],
-        axisZ: [5, 10, 15],
-        vectorMagnitude: [100, 200, 300],
-        algorithmResults: [0, 1, 0],
-      });
-
-      const state = useSleepScoringStore.getState();
-      expect(state.timestamps).toHaveLength(3);
-      expect(state.axisY[1]).toBe(25);
-      expect(state.algorithmResults).toEqual([0, 1, 0]);
-      expect(state.isLoading).toBe(false);
-    });
-
-    it("should clear activity data correctly", () => {
-      // First set some data
-      const { setActivityData, clearActivityData } =
-        useSleepScoringStore.getState();
-
-      setActivityData({
-        timestamps: [1000, 2000],
-        axisX: [10, 20],
-        axisY: [15, 25],
-        axisZ: [5, 10],
-        vectorMagnitude: [100, 200],
-      });
-
-      clearActivityData();
-
-      const state = useSleepScoringStore.getState();
-      expect(state.timestamps).toHaveLength(0);
-      expect(state.axisY).toHaveLength(0);
-    });
-
-    it("should set loading state correctly", () => {
-      const { setLoading } = useSleepScoringStore.getState();
-
-      setLoading(true);
-      expect(useSleepScoringStore.getState().isLoading).toBe(true);
-
-      setLoading(false);
-      expect(useSleepScoringStore.getState().isLoading).toBe(false);
     });
   });
 

@@ -38,29 +38,6 @@ interface FileState {
 }
 
 /**
- * Activity data state (columnar format)
- */
-interface SensorNonwearPeriod {
-  startTimestamp: number;  // seconds
-  endTimestamp: number;    // seconds
-}
-
-interface ActivityState {
-  timestamps: number[];
-  axisX: number[];
-  axisY: number[];
-  axisZ: number[];
-  vectorMagnitude: number[];
-  algorithmResults: number[] | null;  // Sleep scoring (1=sleep, 0=wake)
-  nonwearResults: number[] | null;  // Choi nonwear (1=nonwear, 0=wear)
-  sensorNonwearPeriods: SensorNonwearPeriod[];  // Uploaded sensor nonwear (read-only overlays)
-  isLoading: boolean;
-  // Expected view range (for setting axis bounds even if data is missing)
-  viewStart: number | null;
-  viewEnd: number | null;
-}
-
-/**
  * Marker creation state machine
  */
 type MarkerCreationMode = "idle" | "placing_onset" | "placing_offset";
@@ -179,7 +156,6 @@ interface ColorThemeState {
 interface SleepScoringState
   extends AuthState,
     FileState,
-    ActivityState,
     MarkerState,
     UndoRedoState,
     PreferencesState,
@@ -198,22 +174,6 @@ interface SleepScoringState
   setAvailableDates: (dates: string[]) => void;
   setCurrentDateIndex: (index: number) => void;
   navigateDate: (direction: 1 | -1) => void;
-
-  // Activity data actions
-  setActivityData: (data: {
-    timestamps: number[];
-    axisX: number[];
-    axisY: number[];
-    axisZ: number[];
-    vectorMagnitude: number[];
-    algorithmResults?: number[] | null;
-    nonwearResults?: number[] | null;
-    sensorNonwearPeriods?: SensorNonwearPeriod[];
-    viewStart?: number | null;
-    viewEnd?: number | null;
-  }) => void;
-  setLoading: (loading: boolean) => void;
-  clearActivityData: () => void;
 
   // Marker actions (server-load variants skip undo history + isDirty)
   _loadSleepMarkersFromServer: (markers: MarkerState["sleepMarkers"]) => void;
@@ -330,19 +290,6 @@ export const useSleepScoringStore = create<SleepScoringState>()(
         availableDates: [],
         availableFiles: [],
         currentFileSource: "server",
-
-        // Initial activity state
-        timestamps: [],
-        axisX: [],
-        axisY: [],
-        axisZ: [],
-        vectorMagnitude: [],
-        algorithmResults: null,
-        nonwearResults: null,
-        sensorNonwearPeriods: [],
-        isLoading: false,
-        viewStart: null,
-        viewEnd: null,
 
         // Initial marker state
         sleepMarkers: [],
@@ -593,38 +540,6 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             }
           })();
         },
-
-        // Activity data actions
-        setActivityData: (data) =>
-          set({
-            timestamps: data.timestamps,
-            axisX: data.axisX,
-            axisY: data.axisY,
-            axisZ: data.axisZ,
-            vectorMagnitude: data.vectorMagnitude,
-            algorithmResults: data.algorithmResults ?? null,
-            nonwearResults: data.nonwearResults ?? null,
-            sensorNonwearPeriods: data.sensorNonwearPeriods ?? [],
-            viewStart: data.viewStart ?? null,
-            viewEnd: data.viewEnd ?? null,
-            isLoading: false,
-          }),
-
-        setLoading: (loading) => set({ isLoading: loading }),
-
-        clearActivityData: () =>
-          set({
-            timestamps: [],
-            axisX: [],
-            axisY: [],
-            axisZ: [],
-            vectorMagnitude: [],
-            algorithmResults: null,
-            nonwearResults: null,
-            sensorNonwearPeriods: [],
-            viewStart: null,
-            viewEnd: null,
-          }),
 
         // Marker actions — server-load variants (no undo, no isDirty)
         _loadSleepMarkersFromServer: (markers) => set({ sleepMarkers: markers }),
@@ -1129,26 +1044,6 @@ export const useFiles = () =>
       availableFiles: state.availableFiles,
       setCurrentFile: state.setCurrentFile,
       setAvailableFiles: state.setAvailableFiles,
-    }))
-  );
-
-export const useActivityData = () =>
-  useSleepScoringStore(
-    useShallow((state) => ({
-      timestamps: state.timestamps,
-      axisX: state.axisX,
-      axisY: state.axisY,
-      axisZ: state.axisZ,
-      vectorMagnitude: state.vectorMagnitude,
-      algorithmResults: state.algorithmResults,
-      nonwearResults: state.nonwearResults,
-      sensorNonwearPeriods: state.sensorNonwearPeriods,
-      isLoading: state.isLoading,
-      preferredDisplayColumn: state.preferredDisplayColumn,
-      viewStart: state.viewStart,
-      viewEnd: state.viewEnd,
-      setActivityData: state.setActivityData,
-      setLoading: state.setLoading,
     }))
   );
 
