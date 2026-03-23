@@ -331,7 +331,10 @@ export class ServerDataSource implements DataSource {
     const response = await fetch(`${getApiBase()}/diary/${fileId}/${date}`, {
       headers: this.getHeaders(),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.warn(`getDiaryEntry(${fileId}, ${date}) failed: ${response.status} ${response.statusText}`);
+      return null;
+    }
     const entry = await response.json();
     if (!entry) return null;
     return this.mapDiaryEntry(fileId, entry);

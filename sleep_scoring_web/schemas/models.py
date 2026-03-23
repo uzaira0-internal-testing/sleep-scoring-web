@@ -495,8 +495,8 @@ class FileAssignmentResponse(BaseModel):
 class CreateAssignmentsRequest(BaseModel):
     """Request body for POST /files/assignments."""
 
-    file_ids: list[int]
-    username: str
+    file_ids: list[int] = Field(min_length=1)
+    username: str = Field(min_length=1)
 
 
 class CreateAssignmentsResponse(BaseModel):

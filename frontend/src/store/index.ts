@@ -920,7 +920,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
                   needsConsensus: snapshot.needsConsensus,
                   notes: snapshot.notes,
                   selectedPeriodIndex: snapshot.selectedPeriodIndex,
-                  isDirty: true, _editGeneration: get()._editGeneration + 1,
+                  isDirty: true,
                   markerHistoryIndex: newHistory.length - 2,
                 });
               }
@@ -938,7 +938,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             needsConsensus: snapshot.needsConsensus,
             notes: snapshot.notes,
             selectedPeriodIndex: snapshot.selectedPeriodIndex,
-            isDirty: true, _editGeneration: get()._editGeneration + 1,
+            isDirty: true,
             markerHistoryIndex: newIndex,
           });
         },
@@ -956,7 +956,7 @@ export const useSleepScoringStore = create<SleepScoringState>()(
             needsConsensus: snapshot.needsConsensus,
             notes: snapshot.notes,
             selectedPeriodIndex: snapshot.selectedPeriodIndex,
-            isDirty: true, _editGeneration: get()._editGeneration + 1,
+            isDirty: true,
             markerHistoryIndex: newIndex,
           });
         },

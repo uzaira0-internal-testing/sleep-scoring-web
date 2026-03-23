@@ -1207,42 +1207,42 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
 
     async with async_session_maker() as db:
         # Batch-load file-level data to avoid N+1 queries per date
-        diary_result = await db.execute(
-            select(DiaryEntry).where(DiaryEntry.file_id == file_id)
-        )
-        diary_by_date = {str(d.analysis_date): d for d in diary_result.scalars().all()}
+        try:
+            diary_result = await db.execute(select(DiaryEntry).where(DiaryEntry.file_id == file_id))
+            diary_by_date = {str(d.analysis_date): d for d in diary_result.scalars().all()}
 
-        sensor_nw_result = await db.execute(
-            select(Marker).where(
-                and_(
-                    Marker.file_id == file_id,
-                    Marker.sensor_nonwear_filter(),
+            sensor_nw_result = await db.execute(
+                select(Marker).where(
+                    and_(
+                        Marker.file_id == file_id,
+                        Marker.sensor_nonwear_filter(),
+                    )
                 )
             )
-        )
-        all_sensor_nonwear = [
-            (nw.start_timestamp, nw.end_timestamp)
-            for nw in sensor_nw_result.scalars().all()
-            if nw.start_timestamp is not None and nw.end_timestamp is not None
-        ]
+            all_sensor_nonwear = [
+                (nw.start_timestamp, nw.end_timestamp)
+                for nw in sensor_nw_result.scalars().all()
+                if nw.start_timestamp is not None and nw.end_timestamp is not None
+            ]
 
-        sleep_marker_result = await db.execute(
-            select(Marker).where(
-                and_(
-                    Marker.file_id == file_id,
-                    Marker.marker_category == MarkerCategory.SLEEP,
+            sleep_marker_result = await db.execute(
+                select(Marker).where(
+                    and_(
+                        Marker.file_id == file_id,
+                        Marker.marker_category == MarkerCategory.SLEEP,
+                    )
                 )
             )
-        )
-        sleep_markers_by_date: dict[str, list[tuple[float, float]]] = defaultdict(list)
-        for m in sleep_marker_result.scalars().all():
-            if m.start_timestamp is not None and m.end_timestamp is not None:
-                sleep_markers_by_date[str(m.analysis_date)].append((m.start_timestamp, m.end_timestamp))
+            sleep_markers_by_date: dict[str, list[tuple[float, float]]] = defaultdict(list)
+            for m in sleep_marker_result.scalars().all():
+                if m.start_timestamp is not None and m.end_timestamp is not None:
+                    sleep_markers_by_date[str(m.analysis_date)].append((m.start_timestamp, m.end_timestamp))
 
-        existing_complexity_result = await db.execute(
-            select(NightComplexity).where(NightComplexity.file_id == file_id)
-        )
-        complexity_by_date = {str(c.analysis_date): c for c in existing_complexity_result.scalars().all()}
+            existing_complexity_result = await db.execute(select(NightComplexity).where(NightComplexity.file_id == file_id))
+            complexity_by_date = {str(c.analysis_date): c for c in existing_complexity_result.scalars().all()}
+        except Exception:
+            logger.exception("Failed to batch-load data for complexity computation on file %d", file_id)
+            return
 
         for analysis_date in dates:
             try:
@@ -1297,9 +1297,7 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
                 # Filter sensor nonwear to this date's time range
                 data_min_ts = timestamps[0]
                 data_max_ts = timestamps[-1]
-                sensor_nonwear_periods = [
-                    (s, e) for s, e in all_sensor_nonwear if s <= data_max_ts and e >= data_min_ts
-                ]
+                sensor_nonwear_periods = [(s, e) for s, e in all_sensor_nonwear if s <= data_max_ts and e >= data_min_ts]
 
                 score, features = compute_pre_complexity(
                     timestamps=timestamps,

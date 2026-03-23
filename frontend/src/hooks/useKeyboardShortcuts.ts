@@ -21,9 +21,6 @@ const EPOCH_DURATION_SEC = 60;
  */
 export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () => void) {
   const {
-    markerMode,
-    creationMode,
-    selectedPeriodIndex,
     cancelMarkerCreation,
     deleteMarker,
     updateMarker,
@@ -32,10 +29,6 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
   } = useMarkers();
 
   const { navigateDate } = useDates();
-
-  // Get view mode toggle from store
-  const viewModeHours = useSleepScoringStore((state) => state.viewModeHours);
-  const setViewModeHours = useSleepScoringStore((state) => state.setViewModeHours);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -47,17 +40,19 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
         return;
       }
 
-      // Read markers from store to avoid stale closures (per CLAUDE.md)
+      // Read all mutable state from store to avoid stale closures (per CLAUDE.md)
+      const state = useSleepScoringStore.getState();
+      const currentMarkerMode = state.markerMode;
+      const currentSelectedIndex = state.selectedPeriodIndex;
       const getMarker = () => {
-        const state = useSleepScoringStore.getState();
-        if (markerMode === "sleep") return state.sleepMarkers[selectedPeriodIndex ?? -1];
-        return state.nonwearMarkers[selectedPeriodIndex ?? -1];
+        if (currentMarkerMode === "sleep") return state.sleepMarkers[currentSelectedIndex ?? -1];
+        return state.nonwearMarkers[currentSelectedIndex ?? -1];
       };
 
       switch (e.key) {
         case "Escape":
           // Cancel marker creation if in progress
-          if (creationMode !== "idle") {
+          if (state.creationMode !== "idle") {
             e.preventDefault();
             cancelMarkerCreation();
           }
@@ -66,22 +61,22 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
         case "Delete":
         case "Backspace":
           // Delete selected marker
-          if (selectedPeriodIndex !== null) {
+          if (currentSelectedIndex !== null) {
             e.preventDefault();
-            deleteMarker(markerMode, selectedPeriodIndex);
+            deleteMarker(currentMarkerMode, currentSelectedIndex);
           }
           break;
 
         case "q":
         case "Q":
           // Move onset/start left by 1 epoch
-          if (selectedPeriodIndex !== null) {
+          if (currentSelectedIndex !== null) {
             e.preventDefault();
             const marker = getMarker();
-            if (markerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.onsetTimestamp != null) {
-              updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: marker.onsetTimestamp - EPOCH_DURATION_SEC });
+            if (currentMarkerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.onsetTimestamp != null) {
+              updateMarker("sleep", currentSelectedIndex, { onsetTimestamp: marker.onsetTimestamp - EPOCH_DURATION_SEC });
             } else if (marker && "startTimestamp" in marker && marker.startTimestamp != null) {
-              updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: marker.startTimestamp - EPOCH_DURATION_SEC });
+              updateMarker("nonwear", currentSelectedIndex, { startTimestamp: marker.startTimestamp - EPOCH_DURATION_SEC });
             }
           }
           break;
@@ -89,18 +84,18 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
         case "e":
         case "E":
           // Move onset/start right by 1 epoch
-          if (selectedPeriodIndex !== null) {
+          if (currentSelectedIndex !== null) {
             e.preventDefault();
             const marker = getMarker();
-            if (markerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.onsetTimestamp != null && marker.offsetTimestamp != null) {
+            if (currentMarkerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.onsetTimestamp != null && marker.offsetTimestamp != null) {
               const newOnset = marker.onsetTimestamp + EPOCH_DURATION_SEC;
               if (newOnset < marker.offsetTimestamp) {
-                updateMarker("sleep", selectedPeriodIndex, { onsetTimestamp: newOnset });
+                updateMarker("sleep", currentSelectedIndex, { onsetTimestamp: newOnset });
               }
             } else if (marker && "startTimestamp" in marker && marker.startTimestamp != null && marker.endTimestamp != null) {
               const newStart = marker.startTimestamp + EPOCH_DURATION_SEC;
               if (newStart < marker.endTimestamp) {
-                updateMarker("nonwear", selectedPeriodIndex, { startTimestamp: newStart });
+                updateMarker("nonwear", currentSelectedIndex, { startTimestamp: newStart });
               }
             }
           }
@@ -109,18 +104,18 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
         case "a":
         case "A":
           // Move offset/end left by 1 epoch
-          if (selectedPeriodIndex !== null) {
+          if (currentSelectedIndex !== null) {
             e.preventDefault();
             const marker = getMarker();
-            if (markerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.onsetTimestamp != null && marker.offsetTimestamp != null) {
+            if (currentMarkerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.onsetTimestamp != null && marker.offsetTimestamp != null) {
               const newOffset = marker.offsetTimestamp - EPOCH_DURATION_SEC;
               if (newOffset > marker.onsetTimestamp) {
-                updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: newOffset });
+                updateMarker("sleep", currentSelectedIndex, { offsetTimestamp: newOffset });
               }
             } else if (marker && "startTimestamp" in marker && marker.startTimestamp != null && marker.endTimestamp != null) {
               const newEnd = marker.endTimestamp - EPOCH_DURATION_SEC;
               if (newEnd > marker.startTimestamp) {
-                updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: newEnd });
+                updateMarker("nonwear", currentSelectedIndex, { endTimestamp: newEnd });
               }
             }
           }
@@ -129,13 +124,13 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
         case "d":
         case "D":
           // Move offset/end right by 1 epoch
-          if (selectedPeriodIndex !== null) {
+          if (currentSelectedIndex !== null) {
             e.preventDefault();
             const marker = getMarker();
-            if (markerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.offsetTimestamp != null) {
-              updateMarker("sleep", selectedPeriodIndex, { offsetTimestamp: marker.offsetTimestamp + EPOCH_DURATION_SEC });
+            if (currentMarkerMode === "sleep" && marker && "onsetTimestamp" in marker && marker.offsetTimestamp != null) {
+              updateMarker("sleep", currentSelectedIndex, { offsetTimestamp: marker.offsetTimestamp + EPOCH_DURATION_SEC });
             } else if (marker && "startTimestamp" in marker && marker.endTimestamp != null) {
-              updateMarker("nonwear", selectedPeriodIndex, { endTimestamp: marker.endTimestamp + EPOCH_DURATION_SEC });
+              updateMarker("nonwear", currentSelectedIndex, { endTimestamp: marker.endTimestamp + EPOCH_DURATION_SEC });
             }
           }
           break;
@@ -160,7 +155,8 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
           // Ctrl+4: Toggle 24h/48h view mode
           if (e.ctrlKey && !e.shiftKey && !e.altKey) {
             e.preventDefault();
-            setViewModeHours(viewModeHours === 24 ? 48 : 24);
+            const currentViewMode = useSleepScoringStore.getState().viewModeHours;
+            useSleepScoringStore.getState().setViewModeHours(currentViewMode === 24 ? 48 : 24);
           }
           break;
 
@@ -206,24 +202,19 @@ export function useKeyboardShortcuts(onSave?: () => void, onConfirmClear?: () =>
             }
           } else if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
             // C without modifiers: Delete selected marker (like desktop app)
-            if (selectedPeriodIndex !== null) {
+            if (currentSelectedIndex !== null) {
               e.preventDefault();
-              deleteMarker(markerMode, selectedPeriodIndex);
+              deleteMarker(currentMarkerMode, currentSelectedIndex);
             }
           }
           break;
       }
     },
     [
-      markerMode,
-      creationMode,
-      selectedPeriodIndex,
       cancelMarkerCreation,
       deleteMarker,
       updateMarker,
       navigateDate,
-      viewModeHours,
-      setViewModeHours,
       undo,
       redo,
       onSave,

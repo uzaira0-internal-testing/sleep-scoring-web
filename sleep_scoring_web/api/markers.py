@@ -394,7 +394,7 @@ async def get_markers(
                 onset_idx = bisect.bisect_left(timestamps_float, marker.onset_timestamp)
                 offset_idx = bisect.bisect_right(timestamps_float, marker.offset_timestamp) - 1
 
-                if onset_idx >= len(timestamps_float) or offset_idx < 0:
+                if onset_idx >= len(timestamps_float) or offset_idx < 0 or onset_idx > offset_idx:
                     continue
 
                 try:
@@ -1009,7 +1009,7 @@ async def _calculate_and_store_metrics(
             onset_idx = bisect.bisect_left(timestamps_float, marker.onset_timestamp)
             offset_idx = bisect.bisect_right(timestamps_float, marker.offset_timestamp) - 1
 
-            if onset_idx >= len(timestamps_float) or offset_idx < 0:
+            if onset_idx >= len(timestamps_float) or offset_idx < 0 or onset_idx > offset_idx:
                 logger.warning(
                     "Could not find indices for marker period %d (onset=%s, offset=%s)",
                     marker_num,
