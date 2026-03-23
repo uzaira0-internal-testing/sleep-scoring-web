@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
 import { Panel, Group, Separator, useDefaultLayout } from "react-resizable-panels";
-import { ChevronLeft, ChevronRight, Loader2, Moon, Watch, Trash2, FileText, X, Ban, Check, CircleDot, AlertCircle, GripVertical, GripHorizontal, Wand2, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, FileText, Check, CircleDot, AlertCircle, GripVertical, GripHorizontal, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -9,8 +9,6 @@ import { useConfirmDialog, useAlertDialog } from "@/components/ui/confirm-dialog
 import { Select } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useSleepScoringStore, useMarkers } from "@/store";
 import { ActivityPlot } from "@/components/activity-plot";
 import { ConsensusVoteSidebar } from "@/components/consensus-vote-sidebar";
@@ -20,13 +18,14 @@ import { ColorLegendDialog, ColorLegendButton } from "@/components/color-legend-
 import { KeyboardShortcutsDialog, KeyboardShortcutsButton } from "@/components/keyboard-shortcuts-dialog";
 import { DiaryPanel } from "@/components/diary-panel";
 import { ColorThemePopover } from "@/components/color-theme-popover";
+import { DateNavigator } from "@/components/date-navigator";
+import { ScoringToolbar } from "@/components/scoring-toolbar";
 // MetricsPanel and ConsensusPanel hidden by default — available via popout if needed
 import { useKeyboardShortcuts, useMarkerAutoSave, useMarkerLoad, useColorThemeSync } from "@/hooks";
 import { getApiBase, fetchWithAuth, settingsApi } from "@/api/client";
 import { studySettingsQueryOptions } from "@/api/query-options";
-import { MARKER_TYPES, PERIOD_GUIDER_OPTIONS, PERIOD_GUIDERS, type DateStatus, type ConsensusBallotCandidate } from "@/api/types";
-import { formatTime, formatDuration } from "@/utils/formatters";
-import { resolveEditedTimeToTimestamp } from "@/utils/time-edit";
+import { MARKER_TYPES, PERIOD_GUIDERS, type DateStatus, type ConsensusBallotCandidate } from "@/api/types";
+import { formatTime } from "@/utils/formatters";
 import {
   ACTIVITY_SOURCE_OPTIONS,
   VIEW_MODE_OPTIONS,
@@ -50,10 +49,6 @@ export function ScoringPage() {
   const [isConsensusCollapsed, setIsConsensusCollapsed] = useState(false);
   const [autoScoreResult, setAutoScoreResult] = useState<AutoScoreResult | null>(null);
   const [autoNonwearResult, setAutoNonwearResult] = useState<AutoNonwearResult | null>(null);
-  const [editingOnset, setEditingOnset] = useState<string | null>(null);
-  const [editingOffset, setEditingOffset] = useState<string | null>(null);
-  const [editingNwStart, setEditingNwStart] = useState<string | null>(null);
-  const [editingNwEnd, setEditingNwEnd] = useState<string | null>(null);
   const [isPlotStale, setIsPlotStale] = useState(false);
   const staleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [complexityBreakdown, setComplexityBreakdown] = useState<{
@@ -99,15 +94,9 @@ export function ScoringPage() {
   const currentAlgorithm = useSleepScoringStore((state) => state.currentAlgorithm);
   const setPreferredDisplayColumn = useSleepScoringStore((state) => state.setPreferredDisplayColumn);
   const setViewModeHours = useSleepScoringStore((state) => state.setViewModeHours);
-  const showAdjacentMarkers = useSleepScoringStore((state) => state.showAdjacentMarkers);
-  const setShowAdjacentMarkers = useSleepScoringStore((state) => state.setShowAdjacentMarkers);
-  const showNonwearOverlays = useSleepScoringStore((state) => state.showNonwearOverlays);
-  const setShowNonwearOverlays = useSleepScoringStore((state) => state.setShowNonwearOverlays);
   const autoScoreOnNavigate = useSleepScoringStore((state) => state.autoScoreOnNavigate);
-  const setAutoScoreOnNavigate = useSleepScoringStore((state) => state.setAutoScoreOnNavigate);
   const autoNonwearOnNavigate = useSleepScoringStore((state) => state.autoNonwearOnNavigate);
   const periodGuider = useSleepScoringStore((state) => state.periodGuider);
-  const setPeriodGuider = useSleepScoringStore((state) => state.setPeriodGuider);
   const sleepDetectionRule = useSleepScoringStore((state) => state.sleepDetectionRule);
   // Sidebar panels (sleep markers, nonwear, metrics) are hidden by default
   const username = useSleepScoringStore((state) => state.username);
@@ -129,7 +118,6 @@ export function ScoringPage() {
   // Get stable action references
   const setAvailableDates = useSleepScoringStore((state) => state.setAvailableDates);
   const setActivityData = useSleepScoringStore((state) => state.setActivityData);
-  const navigateDate = useSleepScoringStore((state) => state.navigateDate);
   const setCurrentFile = useSleepScoringStore((state) => state.setCurrentFile);
   const setAvailableFiles = useSleepScoringStore((state) => state.setAvailableFiles);
 
@@ -137,20 +125,10 @@ export function ScoringPage() {
   const {
     sleepMarkers,
     nonwearMarkers,
-    markerMode,
-    creationMode,
-    selectedPeriodIndex,
     isDirty,
     isSaving,
     saveError,
     isNoSleep,
-    needsConsensus,
-    setMarkerMode,
-    cancelMarkerCreation,
-    updateMarker,
-    notes,
-    setNeedsConsensus,
-    setNotes,
     setSleepMarkers,
     setNonwearMarkers,
   } = useMarkers();
@@ -549,48 +527,6 @@ export function ScoringPage() {
     }
   }, [activityError]);
 
-  const commitMarkerTimeEdit = useCallback((
-    mode: "sleep" | "nonwear",
-    field: "onset" | "offset" | "start" | "end",
-    value: string,
-  ) => {
-    if (markerMode !== mode || selectedPeriodIndex === null) return;
-    const markers = mode === "sleep" ? sleepMarkers : nonwearMarkers;
-    const marker = markers[selectedPeriodIndex];
-    if (!marker) return;
-
-    // Map field names to timestamp keys
-    const tsKeys = mode === "sleep"
-      ? { first: "onsetTimestamp" as const, second: "offsetTimestamp" as const }
-      : { first: "startTimestamp" as const, second: "endTimestamp" as const };
-    const isFirst = field === "onset" || field === "start";
-    const refTs = (marker as Record<string, unknown>)[isFirst ? tsKeys.first : tsKeys.second] as number | null;
-    if (refTs === null) return;
-    const counterpartTs = (marker as Record<string, unknown>)[isFirst ? tsKeys.second : tsKeys.first] as number | null;
-
-    const newTs = resolveEditedTimeToTimestamp({
-      timeStr: value,
-      currentDate,
-      referenceTimestamp: refTs,
-      otherBoundaryTimestamp: counterpartTs,
-      field: isFirst ? "onset" : "offset",
-    });
-    if (newTs === null) return;
-
-    updateMarker(mode, selectedPeriodIndex, { [isFirst ? tsKeys.first : tsKeys.second]: newTs });
-  }, [markerMode, selectedPeriodIndex, sleepMarkers, nonwearMarkers, currentDate, updateMarker]);
-
-  const commitTimeEdit = useCallback((field: "onset" | "offset", value: string) => {
-    commitMarkerTimeEdit("sleep", field, value);
-  }, [commitMarkerTimeEdit]);
-
-  const commitNwTimeEdit = useCallback((field: "start" | "end", value: string) => {
-    commitMarkerTimeEdit("nonwear", field, value);
-  }, [commitMarkerTimeEdit]);
-
-  const canGoPrev = currentDateIndex > 0;
-  const canGoNext = currentDateIndex < availableDates.length - 1;
-
   // Consensus-only filter toggle
   // TODO: wire to UI toggle — filters date list to only show consensus/flagged dates
   const [consensusOnly] = useState(false);
@@ -738,406 +674,25 @@ export function ScoringPage() {
 
       {/* Toolbar — semantic groups that flow into rows based on available space */}
       <div className="flex-none border-b bg-muted/30">
-        {/* Date navigation row — ONLY the date picker, perfectly centered */}
-        <div className="px-4 py-2 flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={() => navigateDate(-1)}
-            disabled={!canGoPrev || !currentFileId}
-            data-testid="prev-date-btn"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="relative min-w-[200px] w-[min(420px,45vw)]">
-            <select
-              className="w-full h-7 px-3 pr-8 rounded-md border border-input bg-background text-sm font-medium appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring"
-              value={currentDateIndex}
-              onChange={(e) => {
-                const idx = parseInt(e.target.value, 10);
-                if (idx !== currentDateIndex) {
-                  useSleepScoringStore.getState().setCurrentDateIndex(idx);
-                }
-              }}
-              disabled={!currentFileId || availableDates.length === 0}
-            >
-              {availableDates.map((date, idx) => {
-                const st = dateStatusMap.get(date);
-                if (consensusOnly && !st?.needs_consensus && !st?.auto_flagged) return null;
-                const autoFlagged = st?.auto_flagged;
-                const manualFlagged = st?.needs_consensus;
-                const flagPrefix = autoFlagged ? "\u26a0\ufe0f " : manualFlagged ? "\ud83d\udc65 " : "";
-                const prefix = st?.is_no_sleep ? "\u26d4 " : st?.has_markers ? "\u2713 " : "\u25cb ";
-                const weekday = new Date(date + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
-                return (
-                  <option key={date} value={idx}>
-                    {flagPrefix}{prefix}{date} {weekday} ({idx + 1}/{availableDates.length})
-                  </option>
-                );
-              })}
-            </select>
-            {currentDate && (() => {
-              const st = dateStatusMap.get(currentDate);
-              if (st?.auto_flagged) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-red-500" title="Scorers disagree" />;
-              if (st?.needs_consensus) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-orange-500" title="Flagged for consensus" />;
-              if (st?.is_no_sleep) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-amber-500" title="No sleep" />;
-              if (st?.has_markers) return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green-500" title="Has markers" />;
-              return <span className="absolute right-8 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-muted-foreground/30" title="No markers" />;
-            })()}
-            <ChevronRight className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none rotate-90" />
-          </div>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={() => navigateDate(1)}
-            disabled={!canGoNext || !currentFileId}
-            data-testid="next-date-btn"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          {currentDate && (() => {
-            const st = dateStatusMap.get(currentDate);
-            const complexity = st?.complexity_post ?? st?.complexity_pre;
-            if (complexity == null) return null;
-            if (complexity === -1) {
-              return (
-                <span className="text-xs font-medium px-1.5 py-0.5 rounded text-purple-600 dark:text-purple-400 bg-purple-500/10 tabular-nums cursor-help" title="Incomplete diary — need both onset and wake to score">
-                  ∞
-                </span>
-              );
-            }
-            const color = complexity >= 70 ? "text-green-600 dark:text-green-400 bg-green-500/10" : complexity >= 40 ? "text-yellow-600 dark:text-yellow-400 bg-yellow-500/10" : "text-red-600 dark:text-red-400 bg-red-500/10";
-            return (
-              <button
-                className={`text-xs font-medium px-1.5 py-0.5 rounded ${color} tabular-nums cursor-pointer hover:ring-1 hover:ring-current transition-shadow`}
-                title={`Scoring difficulty: ${complexity}/100 (higher = easier)${isLocal ? "" : "\nClick for breakdown"}`}
-                onClick={async () => {
-                  if (!currentFileId || !currentDate || isLocal) return;
-                  try {
-                    const data = await fetchWithAuth<{ complexity_pre: number | null; complexity_post: number | null; features: Record<string, unknown> }>(
-                      `${getApiBase()}/files/${currentFileId}/${currentDate}/complexity`
-                    );
-                    setComplexityBreakdown(data);
-                  } catch {
-                    setComplexityBreakdown({ complexity_pre: complexity, complexity_post: null, features: { error: "Failed to load breakdown" } });
-                  }
-                }}
-              >
-                {complexity}
-              </button>
-            );
-          })()}
-        </div>
+        {/* Date navigation row */}
+        <DateNavigator
+          dateStatusMap={dateStatusMap}
+          consensusOnly={consensusOnly}
+          isLocal={isLocal}
+          complexityBreakdown={complexityBreakdown}
+          onComplexityBreakdown={setComplexityBreakdown}
+        />
 
-        {/* Controls row — semantic groups as atomic units, wraps naturally */}
-        <div className="px-4 py-1.5 border-t border-border/40 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-          {/* Group A: Mode — Sleep, Nonwear, No Sleep */}
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant={markerMode === "sleep" ? "default" : "outline"}
-              size="sm"
-              className="h-7 text-xs px-2.5"
-              onClick={() => setMarkerMode("sleep")}
-              title={isNoSleep ? "Place nap markers (no main sleep)" : undefined}
-            >
-              <Moon className="h-3.5 w-3.5 mr-1" />
-              {isNoSleep ? "Nap" : "Sleep"}
-            </Button>
-            <Button
-              variant={markerMode === "nonwear" ? "default" : "outline"}
-              size="sm"
-              className="h-7 text-xs px-2.5"
-              onClick={() => setMarkerMode("nonwear")}
-            >
-              <Watch className="h-3.5 w-3.5 mr-1" />
-              Nonwear
-            </Button>
-            <Button
-              variant={isNoSleep ? "default" : "outline"}
-              size="sm"
-              className={`h-7 text-xs px-2.5 ${isNoSleep ? "bg-amber-600 hover:bg-amber-700" : ""}`}
-              onClick={async () => {
-                const state = useSleepScoringStore.getState();
-                if (!state.isNoSleep) {
-                  const hasMainSleep = state.sleepMarkers.some(m => m.markerType === MARKER_TYPES.MAIN_SLEEP);
-                  if (hasMainSleep) {
-                    const ok = await confirm({ title: "No Sleep", description: "Marking as 'No Sleep' will clear main sleep markers. Nap markers will be preserved. Continue?", variant: "destructive", confirmLabel: "Clear & Mark" });
-                    if (!ok) return;
-                  }
-                  useSleepScoringStore.getState().setIsNoSleep(true);
-                } else {
-                  state.setIsNoSleep(false);
-                }
-              }}
-              title={isNoSleep ? "Click to allow main sleep markers" : "Mark this date as having no main sleep"}
-            >
-              <Ban className="h-3.5 w-3.5 mr-1" />
-              No Sleep
-            </Button>
-          </div>
-
-          <div className="h-5 w-px bg-border/40 shrink-0" />
-
-          {/* Group B: Consensus + Notes */}
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant={needsConsensus ? "default" : "outline"}
-              size="sm"
-              className={`h-7 text-xs px-2.5 ${needsConsensus ? "bg-orange-600 hover:bg-orange-700" : ""}`}
-              onClick={() => setNeedsConsensus(!needsConsensus)}
-              title={needsConsensus ? "Remove consensus flag" : "Flag for consensus review"}
-              disabled={!currentFileId || !currentDate}
-            >
-              <Users className="h-3.5 w-3.5 mr-1" />
-              Consensus
-            </Button>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notes..."
-              disabled={!currentFileId || !currentDate}
-              className="h-7 text-xs px-2 rounded-md border border-border bg-background w-[140px] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-              title="Annotation notes (auto-saved)"
-            />
-          </div>
-
-          <div className="h-5 w-px bg-border/40 shrink-0" />
-
-          {/* Group C: Auto Sleep (guider + button + checkbox together) */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <Select
-              value={periodGuider}
-              onChange={(e) => setPeriodGuider(e.target.value as import("@/api/types").PeriodGuiderType)}
-              className="h-7 text-xs w-[100px]"
-              title="Sleep period search method"
-              options={PERIOD_GUIDER_OPTIONS}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs px-2.5"
-              onClick={() => { autoScoreRef.current = false; autoScoreMutation.mutate(); }}
-              disabled={!currentFileId || !currentDate || autoScoreMutation.isPending || isNoSleep || diaryBlocksAutoScore}
-              title={diaryBlocksAutoScore ? "Cannot auto-score: no diary data for this date" : "Automatically detect and suggest sleep marker placements"}
-            >
-              {autoScoreMutation.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-              ) : (
-                <Wand2 className="h-3.5 w-3.5 mr-1" />
-              )}
-              Auto Sleep
-            </Button>
-            <div className="flex items-center gap-1">
-              <Checkbox
-                checked={autoScoreOnNavigate}
-                onCheckedChange={(checked) => setAutoScoreOnNavigate(!!checked)}
-              />
-              <Label className="text-[11px] cursor-pointer" onClick={() => setAutoScoreOnNavigate(!autoScoreOnNavigate)}>
-                Auto
-              </Label>
-            </div>
-          </div>
-
-          {/* Group D: Auto Nonwear (button + checkbox together) */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs px-2.5"
-              onClick={() => { autoNonwearMutation.mutate(); }}
-              disabled={!currentFileId || !currentDate || autoNonwearMutation.isPending}
-              title="Automatically detect nonwear periods from diary + Choi/sensor signals"
-            >
-              {autoNonwearMutation.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-              ) : (
-                <Wand2 className="h-3.5 w-3.5 mr-1" />
-              )}
-              Auto Nonwear
-            </Button>
-            <div className="flex items-center gap-1">
-              <Checkbox
-                checked={autoNonwearOnNavigate}
-                onCheckedChange={(checked) => useSleepScoringStore.getState().setAutoNonwearOnNavigate(!!checked)}
-              />
-              <Label className="text-[11px] cursor-pointer" onClick={() => useSleepScoringStore.getState().setAutoNonwearOnNavigate(!autoNonwearOnNavigate)}>
-                Auto
-              </Label>
-            </div>
-          </div>
-
-          <div className="h-5 w-px bg-border/40 shrink-0" />
-
-          {/* Group E: Display options (all checkboxes together) */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-1">
-              <Checkbox
-                checked={showAdjacentMarkers}
-                onCheckedChange={(checked) => setShowAdjacentMarkers(!!checked)}
-              />
-              <Label className="text-[11px] cursor-pointer" onClick={() => setShowAdjacentMarkers(!showAdjacentMarkers)}>
-                Adjacent
-              </Label>
-            </div>
-            <div className="flex items-center gap-1">
-              <Checkbox
-                checked={showComparisonMarkers}
-                onCheckedChange={(checked) => setShowComparisonMarkers(!!checked)}
-              />
-              <Label className="text-[11px] cursor-pointer" onClick={() => setShowComparisonMarkers(!showComparisonMarkers)}>
-                Compare
-              </Label>
-            </div>
-            <div className="flex items-center gap-1">
-              <Checkbox
-                checked={showNonwearOverlays}
-                onCheckedChange={(checked) => setShowNonwearOverlays(!!checked)}
-              />
-              <Label className="text-[11px] cursor-pointer" onClick={() => setShowNonwearOverlays(!showNonwearOverlays)}>
-                NW Overlays
-              </Label>
-            </div>
-          </div>
-
-          {/* Group F: Marker edit — Onset, Offset, Duration (always horizontal) */}
-          {markerMode === "sleep" && selectedPeriodIndex !== null && sleepMarkers[selectedPeriodIndex] && (
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs font-semibold">Onset:</Label>
-                <Input
-                  type="text"
-                  className="w-24 h-7 text-xs text-center"
-                  value={editingOnset ?? formatTime(sleepMarkers[selectedPeriodIndex].onsetTimestamp)}
-                  onChange={(e) => setEditingOnset(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      commitTimeEdit("onset", (e.target as HTMLInputElement).value);
-                      setEditingOnset(null);
-                    } else if (e.key === "Escape") {
-                      setEditingOnset(null);
-                    }
-                  }}
-                  onFocus={(e) => setEditingOnset(e.target.value)}
-                  onBlur={(e) => {
-                    commitTimeEdit("onset", e.target.value);
-                    setEditingOnset(null);
-                  }}
-                />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs font-semibold">Offset:</Label>
-                <Input
-                  type="text"
-                  className="w-24 h-7 text-xs text-center"
-                  value={editingOffset ?? formatTime(sleepMarkers[selectedPeriodIndex].offsetTimestamp)}
-                  onChange={(e) => setEditingOffset(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      commitTimeEdit("offset", (e.target as HTMLInputElement).value);
-                      setEditingOffset(null);
-                    } else if (e.key === "Escape") {
-                      setEditingOffset(null);
-                    }
-                  }}
-                  onFocus={(e) => setEditingOffset(e.target.value)}
-                  onBlur={(e) => {
-                    commitTimeEdit("offset", e.target.value);
-                    setEditingOffset(null);
-                  }}
-                />
-              </div>
-              <span className="text-xs font-medium tabular-nums">
-                {formatDuration(sleepMarkers[selectedPeriodIndex].onsetTimestamp, sleepMarkers[selectedPeriodIndex].offsetTimestamp)}
-              </span>
-            </div>
-          )}
-          {markerMode === "nonwear" && selectedPeriodIndex !== null && nonwearMarkers[selectedPeriodIndex] && (
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs font-semibold">Start:</Label>
-                <Input
-                  type="text"
-                  className="w-24 h-7 text-xs text-center"
-                  value={editingNwStart ?? formatTime(nonwearMarkers[selectedPeriodIndex].startTimestamp)}
-                  onChange={(e) => setEditingNwStart(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      commitNwTimeEdit("start", (e.target as HTMLInputElement).value);
-                      setEditingNwStart(null);
-                    } else if (e.key === "Escape") {
-                      setEditingNwStart(null);
-                    }
-                  }}
-                  onFocus={(e) => setEditingNwStart(e.target.value)}
-                  onBlur={(e) => {
-                    commitNwTimeEdit("start", e.target.value);
-                    setEditingNwStart(null);
-                  }}
-                />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Label className="text-xs font-semibold">End:</Label>
-                <Input
-                  type="text"
-                  className="w-24 h-7 text-xs text-center"
-                  value={editingNwEnd ?? formatTime(nonwearMarkers[selectedPeriodIndex].endTimestamp)}
-                  onChange={(e) => setEditingNwEnd(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      commitNwTimeEdit("end", (e.target as HTMLInputElement).value);
-                      setEditingNwEnd(null);
-                    } else if (e.key === "Escape") {
-                      setEditingNwEnd(null);
-                    }
-                  }}
-                  onFocus={(e) => setEditingNwEnd(e.target.value)}
-                  onBlur={(e) => {
-                    commitNwTimeEdit("end", e.target.value);
-                    setEditingNwEnd(null);
-                  }}
-                />
-              </div>
-              <span className="text-xs font-medium tabular-nums">
-                {formatDuration(nonwearMarkers[selectedPeriodIndex].startTimestamp, nonwearMarkers[selectedPeriodIndex].endTimestamp)}
-              </span>
-            </div>
-          )}
-
-          <div className="h-5 w-px bg-border/40 shrink-0" />
-
-          {/* Group G: Clear */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs text-destructive border-destructive/50 hover:bg-destructive/10 shrink-0"
-            onClick={async () => {
-              const ok = await confirm({ title: "Clear Markers", description: "Clear all markers for this date?", variant: "destructive", confirmLabel: "Clear All" });
-              if (ok) {
-                useSleepScoringStore.getState().clearAllMarkers();
-              }
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5 mr-1" />
-            Clear
-          </Button>
-
-          {/* Creation mode indicator */}
-          {creationMode !== "idle" && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-[11px] px-2.5 shrink-0 border-amber-400/40 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-300 dark:bg-amber-500/10"
-              title={`Click plot to set ${creationMode === "placing_onset" ? "offset" : "onset"}. Click to cancel.`}
-              onClick={cancelMarkerCreation}
-            >
-              <X className="h-3 w-3 mr-1" />
-              {creationMode === "placing_onset" ? "Set Offset" : "Set Onset"}
-            </Button>
-          )}
-        </div>
+        {/* Controls row */}
+        <ScoringToolbar
+          autoScoreMutation={autoScoreMutation}
+          autoNonwearMutation={autoNonwearMutation}
+          autoScoreRef={autoScoreRef}
+          diaryBlocksAutoScore={diaryBlocksAutoScore}
+          showComparisonMarkers={showComparisonMarkers}
+          onShowComparisonMarkersChange={setShowComparisonMarkers}
+          confirm={confirm}
+        />
       </div>
 
       {/* Main content: vertical split — top (plot + side tables) / bottom (diary full-width) */}

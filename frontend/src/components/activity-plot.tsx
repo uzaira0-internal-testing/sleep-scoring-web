@@ -67,6 +67,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
   const originalXScaleRef = useRef<{ min: number; max: number } | null>(null);
   const isDraggingRef = useRef(false); // Track if currently dragging to prevent re-render
   const renderMarkersRef = useRef<(chart: uPlot) => void>(() => {});
+  /** Tracks live marker DOM elements by stable key for O(1) diffing */
+  const markerElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const wheelZoomPluginRef = useRef<(factor: number) => uPlot.Plugin>(
     (factor: number) => {
       void factor;
@@ -205,8 +207,37 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     const wrapper = over.parentNode as HTMLElement;
     if (!wrapper) return;
 
-    // Clear existing markers from wrapper (including Choi nonwear regions and sleep rule arrows)
-    wrapper.querySelectorAll('.marker-region, .marker-line').forEach(el => el.remove());
+    // DOM diffing: track which keys we want this render, then reconcile
+    const prevElements = markerElementsRef.current;
+    const nextElements = new Map<string, HTMLElement>();
+    const desiredKeys = new Set<string>();
+
+    /**
+     * Get or create a DOM element by stable key. If an element with this key
+     * already exists in the previous render's map, reuse it (position/style
+     * updates happen after). Otherwise create a fresh element.
+     *
+     * For elements that carry event listeners (marker lines with drag),
+     * pass `forceRecreate: true` when the underlying data has changed so
+     * handlers are re-bound.
+     */
+    function getOrCreate(key: string, tag: 'div', forceRecreate = false): { el: HTMLElement; created: boolean } {
+      desiredKeys.add(key);
+      const existing = prevElements.get(key);
+      if (existing && !forceRecreate && existing.parentNode === wrapper) {
+        nextElements.set(key, existing);
+        return { el: existing, created: false };
+      }
+      // Remove stale element if force-recreating
+      if (existing && existing.parentNode === wrapper) {
+        existing.remove();
+      }
+      const el = document.createElement(tag);
+      el.dataset.key = key;
+      nextElements.set(key, el);
+      wrapper.appendChild(el);
+      return { el, created: true };
+    }
 
     // Get plot dimensions accounting for browser zoom (devicePixelRatio)
     const plotLeft = u.bbox.left / devicePixelRatio;
@@ -253,26 +284,28 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const visibleStartPx = Math.max(0, startPx);
       const visibleEndPx = Math.min(plotWidth, endPx);
       if (visibleEndPx > visibleStartPx) {
-        const sleepRegion = document.createElement('div');
-        sleepRegion.className = `marker-region sleep`;
-        sleepRegion.dataset.markerId = String(index);
-        sleepRegion.dataset.testid = `marker-region-sleep-${index}`;
-        sleepRegion.style.position = 'absolute';
+        const regionKey = `sleep-${index}-region`;
+        const { el: sleepRegion, created } = getOrCreate(regionKey, 'div');
+        if (created) {
+          sleepRegion.className = `marker-region sleep`;
+          sleepRegion.dataset.markerId = String(index);
+          sleepRegion.dataset.testid = `marker-region-sleep-${index}`;
+          sleepRegion.style.position = 'absolute';
+          sleepRegion.style.pointerEvents = 'none';
+          sleepRegion.style.zIndex = '2';
+        }
         sleepRegion.style.left = (plotLeft + visibleStartPx) + 'px';
         sleepRegion.style.top = plotTop + 'px';
         sleepRegion.style.width = (visibleEndPx - visibleStartPx) + 'px';
         sleepRegion.style.height = plotHeight + 'px';
         sleepRegion.style.background = hexToRgba(colorTheme.onset, isSelected ? 0.14 : 0.07);
-        sleepRegion.style.pointerEvents = 'none';
-        sleepRegion.style.zIndex = '2';
-        wrapper.appendChild(sleepRegion);
       }
 
       if (startPx >= -10 && startPx <= plotWidth + 10) {
-        createMarkerLine(u, wrapper, 'sleep', index, 'start', startPx, plotLeft, plotTop, plotWidth, plotHeight, onsetColor, isSelected, startTs);
+        createMarkerLine(u, wrapper, 'sleep', index, 'start', startPx, plotLeft, plotTop, plotWidth, plotHeight, onsetColor, isSelected, startTs, getOrCreate);
       }
       if (endPx >= -10 && endPx <= plotWidth + 10) {
-        createMarkerLine(u, wrapper, 'sleep', index, 'end', endPx, plotLeft, plotTop, plotWidth, plotHeight, offsetColor, isSelected, endTs);
+        createMarkerLine(u, wrapper, 'sleep', index, 'end', endPx, plotLeft, plotTop, plotWidth, plotHeight, offsetColor, isSelected, endTs, getOrCreate);
       }
     });
 
@@ -300,10 +333,10 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       );
       const endColor = isSelected ? nwStartUnsel : nwEndUnsel;
       if (startPx >= -10 && startPx <= plotWidth + 10) {
-        createMarkerLine(u, wrapper, 'nonwear', index, 'start', startPx, plotLeft, plotTop, plotWidth, plotHeight, startColor, isSelected, startTs);
+        createMarkerLine(u, wrapper, 'nonwear', index, 'start', startPx, plotLeft, plotTop, plotWidth, plotHeight, startColor, isSelected, startTs, getOrCreate);
       }
       if (endPx >= -10 && endPx <= plotWidth + 10) {
-        createMarkerLine(u, wrapper, 'nonwear', index, 'end', endPx, plotLeft, plotTop, plotWidth, plotHeight, endColor, isSelected, endTs);
+        createMarkerLine(u, wrapper, 'nonwear', index, 'end', endPx, plotLeft, plotTop, plotWidth, plotHeight, endColor, isSelected, endTs, getOrCreate);
       }
     });
 
@@ -318,11 +351,16 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         const visibleStartPx = Math.max(0, startPx);
         const visibleEndPx = Math.min(plotWidth, endPx);
 
-        const sensorRegion = document.createElement('div');
-        sensorRegion.className = 'marker-region sensor-nonwear';
-        sensorRegion.dataset.sensorIndex = String(index);
-        sensorRegion.dataset.testid = `marker-region-sensor-${index}`;
-        sensorRegion.style.position = 'absolute';
+        const sensorKey = `sensor-nw-${index}`;
+        const { el: sensorRegion, created } = getOrCreate(sensorKey, 'div');
+        if (created) {
+          sensorRegion.className = 'marker-region sensor-nonwear';
+          sensorRegion.dataset.sensorIndex = String(index);
+          sensorRegion.dataset.testid = `marker-region-sensor-${index}`;
+          sensorRegion.style.position = 'absolute';
+          sensorRegion.style.pointerEvents = 'none';
+          sensorRegion.style.zIndex = '2';
+        }
         sensorRegion.style.left = (plotLeft + visibleStartPx) + 'px';
         sensorRegion.style.top = plotTop + 'px';
         sensorRegion.style.width = (visibleEndPx - visibleStartPx) + 'px';
@@ -330,9 +368,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         sensorRegion.style.background = sensorNwFill;
         sensorRegion.style.borderLeft = `2px solid ${sensorNwBorder}`;
         sensorRegion.style.borderRight = `2px solid ${sensorNwBorder}`;
-        sensorRegion.style.pointerEvents = 'none';
-        sensorRegion.style.zIndex = '2';
-        wrapper.appendChild(sensorRegion);
       });
     }
 
@@ -349,11 +384,16 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         const visibleStartPx = Math.max(0, startPx);
         const visibleEndPx = Math.min(plotWidth, endPx);
 
-        const choiRegion = document.createElement('div');
-        choiRegion.className = 'marker-region choi-nonwear';
-        choiRegion.dataset.choiIndex = String(index);
-        choiRegion.dataset.testid = `marker-region-choi-${index}`;
-        choiRegion.style.position = 'absolute';
+        const choiKey = `choi-nw-${index}`;
+        const { el: choiRegion, created } = getOrCreate(choiKey, 'div');
+        if (created) {
+          choiRegion.className = 'marker-region choi-nonwear';
+          choiRegion.dataset.choiIndex = String(index);
+          choiRegion.dataset.testid = `marker-region-choi-${index}`;
+          choiRegion.style.position = 'absolute';
+          choiRegion.style.pointerEvents = 'none';
+          choiRegion.style.zIndex = '2';
+        }
         choiRegion.style.left = (plotLeft + visibleStartPx) + 'px';
         choiRegion.style.top = plotTop + 'px';
         choiRegion.style.width = (visibleEndPx - visibleStartPx) + 'px';
@@ -361,9 +401,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         choiRegion.style.background = choiFill;
         choiRegion.style.borderLeft = `2px solid ${choiBorder}`;
         choiRegion.style.borderRight = `2px solid ${choiBorder}`;
-        choiRegion.style.pointerEvents = 'none';
-        choiRegion.style.zIndex = '2';
-        wrapper.appendChild(choiRegion);
       });
     }
 
@@ -372,19 +409,21 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const pendingPx = u.valToPos(pendingTs, 'x');
 
       if (pendingPx >= -10 && pendingPx <= plotWidth + 10) {
-        const pendingLine = document.createElement('div');
-        pendingLine.className = 'marker-line pending';
-        pendingLine.dataset.testid = 'marker-line-pending';
-        pendingLine.style.position = 'absolute';
+        const pendingKey = `pending-${pendingTs}`;
+        const { el: pendingLine, created } = getOrCreate(pendingKey, 'div');
+        if (created) {
+          pendingLine.className = 'marker-line pending';
+          pendingLine.dataset.testid = 'marker-line-pending';
+          pendingLine.style.position = 'absolute';
+          pendingLine.style.width = '4px';
+          pendingLine.style.background = pendingLineColor;
+          pendingLine.style.opacity = '0.7';
+          pendingLine.style.pointerEvents = 'none';
+          pendingLine.style.borderStyle = 'dashed';
+        }
         pendingLine.style.left = (plotLeft + pendingPx - 2) + 'px';
         pendingLine.style.top = plotTop + 'px';
-        pendingLine.style.width = '4px';
         pendingLine.style.height = plotHeight + 'px';
-        pendingLine.style.background = pendingLineColor;
-        pendingLine.style.opacity = '0.7';
-        pendingLine.style.pointerEvents = 'none';
-        pendingLine.style.borderStyle = 'dashed';
-        wrapper.appendChild(pendingLine);
       }
     }
 
@@ -418,7 +457,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
               hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC',
             });
             createSleepRuleArrow(wrapper, plotLeft, onsetPx, arrowY, colorTheme.onset, 'onset', selIdx,
-              timeStr, 'Sleep Onset', `${ruleParams.onsetN} consecutive sleep epochs`);
+              timeStr, 'Sleep Onset', `${ruleParams.onsetN} consecutive sleep epochs`, getOrCreate);
           }
         }
 
@@ -430,7 +469,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
               hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC',
             });
             createSleepRuleArrow(wrapper, plotLeft, offsetPx, arrowY, colorTheme.offset, 'offset', selIdx,
-              timeStr, 'Sleep Offset', offsetRuleText);
+              timeStr, 'Sleep Offset', offsetRuleText, getOrCreate);
           }
         }
       }
@@ -440,7 +479,8 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     function createSleepRuleArrow(
       parent: HTMLElement, pLeft: number, px: number, y: number,
       color: string, type: string, idx: number,
-      timeStr: string, titleText: string, ruleText: string
+      timeStr: string, titleText: string, ruleText: string,
+      getOrCreateFn: typeof getOrCreate,
     ) {
       // Arrow dimensions matching desktop: headLen=15, headWidth=12, tailLen=25, tailWidth=3
       const ARROW_HEAD_LEN = 15;
@@ -449,70 +489,85 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       const ARROW_TAIL_WIDTH = 3;
       const ARROW_TOTAL_HEIGHT = ARROW_HEAD_LEN + ARROW_TAIL_LEN; // 40px
 
+      void parent; // wrapper is accessed via getOrCreateFn
+
       // Arrow container - positions the arrow pointing downward
-      const arrowContainer = document.createElement('div');
-      arrowContainer.className = `marker-region sleep-rule-arrow ${type}`;
-      arrowContainer.dataset.testid = `sleep-rule-arrow-${type}-${idx}`;
-      arrowContainer.style.position = 'absolute';
+      const arrowKey = `sleep-rule-arrow-${type}-${idx}`;
+      const { el: arrowContainer, created: arrowCreated } = getOrCreateFn(arrowKey, 'div');
+      if (arrowCreated) {
+        arrowContainer.className = `marker-region sleep-rule-arrow ${type}`;
+        arrowContainer.dataset.testid = `sleep-rule-arrow-${type}-${idx}`;
+        arrowContainer.style.position = 'absolute';
+        arrowContainer.style.width = ARROW_HEAD_WIDTH + 'px';
+        arrowContainer.style.height = ARROW_TOTAL_HEIGHT + 'px';
+        arrowContainer.style.pointerEvents = 'none';
+
+        // Tail (shaft) - thin rectangle at top, centered
+        const tail = document.createElement('div');
+        tail.className = 'arrow-tail';
+        tail.style.position = 'absolute';
+        tail.style.left = ((ARROW_HEAD_WIDTH - ARROW_TAIL_WIDTH) / 2) + 'px';
+        tail.style.top = '0';
+        tail.style.width = ARROW_TAIL_WIDTH + 'px';
+        tail.style.height = ARROW_TAIL_LEN + 'px';
+        arrowContainer.appendChild(tail);
+
+        // Head (triangle pointing down) - CSS border trick
+        const head = document.createElement('div');
+        head.className = 'arrow-head';
+        head.style.position = 'absolute';
+        head.style.left = '0';
+        head.style.top = ARROW_TAIL_LEN + 'px';
+        head.style.width = '0';
+        head.style.height = '0';
+        arrowContainer.appendChild(head);
+      }
       arrowContainer.style.left = (pLeft + px - ARROW_HEAD_WIDTH / 2) + 'px';
       arrowContainer.style.top = y + 'px';
-      arrowContainer.style.width = ARROW_HEAD_WIDTH + 'px';
-      arrowContainer.style.height = ARROW_TOTAL_HEIGHT + 'px';
-      arrowContainer.style.pointerEvents = 'none';
       arrowContainer.title = `Algorithm-detected sleep ${type}`;
+      // Update tail and head colors (may change with theme)
+      const tail = arrowContainer.querySelector('.arrow-tail') as HTMLElement | null;
+      if (tail) tail.style.backgroundColor = color;
+      const head = arrowContainer.querySelector('.arrow-head') as HTMLElement | null;
+      if (head) {
+        head.style.borderLeft = (ARROW_HEAD_WIDTH / 2) + 'px solid transparent';
+        head.style.borderRight = (ARROW_HEAD_WIDTH / 2) + 'px solid transparent';
+        head.style.borderTop = ARROW_HEAD_LEN + 'px solid ' + color;
+      }
 
-      // Tail (shaft) - thin rectangle at top, centered
-      const tail = document.createElement('div');
-      tail.style.position = 'absolute';
-      tail.style.left = ((ARROW_HEAD_WIDTH - ARROW_TAIL_WIDTH) / 2) + 'px';
-      tail.style.top = '0';
-      tail.style.width = ARROW_TAIL_WIDTH + 'px';
-      tail.style.height = ARROW_TAIL_LEN + 'px';
-      tail.style.backgroundColor = color;
-      arrowContainer.appendChild(tail);
+      const labelKey = `sleep-rule-label-${type}-${idx}`;
+      const { el: label, created: labelCreated } = getOrCreateFn(labelKey, 'div');
+      if (labelCreated) {
+        label.className = `marker-region sleep-rule-label ${type}`;
+        label.style.position = 'absolute';
+        label.style.transform = 'translateX(-50%)';
+        label.style.fontFamily = 'Arial, sans-serif';
+        label.style.pointerEvents = 'none';
+        label.style.textAlign = 'center';
+        label.style.whiteSpace = 'nowrap';
+        label.style.lineHeight = '1.3';
 
-      // Head (triangle pointing down) - CSS border trick
-      const head = document.createElement('div');
-      head.style.position = 'absolute';
-      head.style.left = '0';
-      head.style.top = ARROW_TAIL_LEN + 'px';
-      head.style.width = '0';
-      head.style.height = '0';
-      head.style.borderLeft = (ARROW_HEAD_WIDTH / 2) + 'px solid transparent';
-      head.style.borderRight = (ARROW_HEAD_WIDTH / 2) + 'px solid transparent';
-      head.style.borderTop = ARROW_HEAD_LEN + 'px solid ' + color;
-      arrowContainer.appendChild(head);
+        // Title line: "Sleep Onset at HH:MM" (bold, 10px)
+        const titleLine = document.createElement('div');
+        titleLine.className = 'rule-title';
+        titleLine.style.fontSize = '10px';
+        titleLine.style.fontWeight = 'bold';
+        label.appendChild(titleLine);
 
-      parent.appendChild(arrowContainer);
-
-      const label = document.createElement('div');
-      label.className = `marker-region sleep-rule-label ${type}`;
-      label.style.position = 'absolute';
+        // Rule line: "3-minute rule applied" (normal, 9px)
+        const ruleLine = document.createElement('div');
+        ruleLine.className = 'rule-text';
+        ruleLine.style.fontSize = '9px';
+        ruleLine.style.fontWeight = 'normal';
+        label.appendChild(ruleLine);
+      }
       label.style.left = (pLeft + px) + 'px';
       label.style.top = (y - 32) + 'px';
-      label.style.transform = 'translateX(-50%)';
-      label.style.fontFamily = 'Arial, sans-serif';
       label.style.color = color;
-      label.style.pointerEvents = 'none';
-      label.style.textAlign = 'center';
-      label.style.whiteSpace = 'nowrap';
-      label.style.lineHeight = '1.3';
-
-      // Title line: "Sleep Onset at HH:MM" (bold, 10px)
-      const titleLine = document.createElement('div');
-      titleLine.style.fontSize = '10px';
-      titleLine.style.fontWeight = 'bold';
-      titleLine.textContent = `${titleText} at ${timeStr}`;
-      label.appendChild(titleLine);
-
-      // Rule line: "3-minute rule applied" (normal, 9px)
-      const ruleLine = document.createElement('div');
-      ruleLine.style.fontSize = '9px';
-      ruleLine.style.fontWeight = 'normal';
-      ruleLine.textContent = ruleText;
-      label.appendChild(ruleLine);
-
-      parent.appendChild(label);
+      const titleEl = label.querySelector('.rule-title') as HTMLElement | null;
+      if (titleEl) titleEl.textContent = `${titleText} at ${timeStr}`;
+      const ruleEl = label.querySelector('.rule-text') as HTMLElement | null;
+      if (ruleEl) ruleEl.textContent = ruleText;
     }
 
     // Render adjacent day markers (from previous and next days) as dashed lines
@@ -525,13 +580,13 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         if (marker.onset_timestamp) {
           const px = u.valToPos(marker.onset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'prev', index, 'onset', px, plotLeft, plotTop, plotHeight);
+            createAdjacentDayLine(wrapper, 'prev', index, 'onset', px, plotLeft, plotTop, plotHeight, getOrCreate);
           }
         }
         if (marker.offset_timestamp) {
           const px = u.valToPos(marker.offset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'prev', index, 'offset', px, plotLeft, plotTop, plotHeight);
+            createAdjacentDayLine(wrapper, 'prev', index, 'offset', px, plotLeft, plotTop, plotHeight, getOrCreate);
           }
         }
       });
@@ -543,13 +598,13 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
         if (marker.onset_timestamp) {
           const px = u.valToPos(marker.onset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'next', index, 'onset', px, plotLeft, plotTop, plotHeight);
+            createAdjacentDayLine(wrapper, 'next', index, 'onset', px, plotLeft, plotTop, plotHeight, getOrCreate);
           }
         }
         if (marker.offset_timestamp) {
           const px = u.valToPos(marker.offset_timestamp, 'x');
           if (px >= -10 && px <= plotWidth + 10) {
-            createAdjacentDayLine(wrapper, 'next', index, 'offset', px, plotLeft, plotTop, plotHeight);
+            createAdjacentDayLine(wrapper, 'next', index, 'offset', px, plotLeft, plotTop, plotHeight, getOrCreate);
           }
         }
       });
@@ -580,43 +635,57 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
           const widthPx = visibleEndPx - visibleStartPx;
           if (widthPx <= 0) return;
 
-          const region = document.createElement("div");
-          region.className = "marker-region comparison-overlay";
-          region.dataset.testid = `comparison-region-${candidate.candidate_id}-${annIndex}-${markerIndex}`;
-          region.style.position = "absolute";
+          const compRegionKey = `comp-${candidate.candidate_id}-${annIndex}-${markerIndex}`;
+          const { el: region, created } = getOrCreate(compRegionKey, 'div');
+          if (created) {
+            region.className = "marker-region comparison-overlay";
+            region.dataset.testid = `comparison-region-${candidate.candidate_id}-${annIndex}-${markerIndex}`;
+            region.style.position = "absolute";
+            region.style.pointerEvents = "none";
+          }
           region.style.left = (plotLeft + visibleStartPx) + "px";
           region.style.top = (plotTop + 2) + "px";
           region.style.width = widthPx + "px";
           region.style.height = Math.max(0, plotHeight - 4) + "px";
           region.style.background = fill;
           region.style.border = `${isHighlighted ? 2 : 1}px dashed ${color}`;
-          region.style.pointerEvents = "none";
           region.style.zIndex = isHighlighted ? "6" : "3";
           region.title = `${candidate.label}: ${marker.marker_type ?? "MAIN_SLEEP"}`;
-          wrapper.appendChild(region);
 
           if (!labeled) {
-            const label = document.createElement("div");
-            label.className = "marker-region comparison-label";
-            label.style.position = "absolute";
+            const compLabelKey = `comp-label-${candidate.candidate_id}-${annIndex}`;
+            const { el: label, created: labelCreated } = getOrCreate(compLabelKey, 'div');
+            if (labelCreated) {
+              label.className = "marker-region comparison-label";
+              label.style.position = "absolute";
+              label.style.fontSize = "10px";
+              label.style.fontFamily = "ui-monospace, monospace";
+              label.style.padding = "1px 4px";
+              label.style.borderRadius = "4px";
+              label.style.pointerEvents = "none";
+              label.style.zIndex = "4";
+            }
             label.style.left = (plotLeft + visibleStartPx + 4) + "px";
             label.style.top = (plotTop + 4 + annIndex * 14) + "px";
-            label.style.fontSize = "10px";
-            label.style.fontFamily = "ui-monospace, monospace";
             label.style.color = color;
             label.style.background = isDark ? "rgba(15, 23, 42, 0.75)" : "rgba(255, 255, 255, 0.75)";
-            label.style.padding = "1px 4px";
-            label.style.borderRadius = "4px";
             label.style.border = `1px solid ${color}55`;
-            label.style.pointerEvents = "none";
-            label.style.zIndex = "4";
             label.textContent = `${candidate.label} (${candidate.vote_count} votes)${candidate.source_type === "auto" ? " | auto" : ""}`;
-            wrapper.appendChild(label);
             labeled = true;
           }
         });
       });
     }
+
+    // Reconcile: remove elements from previous render that are not in current render
+    for (const [key, el] of prevElements) {
+      if (!desiredKeys.has(key) && el.parentNode === wrapper) {
+        el.remove();
+      }
+    }
+
+    // Swap the map for next render cycle
+    markerElementsRef.current = nextElements;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getMarkerState, showNonwearOverlays, sensorNonwearPeriods, nonwearResults, timestamps, algorithmResults, sleepDetectionRule, adjacentMarkersData, showAdjacentMarkers, isDark, showComparisonMarkers]);
 
@@ -624,7 +693,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
   // CREATE ADJACENT DAY LINE - Dashed line for markers from neighboring days
   // ============================================================================
   function createAdjacentDayLine(
-    wrapper: HTMLElement,
+    _wrapper: HTMLElement,
     day: 'prev' | 'next',
     index: number,
     edge: 'onset' | 'offset',
@@ -632,6 +701,7 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     plotLeft: number,
     plotTop: number,
     plotHeight: number,
+    getOrCreateFn: (key: string, tag: 'div', forceRecreate?: boolean) => { el: HTMLElement; created: boolean },
   ) {
     // Use distinct muted colors per day: previous = amber, next = cyan
     const dayColor = day === 'prev'
@@ -644,13 +714,17 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       ? (isDark ? 'rgba(200, 160, 60, 0.8)' : 'rgba(140, 100, 20, 0.8)')
       : (isDark ? 'rgba(60, 160, 200, 0.8)' : 'rgba(20, 100, 140, 0.8)');
 
-    const line = document.createElement('div');
-    line.className = `marker-region adjacent-day-line ${day}-${edge}`;
-    line.dataset.testid = `adjacent-line-${day}-${index}-${edge}`;
-    line.style.position = 'absolute';
+    const lineKey = `adj-${day}-${index}-${edge}-line`;
+    const { el: line, created: lineCreated } = getOrCreateFn(lineKey, 'div');
+    if (lineCreated) {
+      line.className = `marker-region adjacent-day-line ${day}-${edge}`;
+      line.dataset.testid = `adjacent-line-${day}-${index}-${edge}`;
+      line.style.position = 'absolute';
+      line.style.width = '1px';
+      line.style.pointerEvents = 'none';
+    }
     line.style.left = (plotLeft + px - 1) + 'px';
     line.style.top = plotTop + 'px';
-    line.style.width = '1px';
     line.style.height = plotHeight + 'px';
     line.style.background = `repeating-linear-gradient(
       to bottom,
@@ -659,31 +733,30 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       transparent 3px,
       transparent 7px
     )`;
-    line.style.pointerEvents = 'none';
 
     const dayLabel = day === 'prev' ? 'Prev' : 'Next';
     const edgeLabel = edge === 'onset' ? 'Onset' : 'Offset';
     line.title = `${dayLabel} day ${edge}`;
 
     // Add small label at top of line
-    const label = document.createElement('div');
-    label.style.position = 'absolute';
+    const adjLabelKey = `adj-${day}-${index}-${edge}-label`;
+    const { el: label, created: labelCreated } = getOrCreateFn(adjLabelKey, 'div');
+    if (labelCreated) {
+      label.className = `marker-region adjacent-day-label`;
+      label.style.position = 'absolute';
+      label.style.fontSize = '9px';
+      label.style.fontFamily = 'var(--font-mono)';
+      label.style.lineHeight = '1';
+      label.style.padding = '1px 3px';
+      label.style.borderRadius = '2px';
+      label.style.pointerEvents = 'none';
+      label.style.whiteSpace = 'nowrap';
+    }
     label.style.left = (plotLeft + px + 3) + 'px';
     label.style.top = (plotTop + 2) + 'px';
-    label.style.fontSize = '9px';
-    label.style.fontFamily = 'var(--font-mono)';
-    label.style.lineHeight = '1';
-    label.style.padding = '1px 3px';
-    label.style.borderRadius = '2px';
     label.style.background = labelBg;
     label.style.color = labelText;
-    label.style.pointerEvents = 'none';
-    label.style.whiteSpace = 'nowrap';
     label.textContent = `${dayLabel} ${edgeLabel}`;
-    label.className = `marker-region adjacent-day-label`;
-
-    wrapper.appendChild(line);
-    wrapper.appendChild(label);
   }
 
   // ============================================================================
@@ -702,52 +775,99 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
     plotHeight: number,
     color: string,
     isSelected: boolean,
-    timestampSec?: number
+    timestampSec: number | undefined,
+    getOrCreateFn: (key: string, tag: 'div', forceRecreate?: boolean) => { el: HTMLElement; created: boolean },
   ) {
-    const line = document.createElement('div');
-    line.className = `marker-line ${type}-${edge}`;
-    line.dataset.testid = `marker-line-${type}-${index}-${edge}`;
-    line.style.position = 'absolute';
+    // Marker line key encodes the timestamp so drag handlers are recreated
+    // when marker data changes, but reused for position-only updates (zoom/pan).
+    const lineKey = `${type}-${index}-${edge}-line-${timestampSec ?? 'none'}`;
+    const { el: line, created } = getOrCreateFn(lineKey, 'div');
+    if (created) {
+      line.className = `marker-line ${type}-${edge}`;
+      line.dataset.testid = `marker-line-${type}-${index}-${edge}`;
+      line.style.position = 'absolute';
+      line.style.width = '12px';
+      line.style.cursor = 'ew-resize';
+      line.style.zIndex = '10';
+      line.style.pointerEvents = 'auto';
+
+      // Inner line visual
+      const inner = document.createElement('div');
+      inner.className = 'marker-line-inner';
+      inner.style.position = 'absolute';
+      inner.style.left = '50%';
+      inner.style.top = '0';
+      inner.style.bottom = '0';
+      inner.style.transform = 'translateX(-50%)';
+      line.appendChild(inner);
+
+      // Drag handler — only attached on creation since timestamp is baked into key
+      attachDragHandler(line, inner, u, wrapper, type, index, edge, plotLeft, plotTop, plotWidth, plotHeight, isSelected, timestampSec);
+    }
     line.style.left = (plotLeft + px - 6) + 'px';
     line.style.top = plotTop + 'px';
-    line.style.width = '12px';
     line.style.height = plotHeight + 'px';
-    line.style.cursor = 'ew-resize';
-    line.style.zIndex = '10';
-    line.style.pointerEvents = 'auto';
+    // Update inner line color and width (may change with selection/theme)
+    const inner = line.querySelector('.marker-line-inner') as HTMLElement | null;
+    if (inner) {
+      inner.style.width = isSelected ? '4px' : '2px';
+      inner.style.background = color;
+    }
 
     // Time label above the line
     if (timestampSec !== undefined) {
-      const timeLabel = document.createElement('div');
-      timeLabel.className = `marker-line time-label`;
-      timeLabel.dataset.lineType = `${type}-${edge}`;
-      timeLabel.dataset.lineIndex = String(index);
-      timeLabel.style.position = 'absolute';
+      const timeLabelKey = `${type}-${index}-${edge}-timelabel`;
+      const { el: timeLabel, created: timeLabelCreated } = getOrCreateFn(timeLabelKey, 'div');
+      if (timeLabelCreated) {
+        timeLabel.className = `marker-line time-label`;
+        timeLabel.dataset.lineType = `${type}-${edge}`;
+        timeLabel.dataset.lineIndex = String(index);
+        timeLabel.style.position = 'absolute';
+        timeLabel.style.transform = 'translateX(-50%)';
+        timeLabel.style.fontSize = '9px';
+        timeLabel.style.fontFamily = 'ui-monospace, monospace';
+        timeLabel.style.pointerEvents = 'none';
+        timeLabel.style.whiteSpace = 'nowrap';
+        timeLabel.style.zIndex = '11';
+      }
       timeLabel.style.left = (plotLeft + px) + 'px';
       timeLabel.style.top = (plotTop - 14) + 'px';
-      timeLabel.style.transform = 'translateX(-50%)';
-      timeLabel.style.fontSize = '9px';
-      timeLabel.style.fontFamily = 'ui-monospace, monospace';
       timeLabel.style.color = color;
-      timeLabel.style.pointerEvents = 'none';
-      timeLabel.style.whiteSpace = 'nowrap';
-      timeLabel.style.zIndex = '11';
       const d = new Date(timestampSec * 1000);
       timeLabel.textContent = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-      wrapper.appendChild(timeLabel);
     }
 
-    // Inner line visual
-    const inner = document.createElement('div');
-    inner.style.position = 'absolute';
-    inner.style.left = '50%';
-    inner.style.top = '0';
-    inner.style.bottom = '0';
-    inner.style.width = isSelected ? '4px' : '2px';
-    inner.style.transform = 'translateX(-50%)';
-    inner.style.background = color;
-    line.appendChild(inner);
+    // Forward wheel events to chart for zoom
+    if (created) {
+      line.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        u.root.dispatchEvent(new WheelEvent('wheel', {
+          deltaY: e.deltaY,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          bubbles: true,
+        }));
+      }, { passive: false });
+    }
+  }
 
+  /** Attach drag handler to a marker line element. Called once per element creation. */
+  function attachDragHandler(
+    line: HTMLElement,
+    inner: HTMLElement,
+    u: uPlot,
+    wrapper: HTMLElement,
+    type: 'sleep' | 'nonwear',
+    index: number,
+    edge: 'start' | 'end',
+    plotLeft: number,
+    plotTop: number,
+    plotWidth: number,
+    plotHeight: number,
+    isSelected: boolean,
+    timestampSec: number | undefined,
+  ) {
     // Drag state
     let isDragging = false;
     let dragStartX = 0;
@@ -929,20 +1049,6 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     });
-
-    // Forward wheel events to chart for zoom
-    line.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      u.root.dispatchEvent(new WheelEvent('wheel', {
-        deltaY: e.deltaY,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        bubbles: true,
-      }));
-    }, { passive: false });
-
-    wrapper.appendChild(line);
   }
 
   // ============================================================================
@@ -1256,8 +1362,9 @@ export function ActivityPlot({ showComparisonMarkers = false, highlightedCandida
       chartRef.current = null;
     }
 
-    // Remove old marker elements (scoped to this chart container)
+    // Remove old marker elements (scoped to this chart container) and clear the diff map
     container.querySelectorAll('.marker-line, .marker-region').forEach(el => el.remove());
+    markerElementsRef.current = new Map();
 
     const width = container.clientWidth || 800;
     const height = container.clientHeight || 380;
