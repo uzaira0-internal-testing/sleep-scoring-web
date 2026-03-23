@@ -1200,12 +1200,53 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
 
     logger = logging.getLogger(__name__)
 
+    from collections import defaultdict
+
+    from sleep_scoring_web.services.complexity import compute_post_complexity
     from sleep_scoring_web.utils import naive_to_unix
 
     async with async_session_maker() as db:
+        # Batch-load file-level data to avoid N+1 queries per date
+        diary_result = await db.execute(
+            select(DiaryEntry).where(DiaryEntry.file_id == file_id)
+        )
+        diary_by_date = {str(d.analysis_date): d for d in diary_result.scalars().all()}
+
+        sensor_nw_result = await db.execute(
+            select(Marker).where(
+                and_(
+                    Marker.file_id == file_id,
+                    Marker.sensor_nonwear_filter(),
+                )
+            )
+        )
+        all_sensor_nonwear = [
+            (nw.start_timestamp, nw.end_timestamp)
+            for nw in sensor_nw_result.scalars().all()
+            if nw.start_timestamp is not None and nw.end_timestamp is not None
+        ]
+
+        sleep_marker_result = await db.execute(
+            select(Marker).where(
+                and_(
+                    Marker.file_id == file_id,
+                    Marker.marker_category == MarkerCategory.SLEEP,
+                )
+            )
+        )
+        sleep_markers_by_date: dict[str, list[tuple[float, float]]] = defaultdict(list)
+        for m in sleep_marker_result.scalars().all():
+            if m.start_timestamp is not None and m.end_timestamp is not None:
+                sleep_markers_by_date[str(m.analysis_date)].append((m.start_timestamp, m.end_timestamp))
+
+        existing_complexity_result = await db.execute(
+            select(NightComplexity).where(NightComplexity.file_id == file_id)
+        )
+        complexity_by_date = {str(c.analysis_date): c for c in existing_complexity_result.scalars().all()}
+
         for analysis_date in dates:
             try:
-                # Load activity data (noon-to-noon window)
+                # Load activity data (noon-to-noon window) — still per-date (different time ranges)
                 start_time = datetime.combine(analysis_date, datetime.min.time()) + timedelta(hours=12)
                 end_time = start_time + timedelta(hours=24)
 
@@ -1233,16 +1274,9 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
                 choi = ChoiAlgorithm()
                 choi_nonwear = choi.detect_mask(axis_y)
 
-                # Load diary
-                diary_result = await db.execute(
-                    select(DiaryEntry).where(
-                        and_(
-                            DiaryEntry.file_id == file_id,
-                            DiaryEntry.analysis_date == analysis_date,
-                        )
-                    )
-                )
-                diary = diary_result.scalar_one_or_none()
+                # Diary data (from batch-loaded map)
+                date_str = str(analysis_date)
+                diary = diary_by_date.get(date_str)
                 diary_onset = diary.lights_out or diary.bed_time if diary else None
                 diary_wake = diary.wake_time or diary.got_up if diary else None
                 nap_count = 0
@@ -1254,32 +1288,18 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
                         nap_count += 1
                     if diary.nap_3_start:
                         nap_count += 1
-                    # Collect diary-reported nonwear periods
                     for i in range(1, 4):
                         nw_s = getattr(diary, f"nonwear_{i}_start", None)
                         nw_e = getattr(diary, f"nonwear_{i}_end", None)
                         if nw_s and nw_e:
                             diary_nonwear_times.append((nw_s, nw_e))
 
-                # Load sensor nonwear periods from the Marker table (marker_type="sensor"),
-                # queried by timestamp overlap with the activity data range.
-                sensor_nonwear_periods: list[tuple[float, float]] = []
-                if timestamps:
-                    data_min_ts = timestamps[0]
-                    data_max_ts = timestamps[-1]
-                    sensor_nw_result = await db.execute(
-                        select(Marker).where(
-                            and_(
-                                Marker.file_id == file_id,
-                                Marker.sensor_nonwear_filter(),
-                                Marker.start_timestamp <= data_max_ts,
-                                Marker.end_timestamp >= data_min_ts,
-                            )
-                        )
-                    )
-                    for nw in sensor_nw_result.scalars().all():
-                        if nw.start_timestamp is not None and nw.end_timestamp is not None:
-                            sensor_nonwear_periods.append((nw.start_timestamp, nw.end_timestamp))
+                # Filter sensor nonwear to this date's time range
+                data_min_ts = timestamps[0]
+                data_max_ts = timestamps[-1]
+                sensor_nonwear_periods = [
+                    (s, e) for s, e in all_sensor_nonwear if s <= data_max_ts and e >= data_min_ts
+                ]
 
                 score, features = compute_pre_complexity(
                     timestamps=timestamps,
@@ -1289,29 +1309,15 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
                     diary_onset_time=diary_onset,
                     diary_wake_time=diary_wake,
                     diary_nap_count=nap_count,
-                    analysis_date=str(analysis_date),
+                    analysis_date=date_str,
                     sensor_nonwear_periods=sensor_nonwear_periods,
                     diary_nonwear_times=diary_nonwear_times,
                 )
 
-                # Compute post-complexity if sleep markers exist
+                # Post-complexity from batch-loaded sleep markers
                 post_score = 0
-                sleep_marker_result = await db.execute(
-                    select(Marker).where(
-                        and_(
-                            Marker.file_id == file_id,
-                            Marker.analysis_date == analysis_date,
-                            Marker.marker_category == MarkerCategory.SLEEP,
-                        )
-                    )
-                )
-                sleep_markers_db = sleep_marker_result.scalars().all()
-                marker_pairs = [
-                    (m.start_timestamp, m.end_timestamp) for m in sleep_markers_db if m.start_timestamp is not None and m.end_timestamp is not None
-                ]
+                marker_pairs = sleep_markers_by_date.get(date_str, [])
                 if marker_pairs:
-                    from sleep_scoring_web.services.complexity import compute_post_complexity
-
                     post_score, features = compute_post_complexity(
                         complexity_pre=score,
                         features=features,
@@ -1320,16 +1326,8 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
                         timestamps=timestamps,
                     )
 
-                # Upsert
-                existing = await db.execute(
-                    select(NightComplexity).where(
-                        and_(
-                            NightComplexity.file_id == file_id,
-                            NightComplexity.analysis_date == analysis_date,
-                        )
-                    )
-                )
-                row = existing.scalar_one_or_none()
+                # Upsert (from batch-loaded map)
+                row = complexity_by_date.get(date_str)
                 if row:
                     row.complexity_pre = score
                     row.complexity_post = post_score
@@ -1343,6 +1341,7 @@ async def _compute_complexity_for_file(file_id: int, dates: list) -> None:
                         features_json=features,
                     )
                     db.add(row)
+                    complexity_by_date[date_str] = row
 
                 await db.commit()
             except Exception:
